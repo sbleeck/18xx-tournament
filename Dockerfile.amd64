@@ -1,6 +1,11 @@
 FROM --platform=linux/amd64 ruby:3.2
 
 ARG RACK_ENV
+ARG JOBS=1
+ARG MAKEFLAGS=-j1
+ENV JOBS=${JOBS}
+ENV MAKEFLAGS=${MAKEFLAGS}
+
 RUN mkdir /18xx
 WORKDIR /18xx
 RUN git config --global --add safe.directory /18xx
