@@ -626,19 +626,10 @@ module View
                                 Lib::Storage['sell_menu_corp'] = corporation.id
                                 update
                               }
-                            else
-                              lambda { |event|
+                   else
+                             lambda { |event|
                                 target_bundle = bundles.first
-                                # Escape the corporation ID to ensure valid CSS selector strings for querySelector
-                                escaped_corp_id = `CSS.escape(#{corporation.id})`
-                                Lib::CardAnimation.fly(event, "#pool_shares_#{escaped_corp_id}") do
-                                  process_action(Engine::Action::SellShares.new(
-    p,
-    shares: target_bundle[:shares],
-    share_price: target_bundle[:share_price],
-    percent: target_bundle[:percent]
-  ))
-                                end
+                                exec_sell_shares(event, p, target_bundle, corporation.id)
                               }
                             end
           elsif can_buy_from_player
@@ -810,18 +801,8 @@ module View
                                      update
                                    }
                                  else
-                                   lambda { |event|
-                                     bnd = valid_pool_shares.first.to_bundle
-                                     escaped_player_id = `CSS.escape(#{active_player.id})`
-                                     escaped_corp_id = `CSS.escape(#{corporation.id})`
-                                     Lib::CardAnimation.fly(event, "#player_shares_#{escaped_player_id}_#{escaped_corp_id}") do
-                                       process_action(Engine::Action::BuyShares.new(
-    active_player,
-    shares: bnd.shares,
-    share_price: bnd.share_price,
-    percent: bnd.percent
-  ))
-                                     end
+                                  lambda { |event|
+                                     exec_buy_shares(event, active_player, valid_pool_shares.first.to_bundle, corporation.id)
                                    }
                                  end
           end
@@ -845,15 +826,7 @@ module View
                 label: "Buy #{share.to_bundle.percent}%",
                 action: lambda { |event|
                   Lib::Storage['buy_pool_menu_corp'] = nil
-                  bnd = share.to_bundle
-                  Lib::CardAnimation.fly(event, "#player_shares_#{active_player.id}_#{corporation.id}") do
-                    process_action(Engine::Action::BuyShares.new(
-                      active_player,
-                      shares: bnd.shares,
-                      share_price: bnd.share_price,
-                      percent: bnd.percent
-                    ))
-                  end
+                  exec_buy_shares_simple(event, active_player, share.to_bundle, corporation.id)
                 },
               }
             end
@@ -923,17 +896,7 @@ module View
                                   }
                                 else
                                   lambda { |event|
-                                    bnd = valid_ipo_shares.first.to_bundle
-                                    escaped_player_id = `CSS.escape(#{active_player.id})`
-                                    escaped_corp_id = `CSS.escape(#{corporation.id})`
-                                    Lib::CardAnimation.fly(event, "#player_shares_#{escaped_player_id}_#{escaped_corp_id}") do
-                                      process_action(Engine::Action::BuyShares.new(
-    active_player,
-    shares: bnd.shares,
-    share_price: bnd.share_price,
-    percent: bnd.percent
-  ))
-                                    end
+                                    exec_buy_shares(event, active_player, valid_ipo_shares.first.to_bundle, corporation.id)
                                   }
                                 end
           end
@@ -957,17 +920,9 @@ module View
             options = valid_ipo_shares.map do |share|
               {
                 label: "Buy #{share.to_bundle.percent}%",
-                action: lambda { |event|
+               action: lambda { |event|
                   Lib::Storage['buy_ipo_menu_corp'] = nil
-                  bnd = share.to_bundle
-                  Lib::CardAnimation.fly(event, "#player_shares_#{active_player.id}_#{corporation.id}") do
-                    process_action(Engine::Action::BuyShares.new(
-                      active_player,
-                      shares: bnd.shares,
-                      share_price: bnd.share_price,
-                      percent: bnd.percent
-                    ))
-                  end
+                  exec_buy_shares_simple(event, active_player, share.to_bundle, corporation.id)
                 },
               }
             end
@@ -1033,14 +988,9 @@ module View
                 Lib::Storage[price_storage_key] = nil
 
                 source_selector = "#train_wrapper_#{corporation.id}_#{t.id} .game-card"
-                Lib::CardAnimation.fly(source_selector, "#trains_#{active_entity.id}") do
-                  process_action(Engine::Action::BuyTrain.new(
-                    active_entity,
-                    train: t,
-                    price: price_value
-                  ))
-                end
+                exec_buy_corporate_train(source_selector, active_entity, t, price_value)
               }
+              
 
               cancel_handler = lambda {
                 Lib::Storage[menu_storage_key] = nil
@@ -1644,6 +1594,52 @@ module View
         }
       end
 
+      def exec_sell_shares(event, player, target_bundle, corporation_id)
+        escaped_corp_id = `CSS.escape(#{corporation_id})`
+        Lib::CardAnimation.fly(event, "#pool_shares_#{escaped_corp_id}") do
+          process_action(Engine::Action::SellShares.new(
+            player,
+            shares: target_bundle[:shares],
+            share_price: target_bundle[:share_price],
+            percent: target_bundle[:percent]
+          ))
+        end
+      end
+
+      def exec_buy_shares(event, player, bnd, corporation_id)
+        escaped_player_id = `CSS.escape(#{player.id})`
+        escaped_corp_id = `CSS.escape(#{corporation_id})`
+        Lib::CardAnimation.fly(event, "#player_shares_#{escaped_player_id}_#{escaped_corp_id}") do
+          process_action(Engine::Action::BuyShares.new(
+            player,
+            shares: bnd.shares,
+            share_price: bnd.share_price,
+            percent: bnd.percent
+          ))
+        end
+      end
+
+      def exec_buy_shares_simple(event, player, bnd, corporation_id)
+        Lib::CardAnimation.fly(event, "#player_shares_#{player.id}_#{corporation_id}") do
+          process_action(Engine::Action::BuyShares.new(
+            player,
+            shares: bnd.shares,
+            share_price: bnd.share_price,
+            percent: bnd.percent
+          ))
+        end
+      end
+
+      def exec_buy_corporate_train(source_selector, active_entity, train, price_value)
+        Lib::CardAnimation.fly(source_selector, "#trains_#{active_entity.id}") do
+          process_action(Engine::Action::BuyTrain.new(
+            active_entity,
+            train: train,
+            price: price_value
+          ))
+        end
+      end
+
       def pd_props
         {
           style: {
@@ -1736,8 +1732,8 @@ module View
             can_afford = active_player.cash >= cost
             is_float = n == float_shares
 
-            bg_color = can_afford ? '#c8e6c9' : '#000000'
-            fg_color = can_afford ? '#000000' : '#ffffff'
+            bg_color = can_afford ? '#c8e6c9' : '#f5f5f5'
+            fg_color = can_afford ? '#000000' : '#888888'
             border_style = is_float ? '3px solid #ff0000' : '1px solid #999'
 
             cell_props = {

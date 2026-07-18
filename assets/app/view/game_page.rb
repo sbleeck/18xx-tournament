@@ -113,11 +113,11 @@ module View
 
       return h('div.padded', 'Loading game...') unless @game
 
-      LOGGER.debug do
-        @_logger ||= {}
-        @_logger[:render] = Time.now
-        'Rendering game view...'
-      end
+      # LOGGER.debug do
+        # @_logger ||= {}
+        # @_logger[:render] = Time.now
+        # # 'Rendering game view...'
+      # end
       page =
         case route_anchor
         when nil
@@ -141,37 +141,38 @@ module View
         when 'auto'
           h(Game::Auto, game: @game, game_data: @game_data, user: @user)
         end
-      LOGGER.debug do
-        "Done rendering game view: #{Time.now - @_logger[:render]} seconds"
-      end
+      # LOGGER.debug do
+        # "Done rendering game view: #{Time.now - @_logger[:render]} seconds"
+      # end
 
-      @connection = nil if @game_data[:mode] == :hotseat || cursor
+     @connection = nil if @game_data[:mode] == :hotseat || cursor
 
       unless @connected
-        @connection&.subscribe(game_path) do |data|
-          # make sure we're using the newest stored vars
-          # since connection is only created on the initial view
-          # and views are ephemeral
-          game = store['game']
-          game_data = store['game_data']
-          n_id = data['id']
-          o_id = game.current_action_id
+        if @connection
+          @connection.subscribe(game_path) do |data|
+            # make sure we're using the newest stored vars
+            # since connection is only created on the initial view
+            # and views are ephemeral
+            game = store['game']
+            game_data = store['game_data']
+            n_id = data['id']
+            o_id = game.current_action_id
 
-          if n_id == o_id + 1
-            game_data['actions'] << data
-            store(:game_data, game_data, skip: true)
-            store(:game, game.process_action(data))
-          else
-            store['connection'].get(game_path) do |new_data|
-              unless new_data['error']
-                store(:game_data, new_data, skip: true)
-                store(:game, game.clone(new_data['actions']))
+            if n_id == o_id + 1
+              game_data['actions'] << data
+              store(:game_data, game_data, skip: true)
+              store(:game, game.process_action(data))
+            else
+              store['connection'].get(game_path) do |new_data|
+                unless new_data['error']
+                  store(:game_data, new_data, skip: true)
+                  store(:game, game.clone(new_data['actions']))
+                end
               end
             end
           end
         end
       end
-
       store(:connected, true, skip: true)
 
       destroy = lambda do

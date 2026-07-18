@@ -69,6 +69,7 @@ module Lib
         return
       end
       %x{
+      var js_block = #{block};
         window.requestAnimationFrame(function() {
           window.requestAnimationFrame(function() {
             var dest = window.document.querySelector(#{dest_selector});

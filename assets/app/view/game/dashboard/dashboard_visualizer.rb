@@ -133,28 +133,31 @@ module View
                           createResizer('resizer-h-3-2', 'panel-3-top', 'panel-3-bot', true);
 
 
+                          var styleTag = document.getElementById('dashboard-map-svg-styles');
+                          if (!styleTag) {
+                            styleTag = document.createElement('style');
+                            styleTag.id = 'dashboard-map-svg-styles';
+                            styleTag.innerHTML = '.scaler-content text { font-size: 0.65em !important; letter-spacing: normal !important; } ' +
+                                                 '.scaler-content .tile__text { font-size: 0.75em !important; } ' +
+                                                 '.scaler-content text.number { font-size: 0.55em !important; }';
+                            document.head.appendChild(styleTag);
+                          }
+
                           var fitObserver = new ResizeObserver(function(entries) {
                             for (var i = 0; i < entries.length; i++) {
                               var panel = entries[i].target;
                               var wrapper = panel.querySelector('.scaler-content');
                               if (!wrapper) continue;
 
-                             wrapper.style.transform = 'none';
-                              wrapper.style.width = 'max-content';
-                              wrapper.style.height = 'max-content';
-
+                              wrapper.style.transform = 'none';
                               var cw = wrapper.scrollWidth;
                               var ch = wrapper.scrollHeight;
-                              var pw = entries[i].contentRect.width - 16; // Account for panel padding
+                              var pw = entries[i].contentRect.width - 16;
                               var ph = entries[i].contentRect.height - 16;
 
                               if (cw > 0 && ch > 0) {
                                 var scale = Math.min(pw / cw, ph / ch);
                                 wrapper.style.transform = 'scale(' + scale + ')';
-                                // Lock the container dimensions to the scaled footprint to prevent layout collapse
-                                panel.style.display = 'block';
-                                wrapper.style.width = cw + 'px';
-                                wrapper.style.height = ch + 'px';
                               }
                             }
                           });
@@ -214,15 +217,12 @@ module View
 
             # Map Panel Box
             h(:div, { attrs: { id: 'panel-2-bot' }, style: { flex: '1 1 auto', border: '1px solid #ccc', borderRadius: '4px', backgroundColor: '#fff', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', overflow: 'hidden' } }, [
-                                         h(:div, {
+                                        h(:div, {
                                              attrs: { class: 'scaler-content' },
                                              style: {
                                                display: 'flex',
                                                justifyContent: 'center',
                                                alignItems: 'center',
-                                               '& text': { fontSize: '0.65em !important', letterSpacing: 'normal !important' },
-                                               '& .tile__text': { fontSize: '0.75em !important' },
-                                               '& text.number': { fontSize: '0.55em !important' },
                                              },
                                            }, [
               h(View::Game::Map, game: @game, user: @user),
