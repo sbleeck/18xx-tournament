@@ -136,6 +136,8 @@ module View
           h(Game::Spreadsheet, game: @game)
         when 'tools'
           h(Game::Tools, game: @game, game_data: @game_data, user: @user)
+        when 'dashboard'
+          h(Game::DashboardVisualizer, game: @game)
         when 'auto'
           h(Game::Auto, game: @game, game_data: @game_data, user: @user)
         end
@@ -367,6 +369,7 @@ module View
       menu_items << item('T|iles', '#tiles') unless @game.layout == :none
       menu_items << item('S|preadsheet', '#spreadsheet')
       menu_items << item("To|ols#{' 📝' if note}", '#tools')
+      menu_items << item('D|ashboard', '#dashboard')
 
       enabled = !@game.programmed_actions[@game.player_by_id(@user['id'])].empty? if @user
       menu_items << item("A|uto#{' ✅' if enabled}", '#auto') if @game_data[:mode] != :hotseat && !cursor
