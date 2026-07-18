@@ -4,6 +4,7 @@
 
 
 require 'view/game/actionable'
+require 'view/game/dashboard/dashboard_command_column'
 
 module View
   module Game
@@ -191,7 +192,7 @@ module View
           }, [
           # Column 1 (Far Left): Command Column Tracker
           h(:div, { attrs: { id: 'col-1' }, style: { flex: '0 0 10%', height: '100%', border: '1px solid #ccc', borderRadius: '4px', backgroundColor: '#fff', overflow: 'hidden' } }, [
-            h(View::Game::CommandColumn, game: @game),
+            h(View::Game::DashboardCommandColumn, game: @game),
           ]),
 
           # Vertical Resizer 1 (replaces 0.75rem gap)
@@ -224,8 +225,8 @@ module View
                                                '& text.number': { fontSize: '0.55em !important' },
                                              },
                                            }, [
-h(View::Game::Map, game: @game, user: @user, minimal: true),
-]),
+              h(View::Game::Map, game: @game, user: @user),
+            ]),
                         ]),
           ]),
 
@@ -278,7 +279,7 @@ h(View::Game::Map, game: @game, user: @user, minimal: true),
                         'The 1846 game engine successfully processed all historical match movements deterministically. Active turn ledger is disabled for completed states.'),
                     ])
                   else
-                    h(View::Game::GameStatus, game: @game)
+                    h(View::Game::DashboardGameStatus, game: @game)
                   end,
                 ]),
                 ]),

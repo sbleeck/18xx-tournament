@@ -26,7 +26,6 @@ module View
     class DashboardGameStatus < Snabberb::Component
       include Lib::Settings
       include Actionable
-      # include Lib::RowAnimation
       include View::ShareCalculation
 
 
@@ -506,7 +505,7 @@ module View
 
         # Attach DOM tracking and the FLIP animation hooks
         tr_props[:key] = corporation.id
-        tr_props[:hook] = Lib::RowAnimation.hook(corporation.id)
+        # tr_props[:hook] = Lib::RowAnimation.hook(corporation.id)
 
         row_classes = []
 
