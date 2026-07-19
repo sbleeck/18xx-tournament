@@ -3,7 +3,7 @@
 # rubocop:disable Layout/LineLength
 
 require 'view/game/actionable'
-# require 'view/game/results_overlay'
+require 'view/game/dashboard/results_overlay'
 require 'view/game/dashboard/dashboard_stock'
 
 module View
@@ -134,7 +134,7 @@ module View
                                },
                              }, 'Show Results')
 
-          upper_content << h(ResultsOverlay, game: @game) if Lib::Storage['show_results_overlay']
+          upper_content << h(View::Game::Dashboard::ResultsOverlay, game: @game) if Lib::Storage['show_results_overlay']
         else
 
           # 1. UNIFIED ROUND TITLE TRACKER (MATCHING GAME_PAGE GROUND TRUTH)
@@ -157,29 +157,27 @@ module View
             # 3. CONDITIONAL ASSET PANEL (SUPPRESSED FOR STOCK ROUNDS)
             unless @game.round.stock? || (@game.round.respond_to?(:stock?) && @game.round.stock?)
               if @game.round.operating?
+
                 mauve_box_children = [
                    h(:div, { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #b886b8', paddingBottom: '0.2rem' } }, [
                      h(:div, { style: { fontSize: '0.8rem', fontWeight: 'bold' } }, 'Cash'),
                      h(:div, { style: { fontSize: '1.2rem', fontWeight: 'bold' } }, treasury.to_s),
                    ]),
                    h(:div, { style: { textAlign: 'center' } }, [
-                     h(:div, { style: { fontSize: '0.75rem', fontWeight: 'bold', marginBottom: '2px' } }, 'Owned Trains'),
                      render_owned_trains(current_entity, phase),
                    ]),
                    h(:div, { style: { textAlign: 'center' } }, [
-                     h(:div, { style: { fontSize: '0.75rem', fontWeight: 'bold', marginBottom: '2px' } }, 'Tokens'),
                      render_company_tokens(current_entity),
                    ]),
                 ]
 
                 if @game.respond_to?(:total_loans) && @game.total_loans&.nonzero?
                   mauve_box_children << h(:div, { style: { textAlign: 'center' } }, [
-                    h(:div, { style: { fontSize: '0.75rem', fontWeight: 'bold', marginBottom: '2px' } }, 'Loans'),
                     render_loan_dots(current_entity),
                   ])
                 end
 
-                upper_content << h(:div, { style: { border: '1px solid #999', borderTop: "4px solid #{bg_color}", padding: '0.4rem', marginBottom: '0.4rem', backgroundColor: '#dda0dd', borderRadius: '4px', display: 'flex', flexDirection: 'column', gap: '0.4rem', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' } }, mauve_box_children)
+                upper_content << h(:div, { style: { border: '1px solid #999', padding: '0.4rem', marginBottom: '0.4rem', backgroundColor: '#f3e8ff', borderRadius: '4px', display: 'flex', flexDirection: 'column', gap: '0.4rem', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' } }, mauve_box_children)
               else
                 # Compact display for Non-Operating, Non-Stock phases (e.g., Mergers, Auctions)
                 upper_content << h(:div, { style: { border: '1px solid #ccc', padding: '0.4rem', marginBottom: '0.4rem', backgroundColor: '#f8f9fa', borderRadius: '4px', textAlign: 'center' } }, [
@@ -191,12 +189,8 @@ module View
 
           # 4. PHASE 1-4 COMPACT ACTIONS (EXCLUSIVELY FOR OPERATING ROUNDS)
           if @game.round.operating?
-            upper_content << h(:div, { style: { marginBottom: '0.4rem' } }, [
-              render_phase_box('Lay Tile', phase == :build_track, [], actions, current_entity, nil, bg_color, text_color),
-            ])
-            upper_content << h(:div, { style: { marginBottom: '0.4rem' } }, [
-              render_phase_box('Place Token', phase == :place_token, [], actions, current_entity, nil, bg_color, text_color),
-            ])
+            upper_content << render_phase_box('Lay Tile', phase == :build_track, ['Skip Lay Tile'], actions, current_entity, nil, '4.5rem')
+            upper_content << render_phase_box('Place Token', phase == :place_token, ['Skip Place Token'], actions, current_entity, nil, '4.5rem')
 
             revenue_overlay = if %i[run_routes dividend].include?(phase)
                                 if @cmd_router_running
@@ -228,32 +222,29 @@ module View
 
             case phase
             when :run_routes
-              upper_content << render_phase_box('Run Routes', true, ["Submit #{formatted_revenue}"], actions, current_entity, revenue_overlay, bg_color, text_color)
+              upper_content << render_phase_box('Run Routes', true, ["Submit #{formatted_revenue}"], actions, current_entity, revenue_overlay, '8.5rem')
             when :dividend
               options = step.respond_to?(:dividend_options) ? step.dividend_options(current_entity).map(&:to_s) : []
               div_buttons = []
               div_buttons << 'Pay' if actions.include?('payout') || options.include?('payout') || (actions.include?('dividend') && !(current_entity.respond_to?(:minor?) && current_entity.minor?))
               div_buttons << 'Hold' if actions.include?('withhold') || options.include?('withhold') || (actions.include?('dividend') && !(current_entity.respond_to?(:minor?) && current_entity.minor?))
               div_buttons << 'Split' if actions.include?('half') || actions.include?('split') || options.include?('half') || options.include?('split') || (actions.include?('dividend') && current_entity.respond_to?(:minor?) && current_entity.minor?)
-              upper_content << render_phase_box('Dividend', true, div_buttons, actions, current_entity, revenue_overlay, bg_color, text_color)
+              upper_content << render_phase_box('Dividend', true, div_buttons, actions, current_entity, revenue_overlay, '8.5rem')
             else
               options = step.respond_to?(:dividend_options) ? step.dividend_options(current_entity).map(&:to_s) : []
               div_buttons = []
               div_buttons << 'Pay' if actions.include?('payout') || options.include?('payout') || actions.include?('dividend')
               div_buttons << 'Hold' if actions.include?('withhold') || options.include?('withhold') || actions.include?('dividend')
               div_buttons << 'Split' if actions.include?('half') || options.include?('half') || actions.include?('dividend')
-              upper_content << render_phase_box('Revenue', false, div_buttons, actions, current_entity, nil, bg_color, text_color)
+              div_buttons = %w[Pay Hold Split] if div_buttons.empty?
+              upper_content << render_phase_box('Revenue', false, div_buttons, actions, current_entity, nil, '8.5rem')
             end
 
             buyable_list = phase == :buy_train ? render_buyable_trains(step, current_entity) : h(:div)
-            upper_content << h(:div, { style: { marginBottom: '0.4rem' } }, [
-              render_phase_box('Buy Trains', phase == :buy_train, ['Done Buying'], actions, current_entity, buyable_list, bg_color, text_color),
-            ])
+            upper_content << render_phase_box('Buy Trains', phase == :buy_train, ['Done Buying'], actions, current_entity, buyable_list, '8.5rem')
 
             if phase == :discard_train
-              upper_content << h(:div, { style: { marginBottom: '0.4rem' } }, [
-                render_phase_box('Discard Train', true, [], actions, current_entity, h(:div), bg_color, text_color),
-              ])
+              upper_content << render_phase_box('Discard Train', true, [], actions, current_entity, h(:div), '4.5rem')
             end
           end
 
@@ -830,20 +821,19 @@ module View
           { style: { display: 'flex', flexDirection: 'column', width: '100%', padding: '0.2rem 0', boxSizing: 'border-box' } }, train_boxes)
       end
 
-      def render_phase_box(title, is_active, button_labels, available_actions, current_entity, custom_overlay,
-                           entity_bg_color = '#4169e1', _entity_text_color = '#ffffff')
+      def render_phase_box(title, is_active, button_labels, available_actions, current_entity, custom_overlay, min_height = 'auto')
         effectively_active = is_active && !(@cmd_router_running && title == 'Run Routes')
-        box_bg = effectively_active ? '#ffffff' : '#f5f5f5'
-        box_border = effectively_active ? "2px solid #{entity_bg_color}" : '1px solid #cccccc'
+
+        box_bg = effectively_active ? '#e6f2ff' : '#f5f5f5'
+        box_border = effectively_active ? '2px solid #007bff' : '1px solid #cccccc'
         title_color = effectively_active ? '#000000' : '#888888'
 
         buttons = button_labels.map do |label|
           click_action = lambda do
             next unless effectively_active
 
-            if ['Skip', 'Done Buying'].include?(label) && available_actions.include?('pass')
-              process_action(Engine::Action::Pass.new(current_entity))
-
+            if label.start_with?('Skip') || label == 'Done Buying'
+              process_action(Engine::Action::Pass.new(current_entity)) if available_actions.include?('pass')
             elsif label.start_with?('Submit') && available_actions.include?('run_routes')
               routes_to_submit = active_routes
               base_revenue = routes_to_submit.any? ? routes_to_submit.sum(&:revenue) : 0
@@ -887,16 +877,17 @@ module View
           attrs = { disabled: !effectively_active }
           attrs[:id] = 'submit' if label.start_with?('Submit')
 
-          btn_bg = effectively_active ? '#4169e1' : '#e0e0e0'
+          btn_bg = effectively_active ? '#007bff' : '#e0e0e0'
           btn_text = effectively_active ? '#ffffff' : '#a0a0a0'
           btn_border = effectively_active ? 'none' : '1px solid #cccccc'
 
           h(:button,
-            { style: { width: '100%', padding: '0.3rem', marginTop: '0.2rem', fontSize: '0.75rem', backgroundColor: btn_bg, color: btn_text, border: btn_border, borderRadius: '3px', cursor: effectively_active ? 'pointer' : 'not-allowed', fontWeight: 'bold' }, attrs: attrs, on: { click: click_action } }, label)
+            { style: { width: '100%', padding: '0.3rem', marginTop: '0.2rem', fontSize: '0.75rem', backgroundColor: btn_bg, color: btn_text, border: btn_border, borderRadius: '3px', cursor: effectively_active ? 'pointer' : 'not-allowed', fontWeight: 'bold', boxSizing: 'border-box' }, attrs: attrs, on: { click: click_action } }, label)
         end
-        h(:div, { style: { border: box_border, padding: '0.4rem', backgroundColor: box_bg, textAlign: 'center', borderRadius: '4px', boxShadow: effectively_active ? '0 1px 3px rgba(0,0,0,0.1)' : 'none' } }, [
+        h(:div, { style: { border: box_border, padding: '0.4rem', marginBottom: '0.4rem', backgroundColor: box_bg, textAlign: 'center', borderRadius: '4px', minHeight: min_height, display: 'flex', flexDirection: 'column', justifyContent: 'flex-start', boxSizing: 'border-box', boxShadow: effectively_active ? '0 1px 3px rgba(0,0,0,0.1)' : 'none' } }, [
                 h(:div, { style: { fontSize: '0.75rem', fontWeight: 'bold', color: title_color, marginBottom: '0.2rem' } }, title),
-                custom_overlay, *buttons
+                custom_overlay,
+                h(:div, { style: { marginTop: 'auto', width: '100%' } }, buttons),
             ].compact)
       end
 
@@ -968,6 +959,40 @@ module View
             components << h(ScrapTrains) if actions.include?('scrap_train')
             components << h(Loans, corporation: step.current_entity) if !loans_rendered && (%w[take_loan payoff_loan] & actions).any?
             components << h(ViewMergeOptions, corporation: step.current_entity) if actions.include?('view_merge_options')
+
+            if actions.include?('bankrupt')
+              entity = step.current_entity
+              player = entity&.player? ? entity : entity&.owner
+
+              # Protect against out-of-context rendering by checking step status flags
+              show_bankrupt = false
+              if step.respond_to?(:must_buy_train?) && step.must_buy_train?(entity)
+                # Operating Round emergency train buy trigger context
+                show_bankrupt = @game.respond_to?(:can_go_bankrupt?) ? @game.can_go_bankrupt?(player, entity) : true
+              elsif @game.round.respond_to?(:stock?) && @game.round.stock? && step.respond_to?(:must_sell?) && step.must_sell?(player)
+                # Stock Round emergency cert dump context
+                show_bankrupt = true
+              end
+
+              if show_bankrupt
+                b_options = @game.respond_to?(:bankruptcy_options) ? @game.bankruptcy_options(player) : []
+
+                if b_options.empty?
+                  components << h(:button, {
+                                    style: { width: '100%', padding: '0.5rem', backgroundColor: '#dc3545', color: 'white', fontWeight: 'bold', border: 'none', borderRadius: '4px', cursor: 'pointer' },
+                                    on: { click: -> { process_action(Engine::Action::Bankrupt.new(entity)) } },
+                                  }, 'Declare Bankruptcy')
+                else
+                  b_options.each do |opt|
+                    btn_text = @game.respond_to?(:bankruptcy_button_text) ? @game.bankruptcy_button_text(opt) : 'Declare Bankruptcy'
+                    components << h(:button, {
+                                      style: { width: '100%', padding: '0.5rem', backgroundColor: '#dc3545', color: 'white', fontWeight: 'bold', border: 'none', borderRadius: '4px', cursor: 'pointer', marginBottom: '0.2rem' },
+                                      on: { click: -> { process_action(Engine::Action::Bankrupt.new(entity, option: opt)) } },
+                                    }, btn_text)
+                  end
+                end
+              end
+            end
 
             if actions.include?('buy_company')
               show_buy_companies = Lib::Storage["show_buy_companies_#{@game.id}"]
