@@ -4,6 +4,7 @@
 
 require 'view/game/actionable'
 # require 'view/game/results_overlay'
+require 'view/game/dashboard/dashboard_stock'
 
 module View
   module Game
@@ -136,83 +137,60 @@ module View
           upper_content << h(ResultsOverlay, game: @game) if Lib::Storage['show_results_overlay']
         else
 
-          unless @game.round.operating?
-            r_class = @game.round.class
-            round_name_str = if r_class.respond_to?(:round_name)
-                               r_class.round_name
-                             else
-                               r_class.name.split('::').last
-                             end
+          # 1. UNIFIED ROUND TITLE TRACKER (MATCHING GAME_PAGE GROUND TRUTH)
+          round_class_name = @game.round.class.name.split('::').last
+          round_title_str = @game.round_description(round_class_name)
 
-            upper_content << h(:div, { style: { padding: '1.5rem 1rem 0.5rem', textAlign: 'center', color: '#333' } }, [
-            h(:div, { style: { fontSize: '1.5rem', fontWeight: 'bold', textTransform: 'uppercase' } },
-              "#{round_name_str} Round"),
-            h(:div, { style: { fontSize: '1.2rem', marginTop: '0.2rem', fontWeight: 'normal' } },
-              current_entity&.name || ''),
+          upper_content << h(:div, { style: { padding: '0.5rem 0.2rem', textAlign: 'center', color: '#333', borderBottom: '2px solid #ccc', marginBottom: '0.4rem' } }, [
+            h(:div, { style: { fontSize: '1.1rem', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.5px' } }, round_title_str),
           ])
-          end
 
+          # 2. CURRENT ENTITY AND ORGANIZATION DISCOVERY
           if current_entity
-            if @game.round.operating?
-              begin
-                setting_for(:simple_logos, @game) ? current_entity.simple_logo : current_entity.logo
-              rescue StandardError
-                nil
-              end
+            entity_label = current_entity.name
+            if current_entity.respond_to?(:owner) && current_entity.owner && current_entity.owner != current_entity
+              entity_label += " (#{current_entity.owner.name})"
+            end
 
-              header_elements = []
+            upper_content << h(:div, { style: { backgroundColor: bg_color, color: text_color, padding: '0.4rem', textAlign: 'center', fontWeight: 'bold', borderRadius: '4px', border: '1px solid #999', marginBottom: '0.4rem', fontSize: '0.85rem' } }, entity_label)
 
-              header_elements << h(:div, { style: { fontSize: '4rem' } }, company_logo)
-              if player_name && !player_name.empty?
-                header_elements << h(:div, { style: { fontSize: '2.5rem' } },
-                                     player_name)
-              end
+            # 3. CONDITIONAL ASSET PANEL (SUPPRESSED FOR STOCK ROUNDS)
+            unless @game.round.stock? || (@game.round.respond_to?(:stock?) && @game.round.stock?)
+              if @game.round.operating?
+                mauve_box_children = [
+                   h(:div, { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #b886b8', paddingBottom: '0.2rem' } }, [
+                     h(:div, { style: { fontSize: '0.8rem', fontWeight: 'bold' } }, 'Cash'),
+                     h(:div, { style: { fontSize: '1.2rem', fontWeight: 'bold' } }, treasury.to_s),
+                   ]),
+                   h(:div, { style: { textAlign: 'center' } }, [
+                     h(:div, { style: { fontSize: '0.75rem', fontWeight: 'bold', marginBottom: '2px' } }, 'Owned Trains'),
+                     render_owned_trains(current_entity, phase),
+                   ]),
+                   h(:div, { style: { textAlign: 'center' } }, [
+                     h(:div, { style: { fontSize: '0.75rem', fontWeight: 'bold', marginBottom: '2px' } }, 'Tokens'),
+                     render_company_tokens(current_entity),
+                   ]),
+                ]
 
-              header_elements << h(:div, { style: { fontSize: '0.8rem', textTransform: 'uppercase', marginTop: '1px' } },
-                                   phase.to_s.tr('_', ' '))
+                if @game.respond_to?(:total_loans) && @game.total_loans&.nonzero?
+                  mauve_box_children << h(:div, { style: { textAlign: 'center' } }, [
+                    h(:div, { style: { fontSize: '0.75rem', fontWeight: 'bold', marginBottom: '2px' } }, 'Loans'),
+                    render_loan_dots(current_entity),
+                  ])
+                end
 
-              upper_content << h(:div,
-                                 { style: { backgroundColor: bg_color, color: text_color, padding: '0.2rem', textAlign: 'center', fontWeight: 'bold', border: '1px solid #999', marginBottom: '0.2rem', fontSize: '0.75rem' } }, header_elements)
-
-              mauve_box_children = [
-                 h(:div, { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #b886b8', paddingBottom: '0.2rem' } }, [
-                   h(:div, { style: { fontSize: '0.8rem', fontWeight: 'bold' } }, 'Cash'),
-                   h(:div, { style: { fontSize: '1.2rem', fontWeight: 'bold' } }, treasury.to_s),
-                 ]),
-                 h(:div, { style: { textAlign: 'center' } }, [
-                   h(:div, { style: { fontSize: '0.75rem', fontWeight: 'bold', marginBottom: '2px' } },
-                     'Owned Trains'),
-                   render_owned_trains(current_entity, phase),
-                 ]),
-                 h(:div, { style: { textAlign: 'center' } }, [
-                   h(:div, { style: { fontSize: '0.75rem', fontWeight: 'bold', marginBottom: '2px' } },
-                     'Tokens'),
-                   render_company_tokens(current_entity),
-                 ]),
-              ]
-
-              if @game.respond_to?(:total_loans) && @game.total_loans&.nonzero?
-                mauve_box_children << h(:div, { style: { textAlign: 'center' } }, [
-                  h(:div, { style: { fontSize: '0.75rem', fontWeight: 'bold', marginBottom: '2px' } },
-                    'Loans'),
-                  render_loan_dots(current_entity),
+                upper_content << h(:div, { style: { border: '1px solid #999', borderTop: "4px solid #{bg_color}", padding: '0.4rem', marginBottom: '0.4rem', backgroundColor: '#dda0dd', borderRadius: '4px', display: 'flex', flexDirection: 'column', gap: '0.4rem', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' } }, mauve_box_children)
+              else
+                # Compact display for Non-Operating, Non-Stock phases (e.g., Mergers, Auctions)
+                upper_content << h(:div, { style: { border: '1px solid #ccc', padding: '0.4rem', marginBottom: '0.4rem', backgroundColor: '#f8f9fa', borderRadius: '4px', textAlign: 'center' } }, [
+                  h(:div, { style: { fontSize: '0.8rem', fontWeight: 'bold' } }, "Treasury Cash: #{@game.format_currency(treasury)}"),
                 ])
               end
-
-              upper_content << h(:div,
-                                 { style: { border: '1px solid #999', borderTop: "4px solid #{bg_color}", padding: '0.4rem', marginBottom: '0.4rem', backgroundColor: '#dda0dd', borderRadius: '4px', display: 'flex', flexDirection: 'column', gap: '0.4rem', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' } }, mauve_box_children)
-            else
-              # COMPACT PLAYER HEADER FOR NON-ORs
-              upper_content << h(:div, { style: { backgroundColor: bg_color, color: text_color, padding: '0.5rem', textAlign: 'center', fontWeight: 'bold', marginBottom: '0.4rem', borderRadius: '4px', border: '1px solid #999' } }, [
-                h(:div, { style: { fontSize: '1rem', marginTop: '0.2rem' } }, "Cash: #{@game.format_currency(treasury)}"),
-              ])
             end
           end
 
-          unless @game.round.stock?
-
-            # ACTION BLOCKS - NOW ACCESSIBLE IN ALL ROUND TYPES!
-
+          # 4. PHASE 1-4 COMPACT ACTIONS (EXCLUSIVELY FOR OPERATING ROUNDS)
+          if @game.round.operating?
             upper_content << h(:div, { style: { marginBottom: '0.4rem' } }, [
               render_phase_box('Lay Tile', phase == :build_track, actions.include?('pass') ? ['Skip'] : [], actions, current_entity, nil, bg_color, text_color),
             ])
@@ -222,44 +200,26 @@ module View
 
             revenue_overlay = if %i[run_routes dividend].include?(phase)
                                 if @cmd_router_running
-                                  h(:div, { style: { padding: '0.5rem', textAlign: 'center', color: '#666', fontStyle: 'italic', fontSize: '0.85rem' } },
-                                    '🔄 Computing optimal network tracks...')
+                                  h(:div, { style: { padding: '0.5rem', textAlign: 'center', color: '#666', fontStyle: 'italic', fontSize: '0.85rem' } }, '🔄 Computing optimal network tracks...')
                                 else
                                   h(:div, { style: { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', margin: '0.3rem 0' } }, [
                                     h(:button, {
-                                        style: {
-                                          padding: '0.1rem 0.4rem',
-                                          fontSize: '1.1rem',
-                                          fontWeight: 'bold',
-                                          cursor: 'pointer',
-                                          backgroundColor: '#e0e0e0',
-                                          border: '1px solid #999',
-                                          borderRadius: '3px',
-                                        },
+                                        style: { padding: '0.1rem 0.4rem', fontSize: '1.1rem', fontWeight: 'bold', cursor: 'pointer', backgroundColor: '#e0e0e0', border: '1px solid #999', borderRadius: '3px' },
                                         on: {
                                           click: lambda {
-                                                   Lib::Storage[storage_key] = [current_revenue - 10, 0].max
-                                                   update
-                                                 },
+                                            Lib::Storage[storage_key] = [current_revenue - 10, 0].max
+                                            update
+                                          },
                                         },
                                       }, '-'),
-                                    h(:div, { style: { fontSize: '1.8rem', fontWeight: 'bold', color: 'green', minWidth: '4rem', textAlign: 'center' } },
-                                      formatted_revenue),
+                                    h(:div, { style: { fontSize: '1.8rem', fontWeight: 'bold', color: 'green', minWidth: '4rem', textAlign: 'center' } }, formatted_revenue),
                                     h(:button, {
-                                        style: {
-                                          padding: '0.1rem 0.4rem',
-                                          fontSize: '1.1rem',
-                                          fontWeight: 'bold',
-                                          cursor: 'pointer',
-                                          backgroundColor: '#e0e0e0',
-                                          border: '1px solid #999',
-                                          borderRadius: '3px',
-                                        },
+                                        style: { padding: '0.1rem 0.4rem', fontSize: '1.1rem', fontWeight: 'bold', cursor: 'pointer', backgroundColor: '#e0e0e0', border: '1px solid #999', borderRadius: '3px' },
                                         on: {
                                           click: lambda {
-                                                   Lib::Storage[storage_key] = current_revenue + 10
-                                                   update
-                                                 },
+                                            Lib::Storage[storage_key] = current_revenue + 10
+                                            update
+                                          },
                                         },
                                       }, '+'),
                                   ])
@@ -268,26 +228,21 @@ module View
 
             case phase
             when :run_routes
-              upper_content << render_phase_box('Run Routes', true, ["Submit #{formatted_revenue}"], actions, current_entity,
-                                                revenue_overlay, bg_color, text_color)
+              upper_content << render_phase_box('Run Routes', true, ["Submit #{formatted_revenue}"], actions, current_entity, revenue_overlay, bg_color, text_color)
             when :dividend
               options = step.respond_to?(:dividend_options) ? step.dividend_options(current_entity).map(&:to_s) : []
               div_buttons = []
               div_buttons << 'Pay' if actions.include?('payout') || options.include?('payout') || (actions.include?('dividend') && !(current_entity.respond_to?(:minor?) && current_entity.minor?))
               div_buttons << 'Hold' if actions.include?('withhold') || options.include?('withhold') || (actions.include?('dividend') && !(current_entity.respond_to?(:minor?) && current_entity.minor?))
               div_buttons << 'Split' if actions.include?('half') || actions.include?('split') || options.include?('half') || options.include?('split') || (actions.include?('dividend') && current_entity.respond_to?(:minor?) && current_entity.minor?)
-
-              upper_content << render_phase_box('Dividend', true, div_buttons, actions, current_entity, revenue_overlay, bg_color,
-                                                text_color)
+              upper_content << render_phase_box('Dividend', true, div_buttons, actions, current_entity, revenue_overlay, bg_color, text_color)
             else
               options = step.respond_to?(:dividend_options) ? step.dividend_options(current_entity).map(&:to_s) : []
               div_buttons = []
               div_buttons << 'Pay' if actions.include?('payout') || options.include?('payout') || actions.include?('dividend')
               div_buttons << 'Hold' if actions.include?('withhold') || options.include?('withhold') || actions.include?('dividend')
               div_buttons << 'Split' if actions.include?('half') || options.include?('half') || actions.include?('dividend')
-
-              upper_content << render_phase_box('Revenue', false, div_buttons, actions, current_entity, nil, bg_color,
-                                                text_color)
+              upper_content << render_phase_box('Revenue', false, div_buttons, actions, current_entity, nil, bg_color, text_color)
             end
 
             buyable_list = phase == :buy_train ? render_buyable_trains(step, current_entity) : h(:div)
@@ -300,131 +255,13 @@ module View
                 render_phase_box('Discard Train', true, [], actions, current_entity, h(:div), bg_color, text_color),
               ])
             end
-
-            allow_private_buy = actions.include?('buy_company') || (@game.phase.status.include?('can_buy_companies') && current_entity&.corporation?)
-            buyable_company_list = allow_private_buy ? render_buyable_companies(step, current_entity) : h(:div)
-            upper_content << h(:div, { style: { marginBottom: '0.4rem' } }, [
-              render_phase_box('Buy Private Company', allow_private_buy, actions.include?('pass') ? ['Skip'] : [], actions, current_entity, buyable_company_list, bg_color, text_color),
-            ])
-
-            upper_content << h(Abilities)
-            standard_actions = %w[lay_tile place_token run_routes dividend payout withhold half split buy_train discard_train buy_company pass]
-
-            system_actions = %w[end_game bankrupt]
-            special_actions = actions - standard_actions - system_actions
-            if special_actions.any?
-              special_buttons = special_actions.map do |action|
-                action_class = begin
-                  Engine::Action.const_get(action.split('_').map(&:capitalize).join)
-                rescue NameError
-                  nil
-                end
-
-                next unless action_class
-
-                required_args = action_class.const_defined?(:REQUIRED_ARGS) ? action_class::REQUIRED_ARGS : []
-                is_loan_action = %w[take_loan payoff_loan].include?(action)
-
-                label = action.split('_').map(&:capitalize).join(' ')
-
-                if required_args.empty? || is_loan_action
-                  click_action = lambda do
-                    if is_loan_action
-                      loan_pool = if action == 'payoff_loan'
-                                    current_entity.respond_to?(:loans) ? current_entity.loans : []
-                                  else
-                                    (@game.respond_to?(:loans) ? @game.loans : [])
-                                  end
-                      process_action(action_class.new(current_entity, loan: loan_pool[0])) if loan_pool[0]
-                    else
-                      process_action(action_class.new(current_entity))
-                    end
-                  end
-
-                  h(:button, {
-                      style: {
-                        width: '100%',
-                        padding: '0.3rem',
-                        marginTop: '0.2rem',
-                        fontSize: '0.8rem',
-                        backgroundColor: '#f0f8ff',
-                        color: '#004085',
-                        border: '2px dashed #007bff',
-                        cursor: 'pointer',
-                        fontWeight: 'bold',
-                        borderRadius: '4px',
-                      },
-                      on: { click: click_action },
-                    }, label)
-
-                elsif required_args.include?(:corporation) || required_args.include?(:company)
-                  # Scaffold to repeat the "Target Selection" pattern dynamically for unknown special actions
-                  targets = if step.respond_to?(:available_targets)
-                              step.available_targets(current_entity) || []
-                            elsif step.respond_to?(:corporations)
-                              step.corporations || []
-                            elsif step.respond_to?(:companies)
-                              step.companies || []
-                            else
-                              []
-                            end
-
-                  if targets.any?
-                    target_buttons = targets.map do |t_element|
-                      click_action = lambda do
-                        kwargs = {}
-                        kwargs[:corporation] = t_element if required_args.include?(:corporation)
-                        kwargs[:company] = t_element if required_args.include?(:company)
-                        process_action(action_class.new(current_entity, **kwargs))
-                      end
-                      h(:button, {
-                          style: {
-                            width: '100%',
-                            padding: '0.2rem',
-                            marginTop: '0.1rem',
-                            fontSize: '0.75rem',
-                            cursor: 'pointer',
-                            backgroundColor: '#e0f7fa',
-                            border: '1px solid #17a2b8',
-                            borderRadius: '3px',
-                          },
-                          on: { click: click_action },
-                        }, "#{label} #{t_element.name}")
-                    end
-
-                    h(:div, { style: { border: '1px solid #17a2b8', padding: '0.3rem', marginTop: '0.2rem', borderRadius: '4px', backgroundColor: '#ffffff' } }, [
-                      h(:div, { style: { fontSize: '0.8rem', fontWeight: 'bold', color: '#0056b3', marginBottom: '0.2rem' } },
-                        label),
-                      *target_buttons,
-                    ])
-                  else
-                    # Fallback if no targets could be resolved dynamically
-                    h(:div, { style: { border: '1px solid #17a2b8', padding: '0.3rem', marginTop: '0.2rem', borderRadius: '4px', backgroundColor: '#e0f7fa', textAlign: 'center' } }, [
-                      h(:div, { style: { fontSize: '0.8rem', fontWeight: 'bold', color: '#0056b3' } }, label),
-                      h(:div, { style: { fontSize: '0.7rem', color: '#666', fontStyle: 'italic' } },
-                        '(Select target on map)'),
-                    ])
-                  end
-
-                else
-                  # Action requires arguments like :hex or :share that we cannot easily list in a column right now
-                  h(:div, { style: { border: '1px solid #17a2b8', padding: '0.3rem', marginTop: '0.2rem', borderRadius: '4px', backgroundColor: '#e0f7fa', textAlign: 'center' } }, [
-                    h(:div, { style: { fontSize: '0.8rem', fontWeight: 'bold', color: '#0056b3' } }, label),
-                    h(:div, { style: { fontSize: '0.7rem', color: '#666', fontStyle: 'italic' } },
-                      '(Interact via map/market)'),
-                    h(:div, { style: { fontSize: '0.65rem', color: '#888' } },
-                      "Args: #{required_args.join(', ')}"),
-                  ])
-                end
-              end.compact
-
-              upper_content << h(:div, { style: { border: '2px solid #007bff', padding: '0.4rem', backgroundColor: '#e2e3e5', textAlign: 'center', marginBottom: '0.4rem', borderRadius: '4px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' } }, [
-                          h(:div, { style: { fontSize: '0.8rem', fontWeight: 'bold', color: '#1b1e21', marginBottom: '0.2rem' } },
-                            '5. Special Actions'),
-                          *special_buttons,
-                                  ])
-            end
           end
+
+          upper_content << h(Abilities)
+          upper_content << h(:div, { style: { marginTop: '0.5rem', paddingTop: '0.5rem', borderTop: '2px solid #ccc' } }, [
+            render_ground_truth_actions(actions, step),
+          ])
+
         end
 
         # AUTOMATED REVENUE PATH ROUTER WITH ASYNC TIMING GATE
@@ -636,10 +473,14 @@ module View
         elsif step.respond_to?(:companies)
           companies = step.companies
         elsif @game.respond_to?(:companies)
-          companies = @game.companies.select do |c|
-            step.respond_to?(:can_buy_company?) ? step.can_buy_company?(current_entity, c) : !c.owned_by?(current_entity)
-          end
+          companies = @game.companies
         end
+
+        companies = if step.respond_to?(:can_buy_company?)
+                      companies.select { |c| step.can_buy_company?(current_entity, c) }
+                    else
+                      companies.select { |c| !c.owned_by?(current_entity) }
+                    end
 
         if companies.nil? || companies.empty?
           return h(:div, { style: { fontSize: '0.75rem', color: '#666', fontStyle: 'italic', padding: '0.2rem' } },
@@ -650,10 +491,11 @@ module View
           owner_name = c.owner&.name || 'Bank'
           next nil if c.owner == current_entity
 
-          # Restrict buyable list to only show privates owned by the operating corporation's president
-          if current_entity.respond_to?(:corporation?) && current_entity.corporation? && (c.owner != current_entity.owner)
-            next nil
-          end
+          min_price = if step.respond_to?(:min_price)
+                        step.min_price(c)
+                      else
+                        (c.respond_to?(:min_price) ? c.min_price : 1)
+                      end
 
           min_price = if step.respond_to?(:min_price)
                         step.min_price(c)
@@ -1032,6 +874,104 @@ module View
                 h(:div, { style: { fontSize: '0.75rem', fontWeight: 'bold', color: title_color, marginBottom: '0.2rem' } }, title),
                 custom_overlay, *buttons
             ].compact)
+      end
+
+      def render_ground_truth_actions(actions, step)
+        return h(:div) if @game.finished
+
+        return h(UpgradeOrDiscardTrains) if actions.include?('discard_train') && actions.include?('swap_train')
+        return h(DiscardTrains) if actions.include?('discard_train')
+
+        if actions.include?('par') && step.respond_to?(:corporation_pending_par) && step.corporation_pending_par
+          return h(CorporationPendingPar, corporation: step.corporation_pending_par)
+        end
+
+        case @game.round
+        when Engine::Round::Stock
+          h(::View::Game::DashboardStock, game: @game)
+        when Engine::Round::Operating
+          if actions.include?('merge')
+            h(Round::Merger, game: @game)
+          elsif actions.include?('buy_shares') && @game.current_entity&.player?
+            h(::View::Game::DashboardStock, game: @game)
+          elsif actions.include?('bid')
+            h(Round::Auction, game: @game, user: nil)
+          else
+            components = []
+            components << h(Pass, actions: actions)
+
+            convert_track = step.respond_to?(:conversion?) && step.conversion?
+            loans_rendered = false
+
+            components << h(SpecialBuy) if actions.include?('special_buy')
+            components << h(TrackConversion) if actions.include?('run_routes') && convert_track
+            components << h(Convert) if actions.include?('convert')
+            components << h(SwitchTrains) if actions.include?('switch_trains')
+            components << h(ReassignTrains) if actions.include?('reassign_trains')
+            components << h(DoubleHeadTrains) if actions.include?('double_head_trains')
+            components << h(CombinedTrains) if actions.include?('combined_trains')
+            components << h(Choose) if actions.include?('choose')
+            components << h(BuyToken, entity: step.current_entity) if actions.include?('buy_token')
+
+            if actions.include?('buy_train') || actions.include?('sell_train')
+              components << h(IssueShares) if actions.include?('sell_shares') || actions.include?('buy_shares')
+            elsif actions.include?('buy_power')
+              components << h(IssueShares) if actions.include?('sell_shares')
+              components << h(BuyPower)
+            elsif actions.include?('borrow_train')
+              components << h(BorrowTrain)
+            elsif step.respond_to?(:cash_crisis?) && step.cash_crisis?
+              components << h(CashCrisis)
+              loans_rendered = true if (%w[take_loan payoff_loan] & actions).any?
+            elsif actions.include?('buy_shares') || actions.include?('sell_shares') || actions.include?('par')
+              if step.respond_to?(:price_protection) && (price_protection = step.price_protection)
+                components << h(Corporation, corporation: price_protection.corporation)
+                components << h(BuySellShares, corporation: price_protection.corporation)
+              elsif @game.corporations_can_ipo?
+                components << h(CorporateBuySellShares)
+              else
+                components << h(IssueShares)
+              end
+            elsif actions.include?('corporate_buy_shares')
+              components << h(CorporateBuyShares)
+            elsif actions.include?('corporate_sell_shares')
+              components << h(CorporateSellShares)
+            elsif actions.include?('swap_train')
+              components << h(SwapTrain)
+            elsif actions.include?('buy_corporation')
+              components << h(BuyCorporation)
+            end
+
+            components << h(ScrapTrains) if actions.include?('scrap_train')
+            components << h(Loans, corporation: step.current_entity) if !loans_rendered && (%w[take_loan payoff_loan] & actions).any?
+            components << h(ViewMergeOptions, corporation: step.current_entity) if actions.include?('view_merge_options')
+
+            components << h(BuyCompanies, limit_width: true) if actions.include?('buy_company')
+            components << h(AcquireCompanies) if actions.include?('acquire_company')
+            components << h(CorporateSellCompanies) if actions.include?('corporate_sell_company')
+            components << h(CorporateBuyCompanies) if actions.include?('corporate_buy_company')
+
+            h(:div, { style: { display: 'flex', flexDirection: 'column', gap: '0.5rem', width: '100%' } }, components)
+          end
+        when Engine::Round::Choices
+          h(Round::Choices, game: @game)
+        when Engine::Round::Auction, Engine::Round::Draft
+          h(Round::Auction, game: @game, user: nil)
+        when Engine::Round::Merger
+          if !(%w[buy_train scrap_train reassign_trains] & actions).empty? && @game.train_actions_always_use_operating_round_view?
+            h(Round::Operating, game: @game)
+          else
+            h(Round::Merger, game: @game)
+          end
+        else
+          if @game.round.stock?
+            h(::View::Game::DashboardStock, game: @game)
+          elsif @game.round.unordered?
+            h(Round::Unordered, game: @game, user: nil)
+          else
+            h(:div)
+          end
+        end
       end
     end
   end
