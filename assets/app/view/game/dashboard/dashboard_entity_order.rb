@@ -16,21 +16,16 @@ module View
           return h(:div,
                    { style: { display: 'flex', alignItems: 'center', padding: '0.5rem', fontFamily: '"Helvetica Neue", Helvetica, Arial, sans-serif', fontWeight: 'bold', fontSize: '1.5rem', color: '#dc3545' } }, 'Game Over / Match Finished')
         end
-
-        is_or = @round.respond_to?(:operating?) && @round.operating?
-
-        # Fractional round numbering format (e.g., OR 1/2) derived from the game engine state
-        header_text = if is_or
-                        current_or = @round.respond_to?(:number) ? @round.number : '1'
-                        total_ors = @game.respond_to?(:operating_rounds) ? @game.operating_rounds : '2'
-                        "OR #{current_or}/#{total_ors}"
-                      else
-                        'SR'
-                      end
+        # Extract unified round title tracker matching command column ground truth
+        round_class_name = @game.round.class.name.split('::').last
+        header_text = @game.round_description(round_class_name)
 
         header_el = h(:div, {
                         style: {
-                          fontSize: '1.8rem',
+                          fontSize: '1.2rem',
+                          padding: '2px 6px',
+                          borderRadius: '4px',
+                          backgroundColor: '#e0e0e0',
                           fontWeight: 'bold',
                           color: '#111111',
                           fontFamily: '"Helvetica Neue", Helvetica, Arial, sans-serif',
@@ -38,12 +33,9 @@ module View
                           marginRight: '1.2rem',
                           display: 'inline-block',
                           verticalAlign: 'middle',
-                          lineHeight: '1',
+                          lineHeight: '1.2',
                         },
                       }, header_text)
-
-        # For Stock Rounds, display only the large SR label and skip company processing entirely
-        return h(:div, { style: { display: 'flex', alignItems: 'center', padding: '0.5rem' } }, [header_el]) unless is_or
 
         # Gather operating entities for the queue
         if @round.respond_to?(:context_entities)
