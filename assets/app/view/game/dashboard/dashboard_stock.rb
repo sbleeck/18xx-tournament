@@ -50,6 +50,9 @@ module View
           store(:show_sr_hand, false, skip: true)
         end
 
+        # Render bankruptcy at the absolute foreground level to prevent early returns from hiding it
+        return h(:div, render_bankruptcy) if @current_actions.include?('bankrupt')
+
         if @current_actions.include?('par') && @step.respond_to?(:companies_pending_par) && !@step.companies_pending_par.empty?
           return h(:div, render_company_pending_par)
         end
@@ -95,6 +98,17 @@ module View
         if @step.respond_to?(:purchasable_companies) && !@step.purchasable_companies(@current_entity).empty?
           children << h(::View::Game::BuyCompanyFromOtherPlayer, game: @game)
         end
+
+        children.compact!
+
+        # Safely strip out any empty strings or empty arrays using inline JS
+        # to avoid Opal "method missing" errors on native VNodes
+        children.reject! do |c|
+          `#{c} === ""` || `Array.isArray(#{c}) && #{c}.length === 0`
+        end
+
+        # If no active actions produced layout elements, return an invisible node to satisfy Snabberb
+        return h(:div, { style: { display: 'none' } }) if children.empty?
 
         h(:div, { style: { display: 'flex', flexDirection: 'column', gap: '0.4rem', width: '100%' } }, children)
       end
@@ -189,14 +203,17 @@ module View
         merging = @step.respond_to?(:merge_in_progress?) && @step.merge_in_progress?
         corporations = @step.respond_to?(:visible_corporations) ? @step.visible_corporations : @game.sorted_corporations.reject(&:closed?)
 
-        corporations.map do |corporation|
+        corps_rendered = corporations.map do |corporation|
           next if @auctioning_corporation && @auctioning_corporation != corporation
           next if @mergeable_entity && @mergeable_entity != corporation
           next if @price_protection && @price_protection.corporation != corporation
 
-          children = []
-          children.concat(render_subsidiaries)
           input = render_input(corporation) if @game.corporation_available?(corporation)
+
+          # Mute (hide) the corporation completely if it has no actionable special inputs
+          next unless input
+
+          children = []
 
           logo_src = begin
             setting_for(:simple_logos, @game) ? corporation.simple_logo : corporation.logo
@@ -233,28 +250,54 @@ module View
               display: 'flex',
               alignItems: 'center',
               padding: '0.3rem 0.5rem',
-              backgroundColor: @selected_corporation == corporation ? '#d1ecf1' : '#f8f9fa',
-              border: @selected_corporation == corporation ? '2px solid #17a2b8' : '1px solid #cccccc',
+              backgroundColor: '#d1ecf1',
+              border: '2px solid #17a2b8',
               borderRadius: '4px',
-              cursor: 'pointer',
               marginBottom: '0.2rem',
             },
-            on: {
-              click: lambda {
-                if @selected_corporation == corporation
-                  store(:selected_corporation,
-                        nil)
-                else
-                  store(:selected_corporation, corporation)
-                end
-              },
-            },
           }
+
           children << h(:div, header_props,
                         [icon_el, h(:span, { style: { fontSize: '0.85rem', fontWeight: 'bold', color: '#000' } }, corporation.name)])
-          children << input if input && @selected_corporation == corporation
-          h(:div, { style: { display: 'block', width: '100%' } }, children)
+          children << input
+          h(:div, { style: { display: 'block', width: '100%', marginBottom: '0.5rem' } }, children)
         end.compact
+
+        subs = render_subsidiaries
+        corps_rendered.unshift(*subs) if subs && !subs.empty?
+
+        corps_rendered
+      end
+
+      def render_input(corporation)
+        inputs = [
+          corporation.ipoed ? nil : render_pre_ipo(corporation),
+          render_loan(corporation),
+        ]
+        inputs << h(::View::Game::IssueShares, entity: corporation) unless (@step.actions(corporation) & %w[buy_shares
+                                                                                                            sell_shares]).empty?
+        inputs << h(::View::Game::BuyTrains, corporation: corporation) if @step.actions(corporation).include?('buy_train')
+        inputs << h(::View::Game::ScrapTrains, corporation: corporation) if @step.actions(corporation).include?('scrap_train')
+        if @current_actions.include?('choose') && @step.choice_available?(corporation)
+          inputs << h(::View::Game::Choose, entity: corporation)
+        end
+
+        inputs = inputs.compact
+        inputs.empty? ? nil : h('div.margined_bottom', { style: { width: '100%' } }, inputs)
+      end
+
+      def render_pre_ipo(corporation)
+        children = []
+        case @step.ipo_type(corporation)
+        when :bid
+          children << h(::View::Game::Round::Bid, entity: @current_entity, biddable: corporation) if should_render_bid?
+        when :form
+          children << h(::View::Game::FormCorporation, corporation: corporation) if @current_actions.include?('par')
+        when String
+          children << h(:div, @step.ipo_type(corporation))
+        end
+        children.compact!
+        children.empty? ? nil : h(:div, children)
       end
 
       def render_input(corporation)
