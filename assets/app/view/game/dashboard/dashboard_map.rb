@@ -7,6 +7,112 @@ require 'view/game/hex'
 require 'view/game/tile_confirmation'
 require 'view/game/tile_selector'
 require 'view/game/token_selector'
+require 'view/game/part/track'
+require 'view/game/part/cities'
+require 'view/game/part/towns'
+require 'view/game/part/revenue'
+
+# 1. Existing Track Monkey Patch
+module View
+  module Game
+    module Part
+      class Track < Snabberb::Component
+        unless method_defined?(:orig_width_for_index)
+          alias orig_width_for_index width_for_index
+          alias orig_value_for_index value_for_index
+
+          def width_for_index(path, index, path_indexes)
+            base_width = orig_width_for_index(path, index, path_indexes)
+            index ? (base_width * 2.5) : base_width
+          end
+
+          def value_for_index(index, prop, track)
+            if index && prop == :color
+              screaming_palette = ['#ff1493', '#00ffff', '#7fff00', '#ff00ff']
+              screaming_palette[index.to_i] || '#ff1493'
+            else
+              orig_value_for_index(index, prop, track)
+            end
+          end
+        end
+      end
+
+      # 2. Fancy Values Overlay for Cities
+      class Cities < Base
+        unless method_defined?(:orig_render)
+          alias orig_render render
+
+          def render
+            base_nodes = orig_render # Generate standard cities layout[cite: 8]
+
+            # Extract numerical revenue text if available
+            rev_entries = @tile.respond_to?(:revenue_to_render) ? @tile.revenue_to_render : []
+            return base_nodes if rev_entries.empty?
+
+            rev_text = rev_entries.first.to_s
+
+            # Overlay a comically large text indicator over the node area
+            base_nodes << h(:text, {
+                              attrs: {
+                                x: '0',
+                                y: '5',
+                                'text-anchor': 'middle',
+                                fill: '#ff00ff', # Screaming Neon Magenta
+                                stroke: '#ffffff',
+                                'stroke-width': '2px',
+                              },
+                              style: {
+                                fontSize: '110px', # 5x larger than standard map labels
+                                fontWeight: '900',
+                                fontFamily: '"Impact", "Arial Black", sans-serif',
+                                pointerEvents: 'none',
+                                zIndex: '9999',
+                              },
+                            }, rev_text)
+
+            base_nodes
+          end
+        end
+      end
+
+      # 3. Fancy Values Overlay for Towns
+      class Towns < Snabberb::Component
+        unless method_defined?(:orig_render)
+          alias orig_render render
+
+          def render
+            base_nodes = orig_render # Generate standard towns layout[cite: 9]
+
+            rev_entries = @tile.respond_to?(:revenue_to_render) ? @tile.revenue_to_render : []
+            return base_nodes if rev_entries.empty?
+
+            rev_text = rev_entries.first.to_s
+
+            base_nodes << h(:text, {
+                              attrs: {
+                                x: '0',
+                                y: '5',
+                                'text-anchor': 'middle',
+                                fill: '#00ffff', # Screaming Neon Cyan to contrast with cities
+                                stroke: '#000000',
+                                'stroke-width': '2px',
+                              },
+                              style: {
+                                fontSize: '110px',
+                                fontWeight: '900',
+                                fontFamily: '"Impact", "Arial Black", sans-serif',
+                                pointerEvents: 'none',
+                                zIndex: '9999',
+                              },
+                            }, rev_text)
+
+            base_nodes
+          end
+        end
+      end
+    end
+  end
+end
 
 module View
   module Game
@@ -204,6 +310,46 @@ module View
       def render_map
         width, height = map_size
 
+        # Build an independent, flat overlay array of un-rotated texts for valid revenue spots
+        fancy_value_overlays = []
+
+        if @raw_hex_list
+          @raw_hex_list.each do |hex|
+            next if hex.empty
+
+            rev_entries = hex.tile && hex.tile.respond_to?(:revenue_to_render) ? hex.tile.revenue_to_render : []
+            next if rev_entries.empty?
+
+            # Extract base numerical center amount string
+            val_string = rev_entries.first.to_s
+
+            # Calculate absolute grid layout centers
+            hx, hy = Hex.coordinates(hex, @start_pos)
+
+            # Translate coordinates by map's internal padding parameters
+            final_cx = hx + map_x
+            final_cy = hy + map_y + 12 # Centering adjustment factor
+
+            fancy_value_overlays << h(:text, {
+                                        attrs: {
+                                          x: final_cx.to_s,
+                                          y: final_cy.to_s,
+                                          'text-anchor': 'middle',
+                                          'dominant-baseline': 'central',
+                                          fill: '#ffffff',            # Thick white inner fill
+                                          stroke: '#000000',          # Solid black contour frame
+                                          'stroke-width': '5px',      # High-visibility contrast stroke
+                                        },
+                                        style: {
+                                          fontSize: '48px !important', # Force massive sizing over .scaler-content overrides
+                                          fontWeight: '900',
+                                          fontFamily: '"Impact", "Arial Black", Charcoal, sans-serif',
+                                          pointerEvents: 'none',
+                                        },
+                                      }, val_string)
+          end
+        end
+
         props = {
           attrs: {
             id: 'map',
@@ -225,6 +371,8 @@ module View
               map_x: map_x,
               map_y: map_y,
               start_pos: @start_pos),
+            # Append our high-visibility layer on top of the base coordinate graphics group
+            h(:g, { attrs: { id: 'dashboard-fancy-values' } }, fancy_value_overlays),
           ]),
         ])
       end
