@@ -2,9 +2,9 @@
 
 # rubocop:disable Layout/LineLength
 
-
 require 'view/game/actionable'
 require 'view/game/dashboard/dashboard_command_column'
+require 'view/game/dashboard/dashboard_map'
 
 module View
   module Game
@@ -55,7 +55,7 @@ module View
             h(:div, { style: { width: '41%', height: '100%', display: 'flex', flexDirection: 'column', gap: '0.5rem', overflow: 'hidden' } }, [
               h(:div, { style: { flex: '1 1 auto', border: '1px solid #ccc', borderRadius: '4px', display: 'flex', justifyContent: 'center', alignItems: 'center', overflow: 'hidden' } }, [
               h(:div, { attrs: { class: 'scaler-content' }, style: { display: 'flex', justifyContent: 'center', alignItems: 'center' } }, [
-              h(View::Game::Map, game: @game, user: @user, minimal: true),
+              h(View::Game::DashboardMap, game: @game, user: @user, minimal: true),
                 ]),
               ]),
             ]),
@@ -113,12 +113,21 @@ module View
                               var newPrevFlex = Math.max(0, prevFlex + delta);
                               var newNextFlex = Math.max(0, totalFlex - newPrevFlex);
                               prev.style.flex = '0 0 ' + newPrevFlex + 'px';
-                              next.style.flex = '0 0 ' + newNextFlex + 'px';
-                              if (!isVertical && nextId === 'col-3') {
+
+                              if (isVertical && nextId === 'panel-3-bot') {
                                 next.style.flex = '1 1 auto';
+                              } else if (!isVertical && nextId === 'col-3') {
+                                next.style.flex = '1 1 auto';
+                              } else {
+                                next.style.flex = '0 0 ' + newNextFlex + 'px';
                               }
-                              prev.style.width = 'auto'; prev.style.height = 'auto';
-                              next.style.width = 'auto'; next.style.height = 'auto';
+
+                              if (!isVertical) {
+                                prev.style.height = '100%';
+                                next.style.height = '100%';
+                              }
+
+
                             };
                             var mouseUpHandler = function() {
                               document.removeEventListener('mousemove', mouseMoveHandler);
@@ -218,14 +227,14 @@ module View
             # Map Panel Box
             h(:div, { attrs: { id: 'panel-2-bot' }, style: { flex: '1 1 auto', border: '1px solid #ccc', borderRadius: '4px', backgroundColor: '#fff', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', overflow: 'hidden' } }, [
                                         h(:div, {
-                                             attrs: { class: 'scaler-content' },
-                                             style: {
-                                               display: 'flex',
-                                               justifyContent: 'center',
-                                               alignItems: 'center',
-                                             },
-                                           }, [
-              h(View::Game::Map, game: @game, user: @user),
+                                            attrs: { class: 'scaler-content' },
+                                            style: {
+                                              display: 'flex',
+                                              justifyContent: 'center',
+                                              alignItems: 'center',
+                                            },
+                                          }, [
+              h(View::Game::DashboardMap, game: @game, user: @user),
             ]),
                         ]),
           ]),
@@ -241,17 +250,17 @@ module View
                 attrs: { id: 'panel-3-top' },
                 style: {
                   flex: '0 0 62%',
-                  overflow: 'auto',
+                  overflow: 'hidden',
                   border: '1px solid #ccc',
                   padding: '0.4rem',
                   borderRadius: '4px',
                   backgroundColor: '#fff',
                   display: 'flex',
                   flexDirection: 'column',
-                  '& div': { overflow: 'auto !important' },
+                  '& div': { overflow: 'hidden !important' },
                   '& table': {
                     width: '100% !important',
-                    tableLayout: 'fixed',
+                    tableLayout: 'auto',
                     borderCollapse: 'collapse',
                     fontSize: '0.85rem',
                   },
@@ -271,16 +280,16 @@ module View
                   },
                 },
               }, [
-               h(:div, { attrs: { class: 'scaler-content' }, style: { display: 'flex', flexDirection: 'column', width: '100%' } }, [
-                  if @game.respond_to?(:finished?) && @game.finished?
-                    h(:div, { style: { padding: '1rem', fontFamily: '"Helvetica Neue", Helvetica, Arial, sans-serif', textAlign: 'center' } }, [
-                      h(:h3, { style: { color: '#dc3545', margin: '0 0 0.5rem 0' } }, 'Match Verification Complete'),
-                      h(:p, { style: { fontSize: '0.85rem', color: '#555', margin: '0' } },
-                        'The 1846 game engine successfully processed all historical match movements deterministically. Active turn ledger is disabled for completed states.'),
-                    ])
-                  else
-                    h(View::Game::DashboardGameStatus, game: @game)
-                  end,
+                h(:div, { attrs: { class: 'scaler-content' }, style: { display: 'flex', flexDirection: 'column', width: 'max-content', minWidth: '100%', transformOrigin: 'top left' } }, [
+                    if @game.respond_to?(:finished?) && @game.finished?
+                      h(:div, { style: { padding: '1rem', fontFamily: '"Helvetica Neue", Helvetica, Arial, sans-serif', textAlign: 'center' } }, [
+                        h(:h3, { style: { color: '#dc3545', margin: '0 0 0.5rem 0' } }, 'Match Verification Complete'),
+                        h(:p, { style: { fontSize: '0.85rem', color: '#555', margin: '0' } },
+                          'The 1846 game engine successfully processed all historical match movements deterministically. Active turn ledger is disabled for completed states.'),
+                      ])
+                    else
+                      h(View::Game::DashboardGameStatus, game: @game)
+                    end,
                 ]),
                 ]),
 
@@ -466,7 +475,7 @@ module View
                     attrs: { class: 'scaler-content' },
                     style: {
                       transformOrigin: 'top left',
-                      margin: '0 auto',
+                      margin: '0',
                       padding: '0',
                     },
                   }, [

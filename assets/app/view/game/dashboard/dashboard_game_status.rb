@@ -619,17 +619,17 @@ module View
           can_buy_from_player = !valid_player_buys.empty?
           click_handler = nil
 
-          if can_sell
+         if can_sell
             click_handler = if bundles.size > 1
                               lambda {
                                 Lib::Storage['sell_menu_player'] = p.id
                                 Lib::Storage['sell_menu_corp'] = corporation.id
                                 update
                               }
-                   else
-                             lambda { |event|
-                                target_bundle = bundles.first
-                                exec_sell_shares(event, p, target_bundle, corporation.id)
+                            else
+                              lambda { |event|
+                                source_selector = "#player_shares_#{p.id}_#{corporation.id} .game-card"
+                                exec_sell_shares(source_selector, p, bundles.first, corporation.id)
                               }
                             end
           elsif can_buy_from_player
@@ -725,15 +725,11 @@ module View
                 options = bundles.map do |bundle|
                   {
                     label: "#{bundle[:percent]}%",
-                    action: lambda {
+                    action: lambda { |event|
                       Lib::Storage['sell_menu_player'] = nil
                       Lib::Storage['sell_menu_corp'] = nil
-                      process_action(Engine::Action::SellShares.new(
-                        p,
-                        shares: bundle[:shares],
-                        share_price: bundle[:share_price],
-                        percent: bundle[:percent]
-                      ))
+                      source_selector = "#player_shares_#{p.id}_#{corporation.id} .game-card"
+                      exec_sell_shares(source_selector, p, bundle, corporation.id)
                     },
                   }
                 end
@@ -802,7 +798,8 @@ module View
                                    }
                                  else
                                   lambda { |event|
-                                     exec_buy_shares(event, active_player, valid_pool_shares.first.to_bundle, corporation.id)
+                                     source_selector = "#pool_shares_#{corporation.id} .game-card"
+                                     exec_buy_shares(source_selector, active_player, valid_pool_shares.first.to_bundle, corporation.id)
                                    }
                                  end
           end
@@ -826,7 +823,8 @@ module View
                 label: "Buy #{share.to_bundle.percent}%",
                 action: lambda { |event|
                   Lib::Storage['buy_pool_menu_corp'] = nil
-                  exec_buy_shares_simple(event, active_player, share.to_bundle, corporation.id)
+                  source_selector = "#pool_shares_#{corporation.id} .game-card"
+                  exec_buy_shares_simple(source_selector, active_player, share.to_bundle, corporation.id)
                 },
               }
             end
@@ -896,7 +894,8 @@ module View
                                   }
                                 else
                                   lambda { |event|
-                                    exec_buy_shares(event, active_player, valid_ipo_shares.first.to_bundle, corporation.id)
+                                    source_selector = "#ipo_shares_#{corporation.id} .game-card"
+                                    exec_buy_shares(source_selector, active_player, valid_ipo_shares.first.to_bundle, corporation.id)
                                   }
                                 end
           end
@@ -922,7 +921,8 @@ module View
                 label: "Buy #{share.to_bundle.percent}%",
                action: lambda { |event|
                   Lib::Storage['buy_ipo_menu_corp'] = nil
-                  exec_buy_shares_simple(event, active_player, share.to_bundle, corporation.id)
+                  source_selector = "#ipo_shares_#{corporation.id} .game-card"
+                  exec_buy_shares_simple(source_selector, active_player, share.to_bundle, corporation.id)
                 },
               }
             end
@@ -945,7 +945,7 @@ module View
         clean_par_price = corporation.par_price ? @game.format_currency(corporation.par_price.price).gsub(/[^0-9]/, '') : ''
 
         ipo_row_content = [
-                  h('td.column-zone-market', { style: { position: 'relative', textAlign: 'center' } },
+                  h('td.column-zone-market', { attrs: { id: "ipo_shares_#{corporation.id}" }, style: { position: 'relative', textAlign: 'center' } },
                     ipo_cell_children),
                   h('td.padded_number.column-zone-market.money-value', {}, clean_par_price),
                 ]
@@ -1594,9 +1594,9 @@ module View
         }
       end
 
-      def exec_sell_shares(event, player, target_bundle, corporation_id)
+      def exec_sell_shares(source_selector, player, target_bundle, corporation_id)
         escaped_corp_id = `CSS.escape(#{corporation_id})`
-        Lib::CardAnimation.fly(event, "#pool_shares_#{escaped_corp_id}") do
+        Lib::CardAnimation.fly(source_selector, "#pool_shares_#{escaped_corp_id}") do
           process_action(Engine::Action::SellShares.new(
             player,
             shares: target_bundle[:shares],
@@ -1606,10 +1606,10 @@ module View
         end
       end
 
-      def exec_buy_shares(event, player, bnd, corporation_id)
+      def exec_buy_shares(source_selector, player, bnd, corporation_id)
         escaped_player_id = `CSS.escape(#{player.id})`
         escaped_corp_id = `CSS.escape(#{corporation_id})`
-        Lib::CardAnimation.fly(event, "#player_shares_#{escaped_player_id}_#{escaped_corp_id}") do
+        Lib::CardAnimation.fly(source_selector, "#player_shares_#{escaped_player_id}_#{escaped_corp_id}") do
           process_action(Engine::Action::BuyShares.new(
             player,
             shares: bnd.shares,
@@ -1619,8 +1619,8 @@ module View
         end
       end
 
-      def exec_buy_shares_simple(event, player, bnd, corporation_id)
-        Lib::CardAnimation.fly(event, "#player_shares_#{player.id}_#{corporation_id}") do
+      def exec_buy_shares_simple(source_selector, player, bnd, corporation_id)
+        Lib::CardAnimation.fly(source_selector, "#player_shares_#{player.id}_#{corporation_id}") do
           process_action(Engine::Action::BuyShares.new(
             player,
             shares: bnd.shares,
