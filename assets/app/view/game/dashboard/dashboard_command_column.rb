@@ -257,7 +257,31 @@ module View
             end
           end
 
-          upper_content << h(Abilities)
+          show_abilities = Lib::Storage["show_abilities_#{@game.id}"]
+          upper_content << h(:button, {
+                               style: {
+                                 width: '100%',
+                                 padding: '0.35rem',
+                                 marginTop: '0.4rem',
+                                 fontSize: '0.75rem',
+                                 backgroundColor: '#6c757d',
+                                 color: 'white',
+                                 border: 'none',
+                                 borderRadius: '4px',
+                                 cursor: 'pointer',
+                                 fontWeight: 'bold',
+                                 textAlign: 'center',
+                               },
+                               on: {
+                                 click: lambda {
+                                   Lib::Storage["show_abilities_#{@game.id}"] = !show_abilities
+                                   update
+                                 },
+                               },
+                             }, "#{show_abilities ? 'Hide' : 'Show'} Private Company Abilities")
+
+          upper_content << h(Abilities) if show_abilities
+
           upper_content << h(:div, { style: { marginTop: '0.5rem', paddingTop: '0.5rem', borderTop: '2px solid #ccc' } }, [
             render_ground_truth_actions(actions, step),
           ])
@@ -945,7 +969,31 @@ module View
             components << h(Loans, corporation: step.current_entity) if !loans_rendered && (%w[take_loan payoff_loan] & actions).any?
             components << h(ViewMergeOptions, corporation: step.current_entity) if actions.include?('view_merge_options')
 
-            components << h(BuyCompanies, limit_width: true) if actions.include?('buy_company')
+            if actions.include?('buy_company')
+              show_buy_companies = Lib::Storage["show_buy_companies_#{@game.id}"]
+              components << h(:button, {
+                                style: {
+                                  width: '100%',
+                                  padding: '0.35rem',
+                                  margin: '0.2rem 0',
+                                  fontSize: '0.75rem',
+                                  backgroundColor: '#ffc107',
+                                  color: '#000000',
+                                  border: 'none',
+                                  borderRadius: '4px',
+                                  cursor: 'pointer',
+                                  fontWeight: 'bold',
+                                  textAlign: 'center',
+                                },
+                                on: {
+                                  click: lambda {
+                                    Lib::Storage["show_buy_companies_#{@game.id}"] = !show_buy_companies
+                                    update
+                                  },
+                                },
+                              }, "#{show_buy_companies ? 'Hide' : 'Show'} Buy Private Companies")
+              components << h(BuyCompanies, limit_width: true) if show_buy_companies
+            end
             components << h(AcquireCompanies) if actions.include?('acquire_company')
             components << h(CorporateSellCompanies) if actions.include?('corporate_sell_company')
             components << h(CorporateBuyCompanies) if actions.include?('corporate_buy_company')
