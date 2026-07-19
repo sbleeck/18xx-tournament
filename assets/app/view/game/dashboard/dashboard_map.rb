@@ -43,7 +43,9 @@ module View
         unless method_defined?(:orig_render)
           alias orig_render render
           def render
-            actions = @game&.round&.active_step&.actions(nil) || []
+            current_ent = @game&.round&.active_step&.current_entity
+            actions = current_ent ? (@game.round.active_step.actions(current_ent) || []) : []
+
             is_revenue_phase = actions.include?('run_routes') || actions.include?('dividend') || actions.include?('payout')
 
             # Commented out for now to bring back native map numbers
@@ -98,7 +100,7 @@ module View
         current_entity = @selected_company || step&.current_entity
         combo_entities = (@selected_combos || []).map { |id| @game.company_by_id(id) }
         entity_or_entities = combo_entities.empty? ? current_entity : [current_entity, *combo_entities]
-        actions = step&.actions(current_entity) || []
+        actions = step && current_entity ? (step.actions(current_entity) || []) : []
 
         unless (laid_hexes = @historical_laid_hexes)
           laid_hexes = @game.round.respond_to?(:laid_hexes) ? @game.round.laid_hexes : []
