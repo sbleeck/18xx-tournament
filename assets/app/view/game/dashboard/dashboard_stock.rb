@@ -203,17 +203,17 @@ module View
         merging = @step.respond_to?(:merge_in_progress?) && @step.merge_in_progress?
         corporations = @step.respond_to?(:visible_corporations) ? @step.visible_corporations : @game.sorted_corporations.reject(&:closed?)
 
-        corps_rendered = corporations.map do |corporation|
+        corporations.map do |corporation|
           next if @auctioning_corporation && @auctioning_corporation != corporation
           next if @mergeable_entity && @mergeable_entity != corporation
           next if @price_protection && @price_protection.corporation != corporation
 
+          children = []
+          children.concat(render_subsidiaries)
           input = render_input(corporation) if @game.corporation_available?(corporation)
 
-          # Mute (hide) the corporation completely if it has no actionable special inputs
+          # Hide the corporation completely if it has no actionable inputs
           next unless input
-
-          children = []
 
           logo_src = begin
             setting_for(:simple_logos, @game) ? corporation.simple_logo : corporation.logo
@@ -250,40 +250,52 @@ module View
               display: 'flex',
               alignItems: 'center',
               padding: '0.3rem 0.5rem',
-              backgroundColor: '#d1ecf1',
-              border: '2px solid #17a2b8',
+              backgroundColor: @selected_corporation == corporation ? '#d1ecf1' : '#f8f9fa',
+              border: @selected_corporation == corporation ? '2px solid #17a2b8' : '1px solid #cccccc',
               borderRadius: '4px',
+              cursor: 'pointer',
               marginBottom: '0.2rem',
+            },
+            on: {
+              click: lambda {
+                if @selected_corporation == corporation
+                  store(:selected_corporation, nil)
+                else
+                  store(:selected_corporation, corporation)
+                end
+              },
             },
           }
 
-          children << h(:div, header_props,
-                        [icon_el, h(:span, { style: { fontSize: '0.85rem', fontWeight: 'bold', color: '#000' } }, corporation.name)])
-          children << input
-          h(:div, { style: { display: 'block', width: '100%', marginBottom: '0.5rem' } }, children)
+          # Hide the one-line logo header if it is a stock round
+          unless @game.round.stock?
+            children << h(:div, header_props,
+                          [icon_el, h(:span, { style: { fontSize: '0.85rem', fontWeight: 'bold', color: '#000' } }, corporation.name)])
+          end
+
+          children << input if input && @selected_corporation == corporation
+
+          # Only render the wrapper if there are actual children to show
+          children.empty? ? nil : h(:div, { style: { display: 'block', width: '100%' } }, children)
         end.compact
-
-        subs = render_subsidiaries
-        corps_rendered.unshift(*subs) if subs && !subs.empty?
-
-        corps_rendered
       end
 
       def render_input(corporation)
         inputs = [
-          corporation.ipoed ? nil : render_pre_ipo(corporation),
-          render_loan(corporation),
-        ]
+        corporation.ipoed ? nil : render_pre_ipo(corporation),
+        render_loan(corporation),
+    ]
         inputs << h(::View::Game::IssueShares, entity: corporation) unless (@step.actions(corporation) & %w[buy_shares
                                                                                                             sell_shares]).empty?
         inputs << h(::View::Game::BuyTrains, corporation: corporation) if @step.actions(corporation).include?('buy_train')
         inputs << h(::View::Game::ScrapTrains, corporation: corporation) if @step.actions(corporation).include?('scrap_train')
         if @current_actions.include?('choose') && @step.choice_available?(corporation)
-          inputs << h(::View::Game::Choose, entity: corporation)
+          inputs << h(::View::Game::Choose,
+                      entity: corporation)
         end
 
         inputs = inputs.compact
-        inputs.empty? ? nil : h('div.margined_bottom', { style: { width: '100%' } }, inputs)
+        h('div.margined_bottom', { style: { width: '100%' } }, inputs) if inputs.any?
       end
 
       def render_pre_ipo(corporation)

@@ -161,7 +161,7 @@ module View
                 mauve_box_children = [
                    h(:div, { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #b886b8', paddingBottom: '0.2rem' } }, [
                      h(:div, { style: { fontSize: '0.8rem', fontWeight: 'bold' } }, 'Cash'),
-                     h(:div, { style: { fontSize: '1.2rem', fontWeight: 'bold' } }, treasury.to_s),
+                     h(:div, { style: { fontSize: '1.2rem', fontWeight: 'bold', fontFamily: '"Courier New", Courier, monospace', color: '#4c1d95' } }, @game.format_currency(treasury)),
                    ]),
                    h(:div, { style: { textAlign: 'center' } }, [
                      render_owned_trains(current_entity, phase),
@@ -181,8 +181,11 @@ module View
               else
                 # Compact display for Non-Operating, Non-Stock phases (e.g., Mergers, Auctions)
                 upper_content << h(:div, { style: { border: '1px solid #ccc', padding: '0.4rem', marginBottom: '0.4rem', backgroundColor: '#f8f9fa', borderRadius: '4px', textAlign: 'center' } }, [
-                  h(:div, { style: { fontSize: '0.8rem', fontWeight: 'bold' } }, "Treasury Cash: #{@game.format_currency(treasury)}"),
-                ])
+                h(:div, { style: { fontSize: '0.8rem', fontWeight: 'bold' } }, [
+                    h(:span, 'Treasury Cash: '),
+                    h(:span, { style: { fontFamily: '"Courier New", Courier, monospace', color: '#4c1d95' } }, @game.format_currency(treasury)),
+                  ]),
+                 ])
               end
             end
           end
@@ -206,7 +209,7 @@ module View
                                           },
                                         },
                                       }, '-'),
-                                    h(:div, { style: { fontSize: '1.8rem', fontWeight: 'bold', color: 'green', minWidth: '4rem', textAlign: 'center' } }, formatted_revenue),
+                                    h(:div, { style: { fontSize: '1.8rem', fontWeight: 'bold', color: 'green', fontFamily: '"Courier New", Courier, monospace', minWidth: '4rem', textAlign: 'center' } }, formatted_revenue),
                                     h(:button, {
                                         style: { padding: '0.1rem 0.4rem', fontSize: '1.1rem', fontWeight: 'bold', cursor: 'pointer', backgroundColor: '#e0e0e0', border: '1px solid #999', borderRadius: '3px' },
                                         on: {
@@ -428,7 +431,7 @@ module View
           formatted_price = @game.format_currency(token.price)
           h(:div, { style: { display: 'inline-flex', alignItems: 'center', margin: '2px' } }, [
             icon_el,
-            h(:span, { style: { fontSize: '0.75rem', marginLeft: '4px', fontWeight: 'bold', color: '#000000' } },
+            h(:span, { style: { fontSize: '0.85rem', marginLeft: '4px', fontWeight: 'bold', color: '#4c1d95', fontFamily: '"Courier New", Courier, monospace' } },
               "(#{formatted_price})"),
           ])
         end

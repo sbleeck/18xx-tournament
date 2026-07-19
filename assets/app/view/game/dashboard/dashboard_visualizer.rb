@@ -451,19 +451,8 @@ module View
                      { attrs: { id: 'pass' }, style: button_style.merge(backgroundColor: '#007bff', borderColor: '#0056b3', color: '#ffffff'), on: { click: default_handler } }, default_btn_text),
                  ]
 
-                if active_p && active_p.respond_to?(:thinking_time)
-                  base_bank_seconds = active_p.thinking_time.to_i
-                  base_bank_seconds = 300 if base_bank_seconds.zero?
-                  last_update_epoch = @game_data['updated_at'] || @game_data[:updated_at]
-                  turn_start_seconds = last_update_epoch ? last_update_epoch.to_i : Time.now.to_i
-                  elapsed_seconds = Time.now.to_i - turn_start_seconds
-                  live_remaining_time = base_bank_seconds - elapsed_seconds
-                  abs_time = live_remaining_time.abs
-                  mins = (abs_time / 60).to_i
-                  secs = (abs_time % 60).to_i
-                  formatted_time = "#{'-' if live_remaining_time.negative?}#{mins}:#{'0' if secs < 10}#{secs}"
-
-                  btns << h(:span, { style: { marginLeft: 'auto', fontSize: '1.8rem', fontWeight: 'bold', color: live_remaining_time.negative? ? '#ff0000' : '#000000' } }, "#{active_p.name}: #{formatted_time}")
+                if active_p
+                  btns << h(:span, { style: { marginLeft: 'auto', marginRight: '1rem', whiteSpace: 'nowrap', fontSize: '2.5rem', fontWeight: 'bold', color: '#000000' } }, active_p.name)
                 end
 
                 btns
