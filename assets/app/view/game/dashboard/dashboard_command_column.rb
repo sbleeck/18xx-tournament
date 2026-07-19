@@ -192,10 +192,10 @@ module View
           # 4. PHASE 1-4 COMPACT ACTIONS (EXCLUSIVELY FOR OPERATING ROUNDS)
           if @game.round.operating?
             upper_content << h(:div, { style: { marginBottom: '0.4rem' } }, [
-              render_phase_box('Lay Tile', phase == :build_track, actions.include?('pass') ? ['Skip'] : [], actions, current_entity, nil, bg_color, text_color),
+              render_phase_box('Lay Tile', phase == :build_track, [], actions, current_entity, nil, bg_color, text_color),
             ])
             upper_content << h(:div, { style: { marginBottom: '0.4rem' } }, [
-              render_phase_box('Place Token', phase == :place_token, ['Skip'], actions, current_entity, nil, bg_color, text_color),
+              render_phase_box('Place Token', phase == :place_token, [], actions, current_entity, nil, bg_color, text_color),
             ])
 
             revenue_overlay = if %i[run_routes dividend].include?(phase)
@@ -898,7 +898,6 @@ module View
             h(Round::Auction, game: @game, user: nil)
           else
             components = []
-            components << h(Pass, actions: actions)
 
             convert_track = step.respond_to?(:conversion?) && step.conversion?
             loans_rendered = false

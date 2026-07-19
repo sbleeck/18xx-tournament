@@ -250,8 +250,6 @@ module View
               },
             },
           }
-
-          children << h(::View::Game::Corporation, corporation: corporation, interactive: input || merging)
           children << h(:div, header_props,
                         [icon_el, h(:span, { style: { fontSize: '0.85rem', fontWeight: 'bold', color: '#000' } }, corporation.name)])
           children << input if input && @selected_corporation == corporation
