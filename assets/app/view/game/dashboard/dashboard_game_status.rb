@@ -1,4 +1,5 @@
 # frozen_string_literal: true
+
 # rubocop:disable Layout/LineLength
 
 require 'lib/settings'
@@ -27,7 +28,6 @@ module View
       include Lib::Settings
       include Actionable
       include View::ShareCalculation
-
 
       needs :game, store: true
       needs :game_data, store: true
@@ -137,7 +137,7 @@ module View
         # 1. Cash Row
         cash_cells = [h('th.left', 'Cash')]
         @game.players.each_with_index do |p, idx|
-          clean_cash = @game.format_currency(p.cash).gsub(/[^0-9]/, '')
+          clean_cash = @game.format_currency(p.cash)
           bg_color = p == active_player ? COLOR_ACTIVE : COLOR_INACTIVE
           is_last = idx == @game.players.size - 1
           cash_cells << h("td.padded_number.money-value#{'.thick-right' if is_last}",
@@ -619,7 +619,7 @@ module View
           can_buy_from_player = !valid_player_buys.empty?
           click_handler = nil
 
-         if can_sell
+          if can_sell
             click_handler = if bundles.size > 1
                               lambda {
                                 Lib::Storage['sell_menu_player'] = p.id
@@ -627,7 +627,7 @@ module View
                                 update
                               }
                             else
-                              lambda { |event|
+                              lambda { |_event|
                                 source_selector = "#player_shares_#{p.id}_#{corporation.id} .game-card"
                                 exec_sell_shares(source_selector, p, bundles.first, corporation.id)
                               }
@@ -725,7 +725,7 @@ module View
                 options = bundles.map do |bundle|
                   {
                     label: "#{bundle[:percent]}%",
-                    action: lambda { |event|
+                    action: lambda { |_event|
                       Lib::Storage['sell_menu_player'] = nil
                       Lib::Storage['sell_menu_corp'] = nil
                       source_selector = "#player_shares_#{p.id}_#{corporation.id} .game-card"
@@ -797,7 +797,7 @@ module View
                                      update
                                    }
                                  else
-                                  lambda { |event|
+                                   lambda { |_event|
                                      source_selector = "#pool_shares_#{corporation.id} .game-card"
                                      exec_buy_shares(source_selector, active_player, valid_pool_shares.first.to_bundle, corporation.id)
                                    }
@@ -821,7 +821,7 @@ module View
             options = valid_pool_shares.map do |share|
               {
                 label: "Buy #{share.to_bundle.percent}%",
-                action: lambda { |event|
+                action: lambda { |_event|
                   Lib::Storage['buy_pool_menu_corp'] = nil
                   source_selector = "#pool_shares_#{corporation.id} .game-card"
                   exec_buy_shares_simple(source_selector, active_player, share.to_bundle, corporation.id)
@@ -845,7 +845,7 @@ module View
         end
         is_operating = @game.operating_order.include?(corporation)
         clean_market_price = if corporation.share_price && is_operating
-                               @game.format_currency(corporation.share_price.price).gsub(/[^0-9]/, '')
+                               @game.format_currency(corporation.share_price.price)
                              else
                                ''
                              end
@@ -893,7 +893,7 @@ module View
                                     update
                                   }
                                 else
-                                  lambda { |event|
+                                  lambda { |_event|
                                     source_selector = "#ipo_shares_#{corporation.id} .game-card"
                                     exec_buy_shares(source_selector, active_player, valid_ipo_shares.first.to_bundle, corporation.id)
                                   }
@@ -919,11 +919,11 @@ module View
             options = valid_ipo_shares.map do |share|
               {
                 label: "Buy #{share.to_bundle.percent}%",
-               action: lambda { |event|
-                  Lib::Storage['buy_ipo_menu_corp'] = nil
-                  source_selector = "#ipo_shares_#{corporation.id} .game-card"
-                  exec_buy_shares_simple(source_selector, active_player, share.to_bundle, corporation.id)
-                },
+                action: lambda { |_event|
+                          Lib::Storage['buy_ipo_menu_corp'] = nil
+                          source_selector = "#ipo_shares_#{corporation.id} .game-card"
+                          exec_buy_shares_simple(source_selector, active_player, share.to_bundle, corporation.id)
+                        },
               }
             end
             cancel_handler = lambda {
@@ -942,8 +942,7 @@ module View
         end
 
         # --- IPO Par Price Content ---
-        clean_par_price = corporation.par_price ? @game.format_currency(corporation.par_price.price).gsub(/[^0-9]/, '') : ''
-
+        clean_par_price = corporation.par_price ? @game.format_currency(corporation.par_price.price) : ''
         ipo_row_content = [
                   h('td.column-zone-market', { attrs: { id: "ipo_shares_#{corporation.id}" }, style: { position: 'relative', textAlign: 'center' } },
                     ipo_cell_children),
@@ -990,7 +989,6 @@ module View
                 source_selector = "#train_wrapper_#{corporation.id}_#{t.id} .game-card"
                 exec_buy_corporate_train(source_selector, active_entity, t, price_value)
               }
-              
 
               cancel_handler = lambda {
                 Lib::Storage[menu_storage_key] = nil
@@ -1113,10 +1111,10 @@ module View
                            })
         end
 
-        clean_corp_cash = @game.format_currency(corporation.cash).gsub(/[^0-9]/, '')
+        clean_corp_cash = @game.format_currency(corporation.cash)
 
         last_rev = corporation.operating_history.values.last&.revenue
-        clean_rev = last_rev ? @game.format_currency(last_rev).gsub(/[^0-9]/, '') : ''
+        clean_rev = last_rev ? @game.format_currency(last_rev) : ''
 
         corporation_row_content = [
                   h('td.padded_number.column-zone-corporate.money-value',
@@ -1512,7 +1510,7 @@ module View
         h(:tr, tr_default_props, [
           h('th.left', 'Cash'),
           *@game.players.map do |p|
-            clean_cash = @game.format_currency(p.cash).gsub(/[^0-9]/, '')
+            clean_cash = @game.format_currency(p.cash)
             is_active_col = (p == active_player)
             bg_color = is_active_col ? COLOR_ACTIVE : COLOR_INACTIVE
 

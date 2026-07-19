@@ -57,10 +57,10 @@ module View
         interest_change = (@game.interest_change if @game.respond_to?(:interest_change))
 
         if @game.game_end_check_values.include?(:bank)
-          clean_bank_cash = @game.format_currency(@game.bank_cash).gsub(/[^0-9]/, '')
+          clean_bank_cash = @game.format_currency(@game.bank_cash)
           trs << h(:tr, [
             h('td.left', { style: { fontFamily: FONT_STD } }, 'Cash'),
-            h('td.right', { style: { fontFamily: FONT_CASH, color: COLOR_CASH } }, clean_bank_cash),
+            h('td.right', { style: { fontFamily: FONT_MONEY, fontWeight: 'bold', color: COLOR_CASH } }, clean_bank_cash),
           ])
         end
 
