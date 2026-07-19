@@ -8,14 +8,12 @@ require 'view/game/tile_confirmation'
 require 'view/game/tile_selector'
 require 'view/game/token_selector'
 require 'view/game/part/track'
-require 'view/game/part/cities'
-require 'view/game/part/towns'
 require 'view/game/part/revenue'
 
-# 1. Existing Track Monkey Patch
 module View
   module Game
     module Part
+      # 1. Track Monkey Patch for wide, multicolor screaming route paths
       class Track < Snabberb::Component
         unless method_defined?(:orig_width_for_index)
           alias orig_width_for_index width_for_index
@@ -37,76 +35,20 @@ module View
         end
       end
 
-      # 2. Fancy Values Overlay for Cities
-      class Cities < Base
+      # 2. Suppress native tiny map text blocks during the revenue calculation phase
+      class Revenue < Base
+        # Pull the game instance straight from Snabberb's global component store
+        needs :game, default: nil, store: true
+
         unless method_defined?(:orig_render)
           alias orig_render render
-
           def render
-            base_nodes = orig_render # Generate standard cities layout[cite: 8]
+            actions = @game&.round&.active_step&.actions(nil) || []
+            is_revenue_phase = actions.include?('run_routes') || actions.include?('dividend') || actions.include?('payout')
 
-            # Extract numerical revenue text if available
-            rev_entries = @tile.respond_to?(:revenue_to_render) ? @tile.revenue_to_render : []
-            return base_nodes if rev_entries.empty?
-
-            rev_text = rev_entries.first.to_s
-
-            # Overlay a comically large text indicator over the node area
-            base_nodes << h(:text, {
-                              attrs: {
-                                x: '0',
-                                y: '5',
-                                'text-anchor': 'middle',
-                                fill: '#ff00ff', # Screaming Neon Magenta
-                                stroke: '#ffffff',
-                                'stroke-width': '2px',
-                              },
-                              style: {
-                                fontSize: '110px', # 5x larger than standard map labels
-                                fontWeight: '900',
-                                fontFamily: '"Impact", "Arial Black", sans-serif',
-                                pointerEvents: 'none',
-                                zIndex: '9999',
-                              },
-                            }, rev_text)
-
-            base_nodes
-          end
-        end
-      end
-
-      # 3. Fancy Values Overlay for Towns
-      class Towns < Snabberb::Component
-        unless method_defined?(:orig_render)
-          alias orig_render render
-
-          def render
-            base_nodes = orig_render # Generate standard towns layout[cite: 9]
-
-            rev_entries = @tile.respond_to?(:revenue_to_render) ? @tile.revenue_to_render : []
-            return base_nodes if rev_entries.empty?
-
-            rev_text = rev_entries.first.to_s
-
-            base_nodes << h(:text, {
-                              attrs: {
-                                x: '0',
-                                y: '5',
-                                'text-anchor': 'middle',
-                                fill: '#00ffff', # Screaming Neon Cyan to contrast with cities
-                                stroke: '#000000',
-                                'stroke-width': '2px',
-                              },
-                              style: {
-                                fontSize: '110px',
-                                fontWeight: '900',
-                                fontFamily: '"Impact", "Arial Black", sans-serif',
-                                pointerEvents: 'none',
-                                zIndex: '9999',
-                              },
-                            }, rev_text)
-
-            base_nodes
+            # Commented out for now to bring back native map numbers
+            # is_revenue_phase ? h(:g) : orig_render
+            orig_render
           end
         end
       end
@@ -167,13 +109,47 @@ module View
         routes = @routes
         routes = @historical_routes if routes.none?
 
-        # Identify which action layer is currently active
         track_action_active = actions.include?('lay_tile')
         token_action_active = actions.include?('place_token') || actions.include?('hex_token')
+
+        # Verify if we are strictly in the active revenue phase
+        revenue_phase_active = actions.include?('run_routes') || actions.include?('dividend') || actions.include?('payout')
+        @fancy_value_overlays = []
 
         @hexes.map! do |hex|
           clickable = @show_starting_map ? false : step&.available_hex(entity_or_entities, hex)
           opacity = 1.0
+
+          # # Cache data fields synchronously to prevent asynchronous flickering
+          # if revenue_phase_active && !hex.empty && hex.tile
+          #   rev_entries = hex.tile.respond_to?(:revenue_to_render) ? hex.tile.revenue_to_render : []
+          #   if rev_entries.any?
+          #     val_string = rev_entries.first.to_s
+          #     hx, hy = Hex.coordinates(hex, @start_pos)
+          #     final_cx = hx + map_x
+          #     final_cy = hy + map_y + 12
+
+          #     @fancy_value_overlays << h(:text, {
+          #                                  key: "fancy-txt-#{hex.id}",
+          #                                  attrs: {
+          #                                    x: final_cx.to_s,
+          #                                    y: final_cy.to_s,
+          #                                    'text-anchor': 'middle',
+          #                                    'dominant-baseline': 'central',
+          #                                    fill: '#ffffff',
+          #                                    stroke: '#000000',
+          #                                    'stroke-width': '6px',
+          #                                  },
+          #                                  style: {
+          #                                    fontSize: '70px',
+          #                                    fontWeight: '900',
+          #                                    fontFamily: '"Impact", "Arial Black", Charcoal, sans-serif',
+          #                                    paintOrder: 'stroke fill', # Forces outline behind fill to ensure perfect visibility
+          #                                    pointerEvents: 'none',
+          #                                  },
+          #                                }, val_string)
+          #   end
+          # end
 
           base_hex = h(
             Hex,
@@ -183,28 +159,21 @@ module View
             clickable: clickable,
             actions: actions,
             routes: routes,
-            # Force false to block hex.rb from rendering its default dotted overlay frames
-            highlight: false,
+            start_pos: @start_pos,
+            highlight: false, # Kill legacy dotted lines immediately
           )
 
-          # Determine border color based on the current active phase context
           border_color = nil
           if clickable
             if track_action_active
-              border_color = '#dc3545' # Solid Red for Track Build
+              border_color = '#dc3545' # Red for active track building
             elsif token_action_active
-              # Validate that the hex possesses token slots (cities or towns) before allowing green highlight
               has_tokenable_slots = hex.tile && ((hex.tile.respond_to?(:cities) && hex.tile.cities.any?) || (hex.tile.respond_to?(:towns) && hex.tile.towns.any?))
-
-              if has_tokenable_slots
-                border_color = '#28a745' # Solid Green for Token Laying spots strictly
-              end
-
+              border_color = '#28a745' if has_tokenable_slots # Green strictly on valid token targets
             end
           end
 
           if border_color
-            # Calculate coordinates for positioning our overlay highlight group
             x, y = Hex.coordinates(hex, @start_pos)
             transform_str = "translate(#{x}, #{y})#{hex.layout == :pointy ? ' rotate(30)' : ''}"
 
@@ -229,7 +198,6 @@ module View
             if @tile_selector.is_a?(Lib::TokenSelector)
               h(TokenSelector, zoom: map_zoom)
             elsif @tile_selector.role != :map
-              # Tile selector not for the map
             elsif @tile_selector.hex.tile != @tile_selector.tile
               h(TileConfirmation, zoom: map_zoom)
             else
@@ -310,46 +278,6 @@ module View
       def render_map
         width, height = map_size
 
-        # Build an independent, flat overlay array of un-rotated texts for valid revenue spots
-        fancy_value_overlays = []
-
-        if @raw_hex_list
-          @raw_hex_list.each do |hex|
-            next if hex.empty
-
-            rev_entries = hex.tile && hex.tile.respond_to?(:revenue_to_render) ? hex.tile.revenue_to_render : []
-            next if rev_entries.empty?
-
-            # Extract base numerical center amount string
-            val_string = rev_entries.first.to_s
-
-            # Calculate absolute grid layout centers
-            hx, hy = Hex.coordinates(hex, @start_pos)
-
-            # Translate coordinates by map's internal padding parameters
-            final_cx = hx + map_x
-            final_cy = hy + map_y + 12 # Centering adjustment factor
-
-            fancy_value_overlays << h(:text, {
-                                        attrs: {
-                                          x: final_cx.to_s,
-                                          y: final_cy.to_s,
-                                          'text-anchor': 'middle',
-                                          'dominant-baseline': 'central',
-                                          fill: '#ffffff',            # Thick white inner fill
-                                          stroke: '#000000',          # Solid black contour frame
-                                          'stroke-width': '5px',      # High-visibility contrast stroke
-                                        },
-                                        style: {
-                                          fontSize: '48px !important', # Force massive sizing over .scaler-content overrides
-                                          fontWeight: '900',
-                                          fontFamily: '"Impact", "Arial Black", Charcoal, sans-serif',
-                                          pointerEvents: 'none',
-                                        },
-                                      }, val_string)
-          end
-        end
-
         props = {
           attrs: {
             id: 'map',
@@ -371,8 +299,8 @@ module View
               map_x: map_x,
               map_y: map_y,
               start_pos: @start_pos),
-            # Append our high-visibility layer on top of the base coordinate graphics group
-            h(:g, { attrs: { id: 'dashboard-fancy-values' } }, fancy_value_overlays),
+            # Append un-rotated flat overlay layer completely clear of tile rotations
+            h(:g, { attrs: { id: 'dashboard-fancy-values' } }, @fancy_value_overlays || []),
           ]),
         ])
       end
@@ -384,7 +312,6 @@ module View
       private
 
       def dashboard_hex_highlight(_hex, color_hex)
-        # Use the standard highlight polygon path points calculated by the Engine geometry
         h(:polygon, {
             attrs: {
               points: Hex::HIGHLIGHT_POINTS,
@@ -393,7 +320,7 @@ module View
               'stroke-width': Hex::HIGHLIGHT_STROKE_WIDTH + 3,
             },
             style: {
-              pointerEvents: 'none', # Redundant backup safety to guarantee clicks pass straight through
+              pointerEvents: 'none',
             },
           })
       end
