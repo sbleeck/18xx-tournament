@@ -28,6 +28,9 @@ module Engine
             return false unless super
             return true if bundle.owner == @game.share_pool
 
+            # Enforce the block and company sequential availability rules for IPO shares
+            return false unless @game.corporation_available?(bundle.corporation)
+
             # ensure 20% shares of BA, WT and HE cannot be bought before all 10% shares are gone
             return bundle.shares.first == bundle.corporation.shares.first unless bundle.corporation == @game.prussian
 
@@ -39,6 +42,14 @@ module Engine
           def allow_president_change?(corporation)
             # PR president can only change hands after it has been floated
             corporation.id != 'PR' || corporation.floated?
+          end
+
+          def can_sell?(entity, bundle)
+            # Rule 7.4: Cannot sell shares in a company floated in the current share round
+            # (it hasn't operated yet), except for the Prussian Railway.
+            return false if bundle.corporation.id != 'PR' && !bundle.corporation.operated?
+
+            super
           end
 
           def can_gain?(entity, bundle, exchange: false)
