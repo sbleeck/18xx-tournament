@@ -189,8 +189,14 @@ module Engine
         TWO_LAYS = [{ lay: true, upgrade: false }, { lay: true, upgrade: false }].freeze
 
         def setup
+          # Restore original safe share placement to keep the IPO dropdown pristine
           prussian.shares.last(7).each { |s| s.buyable = false }
           prussian.shares.first.buyable = false
+
+          # Override ipo_percent on the Prussian instance so the UI tracks the 40% public market
+          def prussian.ipo_percent
+            shares.select(&:buyable).sum(&:percent)
+          end
 
           @corporations.each do |corp|
             corp.shares.reject(&:president).each { |share| share.double_cert = (share.percent == 20) }
@@ -224,14 +230,61 @@ module Engine
           G1835::SharePool.new(self)
         end
 
+        def ensure_clemens_round_defined!
+          return if self.class.const_defined?(:ClemensDraftRound)
+
+          klass = Class.new(G1835::Round::Draft) do
+            def setup
+              super
+              @clemens_turn = 0
+              @entity_index = current_clemens_index
+            end
+
+            def current_entity
+              entities[current_clemens_index]
+            end
+
+            def current_clemens_index
+              num_players = entities.size
+              return 0 if num_players.zero?
+
+              if @clemens_turn < num_players
+                # Reverse phase: passes from last down to first
+                num_players - 1 - @clemens_turn
+              elsif @clemens_turn < 2 * num_players
+                # Forward snake phase: first player goes twice, climbs back to last
+                @clemens_turn - num_players
+              else
+                # Standard clockwise iteration phase for the remainder of the draft
+                (@clemens_turn - (2 * num_players)) % num_players
+              end
+            end
+
+            def next_entity_index!
+              @clemens_turn += 1
+              @entity_index = current_clemens_index
+            end
+          end
+
+          self.class.const_set(:ClemensDraftRound, klass)
+        end
+
         def init_round
-          G1835::Round::Draft.new(self,
-                                  [G1835::Step::Draft])
+          if @optional_rules&.include?(:clemens)
+            ensure_clemens_round_defined!
+            self.class::ClemensDraftRound.new(self, [G1835::Step::Draft])
+          else
+            G1835::Round::Draft.new(self, [G1835::Step::Draft])
+          end
         end
 
         def new_draft_round
-          G1835::Round::Draft.new(self,
-                                  [G1835::Step::Draft],)
+          if @optional_rules&.include?(:clemens)
+            ensure_clemens_round_defined!
+            self.class::ClemensDraftRound.new(self, [G1835::Step::Draft])
+          else
+            G1835::Round::Draft.new(self, [G1835::Step::Draft])
+          end
         end
 
         def next_round!
@@ -255,6 +308,8 @@ module Engine
             G1835::Step::MinorExchange,
             Engine::Step::DiscardTrain,
             Engine::Step::SpecialTrack,
+            Engine::Step::HomeToken,
+
             G1835::Step::SpecialToken,
             Engine::Step::Track,
             Engine::Step::HomeToken,
@@ -297,7 +352,12 @@ module Engine
         end
 
         def corporation_available?(corp)
-          return !corporation_by_id('BA').shares.first&.president if corp == prussian
+          return false unless corp.ipoed
+
+          if corp == prussian
+            ba = corporation_by_id('BA')
+            return !ba.shares.any?(&:president)
+          end
 
           block = @corporation_blocks.find { |corporation_block| corporation_block.include?(corp) }
           index_in_block = block.index(corp)
@@ -345,6 +405,12 @@ module Engine
           LAY_OR_UPGRADE
         end
 
+        def operating_order
+          order = super
+          order.reject!(&:minor?) if @optional_rules&.include?(:clemens) && !corporation_by_id('BY').floated?
+          order
+        end
+
         def payout_companies
           # omit paying out companies if any Prussian conversion could happen. Payout is then handled by MinorExchange
           # after all choices have been made
@@ -378,6 +444,142 @@ module Engine
         def prussian_companies
           @prussian_companies ||= %w[BB HB].map { |id| company_by_id(id) }
         end
+
+        def entity_can_use_company?(entity, company)
+          # Explicitly forbid minor companies from using private company powers
+          return false if entity.minor?
+
+          super
+        end
+
+        def preprocess_action(action)
+          case action
+          when Action::LayTile
+            # Direct map-driven hostile closure check for Ostbayrische Bahn (OBB)
+            obb = company_by_id('OBB')
+            if obb && !obb.closed? && %w[M15 M17].include?(action.hex.id)
+              # Check if the OTHER hex has track before this one gets laid
+              other_hex_id = action.hex.id == 'M15' ? 'M17' : 'M15'
+              if hex_by_id(other_hex_id).tile.color != :white
+                obb.close!
+                @log << "#{obb.name} closes because both target hexes have been built on."
+              end
+            end
+
+            # Direct map-driven hostile closure check for Pfalzbahnen (PB)
+            pb = company_by_id('PB')
+            if pb && !pb.closed? && action.hex.id == 'L6' && pb.all_abilities.none? { |a| a.type == :token }
+              pb.close!
+              @log << "#{pb.name} closes because its track has been laid and token power is spent."
+            end
+          end
+
+          super
+        end
+
+        def action_processed(action)
+          super
+          case action
+          when Action::LayTile
+            if action.hex.id == 'L6'
+              @log << "[DEBUG L6] LayTile processed on L6. Active step: #{@round.active_step.class.name}"
+
+              ba = corporation_by_id('BA')
+              if ba
+                @log << "[DEBUG L6] Baden status - Floated?: #{ba.floated?}, Has tokens?: #{!!ba.tokens.first}, Token used?: #{ba.tokens.first&.used}"
+              else
+                @log << '[DEBUG L6] Baden corporation (BA) not found!'
+              end
+
+              if ba && ba.floated? && ba.tokens.first && !ba.tokens.first.used
+                if @round.respond_to?(:pending_tokens)
+                  @log << "[DEBUG L6] pending_tokens exists. Current pending queue size: #{@round.pending_tokens.size}"
+
+                  if @round.pending_tokens.any? { |p| p[:entity] == ba }
+                    @log << '[DEBUG L6] Baden is already present in the pending_tokens queue.'
+                  else
+                    @log << "#{ba.name} must immediately choose city for home token on L6"
+
+                    if @round.active_step.is_a?(Engine::Step::Track)
+                      @log << "[DEBUG L6] Reverting track step laid_tiles count from #{@round.active_step.laid_tiles.size}"
+                      @round.active_step.laid_tiles.pop
+                    end
+
+                    @round.pending_tokens << {
+                      entity: ba,
+                      hexes: [action.hex],
+                      token: ba.tokens.first,
+                    }
+                    @round.clear_cache!
+                    @log << '[DEBUG L6] Baden token pushed to pending_tokens successfully.'
+                  end
+                else
+                  @log << '[DEBUG L6] Round does not respond to pending_tokens!'
+                end
+              else
+                @log << '[DEBUG L6] Baden conditional check failed (either not floated or token already used).'
+              end
+            end
+          when Action::PlaceToken
+            pb = company_by_id('PB')
+            if pb && !pb.closed? && pb.all_abilities.none? { |a| a.type == :token } && pb.all_abilities.none? do |a|
+                 a.type == :tile_lay
+               end
+              pb.close!
+              @log << "#{pb.name} closes as both special tile and token actions are complete."
+            end
+          end
+        end
+
+        def ability_usable?(ability)
+          if ability.type == :token && ability.owner.sym == 'PB'
+            ba = corporation_by_id('BA')
+            return false unless ba&.floated? && ba.tokens.first&.used
+          end
+          super
+        end
+
+        def place_home_token(corporation)
+          return unless corporation.next_token
+          return if corporation.tokens.first&.used
+
+          hex = hex_by_id(corporation.coordinates)
+          tile = hex&.tile
+
+          if !tile || (tile.reserved_by?(corporation) && !tile.paths.empty?) || (corporation.id == 'BA' && @round.respond_to?(:pending_tokens))
+            if @round.respond_to?(:pending_tokens) && @round.pending_tokens.any? { |p| p[:entity] == corporation }
+              @round.clear_cache!
+              return
+            end
+
+            hexes = hex ? [hex] : home_token_locations(corporation)
+            return unless hexes
+
+            @log << "#{corporation.name} must choose city for home token"
+            @round.pending_tokens << {
+              entity: corporation,
+              hexes: hexes,
+              token: corporation.find_token_by_type,
+            }
+
+            @round.clear_cache!
+            return
+          end
+
+          cities = tile&.cities || []
+          city = cities.find { |c| c.reserved_by?(corporation) } || cities.first
+          token = corporation.find_token_by_type
+
+          same_hex_allowed = multiple_tokens_allowed_on_home_hex?
+          if city && city.tokenable?(corporation, tokens: token, same_hex_allowed: same_hex_allowed)
+            @log << "#{corporation.name} places a token on #{hex.name}"
+            city.place_token(corporation, token, same_hex_allowed: same_hex_allowed)
+          elsif home_token_can_be_cheater && city
+            @log << "#{corporation.name} places a token on #{hex.name}"
+            city.place_token(corporation, token, cheater: true)
+          end
+        end
+        # --- END FIX ---
 
         def event_pr_can_form!
           @log << "-- Event: #{EVENTS_TEXT['pr_can_form'][1]} --"
@@ -477,6 +679,18 @@ module Engine
           'h' * shares.count { |share| share.percent == 5 }
         end
       end
+    end
+  end
+end
+
+module Engine
+  class Player
+    def logo
+      nil
+    end
+
+    def tokens_by_type(*)
+      []
     end
   end
 end
