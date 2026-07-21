@@ -66,11 +66,11 @@ module View
                 h(:h3, 'Final Match State'),
                 h(:p, 'The 1846 game has concluded. Active turn components and ledgers are disabled.'),
               ]),
-              h(:div, { style: { flex: '1 1 30%', border: '1px solid #ccc', padding: '0.5rem', borderRadius: '4px', display: 'flex', justifyContent: 'center', alignItems: 'flex-start', overflow: 'hidden' } }, [
-              h(:div, { attrs: { class: 'scaler-content' }, style: { width: '100%', height: '100%', display: 'flex', justifyContent: 'center', alignItems: 'flex-start', transformOrigin: 'center top' } }, [
-                    h(View::Game::DashboardStockMarket, game: @game),
-                ]),
-              ]),
+              h(:div, { style: { flex: '1 1 30%', minHeight: '0', border: '1px solid #ccc', padding: '0.5rem', borderRadius: '4px', display: 'flex', justifyContent: 'center', alignItems: 'flex-start', overflow: 'hidden' } }, [
+                        h(:div, { attrs: { class: 'scaler-content' }, style: { width: 'max-content', height: 'max-content', minWidth: '100%', display: 'flex', justifyContent: 'center', alignItems: 'flex-start', transformOrigin: 'center top' } }, [
+                                              h(View::Game::DashboardStockMarket, game: @game),
+                              ]),
+                            ]),
             ]),
           ])
         end
@@ -142,7 +142,7 @@ module View
                           createResizer('resizer-h-3-2', 'panel-3-top', 'panel-3-bot', true);
 
 
-                          var styleTag = document.getElementById('dashboard-map-svg-styles');
+                        var styleTag = document.getElementById('dashboard-map-svg-styles');
                           if (!styleTag) {
                             styleTag = document.createElement('style');
                             styleTag.id = 'dashboard-map-svg-styles';
@@ -152,24 +152,54 @@ module View
                             document.head.appendChild(styleTag);
                           }
 
-                          var fitObserver = new ResizeObserver(function(entries) {
+
+var fitObserver = new ResizeObserver(function(entries) {
+                            var dynStyle = document.getElementById('dynamic-scaler-styles');
+                            if (!dynStyle) {
+                              dynStyle = document.createElement('style');
+                              dynStyle.id = 'dynamic-scaler-styles';
+                              document.head.appendChild(dynStyle);
+                            }
+                            window.scalerScales = window.scalerScales || {};
+
                             for (var i = 0; i < entries.length; i++) {
                               var panel = entries[i].target;
+                              if (!panel.id) continue;
                               var wrapper = panel.querySelector('.scaler-content');
                               if (!wrapper) continue;
 
-                              wrapper.style.transform = 'none';
+
                               var cw = wrapper.scrollWidth;
                               var ch = wrapper.scrollHeight;
+
+                              // For panel-3-bot, inspect inner grid/table child directly for unscaled bounds
+                              if (panel.id === 'panel-3-bot') {
+                                var innerChild = wrapper.firstElementChild;
+                                if (innerChild) {
+                                  cw = Math.max(cw, innerChild.scrollWidth || 0, innerChild.offsetWidth || 0);
+                                  ch = Math.max(ch, innerChild.scrollHeight || 0, innerChild.offsetHeight || 0);
+                                }
+                                // Add explicit padding to unscaled height so bottom rows never touch frame borders
+                                ch += 80;
+                              }
+
                               var pw = entries[i].contentRect.width - 16;
                               var ph = entries[i].contentRect.height - 16;
 
                               if (cw > 0 && ch > 0) {
-                                var scale = Math.min(pw / cw, ph / ch);
-                                wrapper.style.transform = 'scale(' + scale + ')';
+                                window.scalerScales[panel.id] = Math.min(pw / cw, ph / ch);
                               }
                             }
+
+                            var css = '';
+                            for (var id in window.scalerScales) {
+                              css += '#' + id + ' .scaler-content { transform: scale(' + window.scalerScales[id] + ') !important; transform-origin: top left !important; }\n';
+                            }
+                            dynStyle.innerHTML = css;
                           });
+
+
+
 
               ['col-1', 'panel-2-bot', 'panel-3-top', 'panel-3-bot'].forEach(function(id) {
                             var el = document.getElementById(id);
@@ -462,18 +492,23 @@ module View
           h(:div, { attrs: { id: 'resizer-h-3-2' }, style: { flex: '0 0 0.5rem', cursor: 'row-resize', zIndex: 10 } }),
 
           # Stock Market Component
-          h(:div, { attrs: { id: 'panel-3-bot' }, style: { flex: '1 1 auto', overflow: 'hidden', border: '1px solid #ccc', padding: '0.5rem', borderRadius: '4px', backgroundColor: '#fff', boxSizing: 'border-box', position: 'relative' } }, [
-              h(:div, {
-                  attrs: { class: 'scaler-content' },
-                  style: {
-                    transformOrigin: 'top left',
-                    margin: '0',
-                    padding: '0',
-                  },
-                }, [
-                              h(View::Game::DashboardStockMarket, game: @game),
-                ]),
-              ]),
+          h(:div, { attrs: { id: 'panel-3-bot' }, style: { flex: '1 1 auto', minHeight: '0', overflow: 'hidden', border: '1px solid #ccc', padding: '0.5rem', borderRadius: '4px', backgroundColor: '#fff', boxSizing: 'border-box', position: 'relative' } }, [
+                          h(:div, {
+                              attrs: { class: 'scaler-content' },
+                              style: {
+                                display: 'flex',
+                                flexDirection: 'column',
+                                width: 'max-content',
+                                height: 'max-content',
+                                minWidth: '100%',
+                                transformOrigin: 'top left',
+                                margin: '0',
+                                padding: '0',
+                              },
+                            }, [
+                                        h(View::Game::DashboardStockMarket, game: @game),
+                          ]),
+                        ]),
         ]),
         ])
       end

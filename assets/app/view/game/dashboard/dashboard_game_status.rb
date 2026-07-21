@@ -52,6 +52,10 @@ module View
         entity&.player? ? entity : entity&.owner
       end
 
+      def display_players
+        @game.players.sort_by { |p| p.id.to_s }
+      end
+
       def render
         @spreadsheet_sort_by = Lib::Storage['spreadsheet_sort_by']
         @spreadsheet_sort_order = Lib::Storage['spreadsheet_sort_order']
@@ -136,7 +140,7 @@ module View
 
         # 1. Cash Row
         cash_cells = [h('th.left', 'Cash')]
-        @game.players.each_with_index do |p, idx|
+        display_players.each_with_index do |p, idx|
           clean_cash = @game.format_currency(p.cash)
           bg_color = p == active_player ? COLOR_ACTIVE : COLOR_INACTIVE
           is_last = idx == @game.players.size - 1
@@ -148,7 +152,7 @@ module View
         # 2. Certs Row
         props = { style: { color: 'red' } }
         cert_cells = [h('th.left', 'Cert')]
-        @game.players.each_with_index do |player, idx|
+        display_players.each_with_index do |player, idx|
           cert_limit = @game.cert_limit(player)
 
           bg_color = player == active_player ? COLOR_ACTIVE : COLOR_INACTIVE
@@ -159,10 +163,25 @@ module View
         end
         rows << cert_cells
 
+        # 2b. Fixed Income Row
+        fix_inc_cells = [h('th.left', 'Fix Inc')]
+        display_players.each_with_index do |p, idx|
+          bg_color = p == active_player ? COLOR_ACTIVE : COLOR_INACTIVE
+          is_last = idx == @game.players.size - 1
+
+          # Sum up the revenue properties of all active companies/bonds owned by the player
+          total_inc = p.companies.reject { |c| c.respond_to?(:closed?) && c.closed? }.sum(&:revenue)
+          formatted_inc = @game.format_currency(total_inc)
+
+          fix_inc_cells << h("td.padded_number.money-value#{'.thick-right' if is_last}",
+                             { style: { backgroundColor: bg_color } }, formatted_inc)
+        end
+        rows << fix_inc_cells
+
         # 3. Loans Row
         if @game.respond_to?(:player_loans)
           loans_cells = [h('th.left', 'Loans')]
-          @game.players.each_with_index do |p, idx|
+          display_players.each_with_index do |p, idx|
             bg_color = p == active_player ? COLOR_ACTIVE : COLOR_INACTIVE
             is_last = idx == @game.players.size - 1
             loans_cells << h("td.padded_number#{'.thick-right' if is_last}", { style: { backgroundColor: bg_color } },
@@ -173,7 +192,7 @@ module View
 
         # 4. Time Row
         time_cells = [h('th.left', 'Time')]
-        @game.players.each_with_index do |p, idx|
+        display_players.each_with_index do |p, idx|
           bg_color = p == active_player ? COLOR_ACTIVE : COLOR_INACTIVE
           is_last = idx == @game.players.size - 1
           time_val, formatted_time = player_time_details(p)
@@ -185,7 +204,7 @@ module View
 
         # 5. Companies Row (Renamed to Privates)
         comp_cells = [h('th.left', 'Privates')]
-        @game.players.each_with_index do |p, idx|
+        display_players.each_with_index do |p, idx|
           bg_color = p == active_player ? COLOR_ACTIVE : COLOR_INACTIVE
           is_last = idx == @game.players.size - 1
           comp_cells << render_companies(p, bg_color, is_last: is_last)
@@ -296,7 +315,7 @@ module View
 
         corporation_props_size = (@show_privates ? 5 : 4) + extra.size + treasury.size
 
-        players_title = h('th.thick-right', th_props[@game.players.size], 'Players')
+        players_title = h('th.thick-right', th_props[display_players.size], 'Players')
 
         pool_th_props = th_props[2]
         pool_th_props[:attrs][:class] = 'column-zone-market'
@@ -310,7 +329,7 @@ module View
 
         players_subtitles = []
         subtitles = []
-        @game.players.each_with_index do |p, idx|
+        display_players.each_with_index do |p, idx|
           is_active_col = (p == active_player)
           props = { style: { backgroundColor: is_active_col ? COLOR_ACTIVE : 'inherit' } }
 
@@ -585,7 +604,7 @@ module View
 
         players_row_content = []
 
-        @game.players.each do |p|
+        display_players.each do |p|
           is_active_col = (p == active_player) && !is_active_row
           bg_color = is_active_col ? COLOR_ACTIVE : 'inherit'
 
@@ -1496,7 +1515,7 @@ module View
       def render_player_companies
         h(:tr, tr_default_props, [
            h('th.left', 'Companies'),
-           *@game.players.map.with_index do |p, idx|
+           *display_players.map.with_index do |p, idx|
              is_active_col = (p == active_player)
              bg_color = is_active_col ? COLOR_ACTIVE : COLOR_INACTIVE
              is_last = idx == @game.players.size - 1
@@ -1509,7 +1528,7 @@ module View
       def render_player_cash
         h(:tr, tr_default_props, [
           h('th.left', 'Cash'),
-          *@game.players.map do |p|
+          *display_players.map do |p|
             clean_cash = @game.format_currency(p.cash)
             is_active_col = (p == active_player)
             bg_color = is_active_col ? COLOR_ACTIVE : COLOR_INACTIVE
@@ -1523,7 +1542,7 @@ module View
       def render_player_time
         h(:tr, tr_default_props, [
           h('th.left', 'Time'),
-          *@game.players.map.with_index do |p, idx|
+          *display_players.map.with_index do |p, idx|
             is_active_col = (p == active_player)
             bg_color = is_active_col ? COLOR_ACTIVE : COLOR_INACTIVE
             is_last = idx == @game.players.size - 1
@@ -1541,7 +1560,7 @@ module View
         props = { style: { color: 'red' } }
         h(:tr, tr_default_props, [
     h('th.left', 'Cert'),
-    *@game.players.map.with_index do |player, idx|
+    *display_players.map.with_index do |player, idx|
       is_active_col = (player == active_player)
       bg_color = is_active_col ? COLOR_ACTIVE : COLOR_INACTIVE
       num_certs = @game.num_certs(player)
@@ -1558,7 +1577,7 @@ module View
 
         h(:tr, tr_default_props, [
          h('th.left', 'Loans'),
-         *@game.players.map.with_index do |p, idx|
+         *display_players.map.with_index do |p, idx|
            is_active_col = (p == active_player)
            bg_color = is_active_col ? COLOR_ACTIVE : COLOR_INACTIVE
            is_last = idx == @game.players.size - 1
