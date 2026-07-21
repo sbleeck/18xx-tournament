@@ -290,22 +290,8 @@ module View
 
           if @routes.empty?
             trains = @game.route_trains(current_entity) || []
-            operating = current_entity.respond_to?(:operating_history) ? current_entity.operating_history : {}
-            last_run = operating.any? ? operating[operating.keys.max]&.routes : nil
-
-            if last_run
-              halts = operating[operating.keys.max]&.halts
-              nodes = operating[operating.keys.max]&.nodes
-              last_run.each do |train, connection_hexes|
-                next unless trains.include?(train)
-
-                @routes << Engine::Route.new(@game, @game.phase, train, connection_hexes: connection_hexes, routes: @routes,
-                                                                        halts: halts[train], nodes: nodes[train])
-              end
-            else
-              trains.each do |train|
-                @routes << Engine::Route.new(@game, @game.phase, train, routes: @routes)
-              end
+            trains.each do |train|
+              @routes << Engine::Route.new(@game, @game.phase, train, routes: @routes)
             end
             store(:routes, @routes, skip: true)
           end
