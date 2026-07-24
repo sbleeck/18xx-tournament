@@ -465,17 +465,18 @@ module Engine
             end
 
 
-            nf = company_by_id('NF')
-              if nf && !nf.closed? && nf.all_abilities.none? { |a| a.type == :token }
-                nf.close!
-                @log << "#{nf.name} closes as its special token action is complete."
-              end
-            
-            # Direct map-driven hostile closure check for Pfalzbahnen (PB)
+          nf = company_by_id('NF')
+            if nf && !nf.closed? && nf.abilities.none? { |a| a.type == :token }
+              nf.close!
+              @log << "#{nf.name} closes as its special token action is complete."
+            end
+
             pb = company_by_id('PB')
-            if pb && !pb.closed? && action.hex.id == 'L6' && pb.all_abilities.none? { |a| a.type == :token }
+            if pb && !pb.closed? && pb.abilities.none? { |a| a.type == :token } && pb.abilities.none? do |a|
+                 a.type == :tile_lay
+               end
               pb.close!
-              @log << "#{pb.name} closes because its track has been laid and token power is spent."
+              @log << "#{pb.name} closes as both special tile and token actions are complete."
             end
           end
 
