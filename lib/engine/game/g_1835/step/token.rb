@@ -29,6 +29,11 @@ module Engine
           end
 
           def adjust_token_price_ability!(_entity, token, hex, _city, special_ability: nil)
+            if special_ability
+              token.price = special_ability.teleport_price || special_ability.price || 0
+              return [token, special_ability]
+            end
+
             token.price = token_price(token, hex)
             [token, nil]
           end
