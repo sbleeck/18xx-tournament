@@ -5,6 +5,7 @@ require_relative '../base'
 require_relative 'map'
 require_relative 'entities'
 require_relative 'share_pool'
+require_relative 'step/token'
 require_relative '../../round/operating'
 require_relative '../cities_plus_towns_route_distance_str'
 
@@ -300,18 +301,17 @@ module Engine
             end
         end
 
-        def operating_round(round_num)
+       def operating_round(round_num)
           G1835::Round::Operating.new(self, [
             Engine::Step::Bankrupt,
             G1835::Step::MinorExchange,
             Engine::Step::DiscardTrain,
             Engine::Step::SpecialTrack,
             Engine::Step::HomeToken,
-
             G1835::Step::SpecialToken,
             Engine::Step::Track,
             Engine::Step::HomeToken,
-            Engine::Step::Token,
+            G1835::Step::Token,
             Engine::Step::Route,
             G1835::Step::Dividend,
             G1835::Step::BuyTrain,
