@@ -687,7 +687,15 @@ module Engine
       nil
     end
 
+    def simple_logo
+      nil
+    end
+
     def tokens_by_type(*)
+      []
+    end
+
+    def all_abilities
       []
     end
   end
