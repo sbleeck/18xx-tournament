@@ -182,8 +182,8 @@ module Engine
             no_prussian_company_or_minor_1_converted && minor_1_bought_triggering_train
           end
 
-          def minor_1
-            @minor_1 ||= @game.minor_by_id('1')
+          def minor_1   
+            @minor_1 ||= @game.minor_by_id('M1') || @game.minor_by_id('1')
           end
 
           def pr_formed_this_round?

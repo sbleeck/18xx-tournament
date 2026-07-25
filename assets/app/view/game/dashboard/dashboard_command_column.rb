@@ -66,7 +66,13 @@ module View
 
         company_logo = current_entity&.id || 'N/A'
         player_name = current_entity&.owner&.name || ''
-        treasury = current_entity&.cash || 0
+        treasury = if current_entity.respond_to?(:cash)
+                     current_entity.cash
+                   elsif current_entity&.owner&.respond_to?(:cash)
+                     current_entity.owner.cash
+                   else
+                     0
+                   end
 
         if current_entity.respond_to?(:color)
           bg_color = current_entity.color || '#4169e1'
@@ -509,15 +515,15 @@ module View
           max_price = if step.respond_to?(:max_price)
                         step.max_price(current_entity, c)
                       else
-                        (c.respond_to?(:max_price) ? c.max_price : current_entity.cash)
-                      end
+                      (c.respond_to?(:max_price) ? c.max_price : (current_entity.respond_to?(:cash) ? current_entity.cash : 0))
+                    end
 
           menu_storage_key = "cmd_buy_company_menu_#{c.id}"
           price_storage_key = "cmd_buy_company_price_#{c.id}"
 
           company_click_handler = lambda {
             Lib::Storage[menu_storage_key] = true
-            Lib::Storage[price_storage_key] = min_price
+            Lib::Storage[price_storage_key] = current_entity.respond_to?(:cash) ? current_entity.cash : 0
             update
           }
 

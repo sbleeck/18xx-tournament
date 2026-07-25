@@ -340,7 +340,7 @@ module Engine
         end
 
         def berlin_potsdamer_bahn
-          @berlin_potsdamer_bahn ||= minor_by_id('2')
+          @berlin_potsdamer_bahn ||= minor_by_id('M2') || minor_by_id('2')
         end
 
         def prussian_exchangeables
@@ -458,13 +458,13 @@ module Engine
           company.close!
         end
 
-        def merge_minor!(minor, allow_president_change: true)
+def merge_minor!(minor, allow_president_change: true)
           @log << "#{minor.name} merges into #{prussian.name}"
 
           owner = minor.owner
-          exchange_share_percentage = %w[2 4].include?(minor.id) ? 10 : 5
+          exchange_share_percentage = %w[2 4 M2 M4].include?(minor.id) ? 10 : 5
 
-          exchange_prussian_share(allow_president_change, exchange_share_percentage, owner, president: minor.id == '2')
+          exchange_prussian_share(allow_president_change, exchange_share_percentage, owner, president: %w[2 M2].include?(minor.id))
 
           if minor.cash.positive?
             @log << "#{prussian.name} receives #{format_currency(minor.cash)} from #{minor.name}'s treasury"
@@ -477,9 +477,9 @@ module Engine
             minor.trains.dup.each { |t| buy_train(prussian, t, :free) }
           end
 
-          unless minor.id == '5'
+          unless %w[5 M5].include?(minor.id)
             token = minor.tokens.first
-            new_token = minor.id == '2' ? prussian.tokens.first : Token.new(prussian)
+            new_token = %w[2 M2].include?(minor.id) ? prussian.tokens.first : Token.new(prussian)
             prussian.tokens << new_token
 
             token.swap!(new_token, check_tokenable: false)
