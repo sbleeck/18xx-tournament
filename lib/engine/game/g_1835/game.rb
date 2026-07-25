@@ -385,6 +385,12 @@ module Engine
           super
           case action
           when Action::PlaceToken
+           if action.entity.id == 'BA' && action.city.hex.id == 'L6'
+              ba_corp = corporation_by_id('BA')
+              action.city.hex.tile.cities.each do |c|
+                c.remove_reservation!(ba_corp)
+              end
+            end
             nf = company_by_id('NF')
             if nf && !nf.closed? && nf.all_abilities.none? { |a| a.type == :token }
               nf.close!
@@ -401,16 +407,23 @@ module Engine
         end
 
         def ability_usable?(ability)
-          if ability.type == :token && ability.owner.sym == 'PB'
+         if ability.type == :token && ability.owner.sym == 'PB'
             ba = corporation_by_id('BA')
-            return false unless ba&.floated? && ba.tokens.first&.used
+            is_usable = ba&.floated? && ba.tokens.first&.used
+            
+            # Use a state flag to avoid crashing the UI render loop while ensuring exactly one log when state changes
+            unless @logged_pb_ability_state == is_usable
+              @log << "[LOG] PB Token ability: Usable=#{!!is_usable}, from_owner=#{ability.from_owner}, special_only=#{ability.special_only}"
+              @logged_pb_ability_state = is_usable
+            end
+
+            return false unless is_usable
           end
           super
         end
 
         def place_home_token(corporation)
           if corporation.id == 'BA'
-            @log << "#{corporation.name} defers home token placement until hex L6 has a tile laid during its turn."
             return
           end
 
