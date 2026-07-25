@@ -465,11 +465,11 @@ module Engine
             end
 
 
-          nf = company_by_id('NF')
-            if nf && !nf.closed? && nf.abilities.none? { |a| a.type == :token }
-              nf.close!
-              @log << "#{nf.name} closes as its special token action is complete."
-            end
+          # nf = company_by_id('NF')
+          #   if nf && !nf.closed? && nf.abilities.none? { |a| a.type == :token }
+          #     nf.close!
+          #     @log << "#{nf.name} closes as its special token action is complete."
+          #   end
 
             pb = company_by_id('PB')
             if pb && !pb.closed? && pb.abilities.none? { |a| a.type == :token } && pb.abilities.none? do |a|
@@ -528,6 +528,11 @@ module Engine
               end
             end
           when Action::PlaceToken
+            nf = company_by_id('NF')
+            if nf && !nf.closed? && nf.all_abilities.none? { |a| a.type == :token }
+              nf.close!
+              @log << "#{nf.name} closes as its special token action is complete."
+            end
             pb = company_by_id('PB')
             if pb && !pb.closed? && pb.all_abilities.none? { |a| a.type == :token } && pb.all_abilities.none? do |a|
                  a.type == :tile_lay
