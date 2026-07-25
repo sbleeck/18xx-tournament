@@ -357,29 +357,7 @@ module Engine
           super
         end
 
-        def preprocess_action(action)
-          case action
-          when Action::LayTile
-            obb = company_by_id('OBB')
-            if obb && !obb.closed? && %w[M15 M17].include?(action.hex.id)
-              other_hex_id = action.hex.id == 'M15' ? 'M17' : 'M15'
-              if hex_by_id(other_hex_id).tile.color != :white
-                obb.close!
-                @log << "#{obb.name} closes because both target hexes have been built on."
-              end
-            end
-
-            pb = company_by_id('PB')
-            if pb && !pb.closed? && pb.abilities.none? { |a| a.type == :token } && pb.abilities.none? do |a|
-                 a.type == :tile_lay
-               end
-              pb.close!
-              @log << "#{pb.name} closes as both special tile and token actions are complete."
-            end
-          end
-
-          super
-        end
+        
 
         def action_processed(action)
           super
@@ -400,6 +378,20 @@ module Engine
             if pb && !pb.closed? && pb.all_abilities.none? { |a| a.type == :token } && pb.all_abilities.none? do |a|
                  a.type == :tile_lay
                end
+              pb.close!
+              @log << "#{pb.name} closes as both special tile and token actions are complete."
+            end
+            when Action::LayTile
+            obb = company_by_id('OBB')
+            if obb && !obb.closed? && %w[M15 M17].include?(action.hex.id)
+              if hex_by_id('M15').tile.color != :white && hex_by_id('M17').tile.color != :white
+                obb.close!
+                @log << "#{obb.name} closes because both target hexes have been built on."
+              end
+            end
+
+            pb = company_by_id('PB')
+            if pb && !pb.closed? && pb.all_abilities.none? { |a| a.type == :token } && pb.all_abilities.none? { |a| a.type == :tile_lay }
               pb.close!
               @log << "#{pb.name} closes as both special tile and token actions are complete."
             end
