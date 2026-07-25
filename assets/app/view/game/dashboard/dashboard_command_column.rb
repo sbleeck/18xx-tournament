@@ -886,8 +886,8 @@ module View
         return h(UpgradeOrDiscardTrains) if actions.include?('discard_train') && actions.include?('swap_train')
         return h(DiscardTrains) if actions.include?('discard_train')
 
-        if actions.include?('par') && step.respond_to?(:corporation_pending_par) && step.corporation_pending_par
-          return h(CorporationPendingPar, corporation: step.corporation_pending_par)
+        if actions.include?('par') && step&.respond_to?(:corporation_pending_par) && step.corporation_pending_par
+            return h(CorporationPendingPar, corporation: step.corporation_pending_par)
         end
 
         case @game.round
@@ -903,7 +903,7 @@ module View
           else
             components = []
 
-            convert_track = step.respond_to?(:conversion?) && step.conversion?
+          convert_track = step&.respond_to?(:conversion?) && step.conversion?
             loans_rendered = false
 
             components << h(SpecialBuy) if actions.include?('special_buy')
@@ -914,7 +914,7 @@ module View
             components << h(DoubleHeadTrains) if actions.include?('double_head_trains')
             components << h(CombinedTrains) if actions.include?('combined_trains')
             components << h(Choose) if actions.include?('choose')
-            components << h(BuyToken, entity: step.current_entity) if actions.include?('buy_token')
+            components << h(BuyToken, entity: step&.current_entity) if actions.include?('buy_token')
 
             if actions.include?('buy_train') || actions.include?('sell_train')
               components << h(IssueShares) if actions.include?('sell_shares') || actions.include?('buy_shares')
@@ -923,11 +923,11 @@ module View
               components << h(BuyPower)
             elsif actions.include?('borrow_train')
               components << h(BorrowTrain)
-            elsif step.respond_to?(:cash_crisis?) && step.cash_crisis?
+           elsif step&.respond_to?(:cash_crisis?) && step.cash_crisis?
               components << h(CashCrisis)
               loans_rendered = true if (%w[take_loan payoff_loan] & actions).any?
             elsif actions.include?('buy_shares') || actions.include?('sell_shares') || actions.include?('par')
-              if step.respond_to?(:price_protection) && (price_protection = step.price_protection)
+              if step&.respond_to?(:price_protection) && (price_protection = step.price_protection)
                 components << h(Corporation, corporation: price_protection.corporation)
                 components << h(BuySellShares, corporation: price_protection.corporation)
               elsif @game.corporations_can_ipo?
@@ -946,19 +946,19 @@ module View
             end
 
             components << h(ScrapTrains) if actions.include?('scrap_train')
-            components << h(Loans, corporation: step.current_entity) if !loans_rendered && (%w[take_loan payoff_loan] & actions).any?
-            components << h(ViewMergeOptions, corporation: step.current_entity) if actions.include?('view_merge_options')
+            components << h(Loans, corporation: step&.current_entity) if !loans_rendered && (%w[take_loan payoff_loan] & actions).any?
+            components << h(ViewMergeOptions, corporation: step&.current_entity) if actions.include?('view_merge_options')
 
             if actions.include?('bankrupt')
-              entity = step.current_entity
+              entity = step&.current_entity
               player = entity&.player? ? entity : entity&.owner
 
               # Protect against out-of-context rendering by checking step status flags
               show_bankrupt = false
-              if step.respond_to?(:must_buy_train?) && step.must_buy_train?(entity)
+              if step&.respond_to?(:must_buy_train?) && step.must_buy_train?(entity)
                 # Operating Round emergency train buy trigger context
                 show_bankrupt = @game.respond_to?(:can_go_bankrupt?) ? @game.can_go_bankrupt?(player, entity) : true
-              elsif @game.round.respond_to?(:stock?) && @game.round.stock? && step.respond_to?(:must_sell?) && step.must_sell?(player)
+              elsif @game.round.respond_to?(:stock?) && @game.round.stock? && step&.respond_to?(:must_sell?) && step.must_sell?(player)
                 # Stock Round emergency cert dump context
                 show_bankrupt = true
               end
@@ -1034,6 +1034,8 @@ module View
           end
         end
       end
+
+
     end
   end
 end

@@ -22,9 +22,7 @@ module Engine
         include G1835::Map
 
         CURRENCY_FORMAT_STR = '%sM'
-        # game end current or, when the bank is empty
         GAME_END_CHECK = { bank: :current_or }.freeze
-        # bankrupt is allowed, player leaves game
         BANKRUPTCY_ALLOWED = true
 
         BANK_CASH = 12_000
@@ -41,7 +39,6 @@ module Engine
         CERT_LIMIT = { 3 => 19, 4 => 15, 5 => 12, 6 => 11, 7 => 9 }.freeze
 
         STARTING_CASH = { 3 => 600, 4 => 475, 5 => 390, 6 => 340, 7 => 310 }.freeze
-        # money per initial share sold
         CAPITALIZATION = :incremental
 
         MUST_SELL_IN_BLOCKS = false
@@ -59,86 +56,16 @@ module Engine
                   %w[54 66 76 84 90]].freeze
 
         PHASES = [
-          {
-            name: '1.1',
-            on: '2',
-            train_limit: { minor: 2, major: 4 },
-            tiles: [:yellow],
-            status: ['two_tile_lays'],
-            operating_rounds: 1,
-          },
-          {
-            name: '1.2',
-            on: '2+2',
-            train_limit: { minor: 2, major: 4 },
-            tiles: [:yellow],
-            status: ['two_tile_lays'],
-            operating_rounds: 1,
-          },
-          {
-            name: '2.1',
-            on: '3',
-            train_limit: { minor: 2, major: 4 },
-            tiles: %i[yellow green],
-            status: %w[can_buy_trains lay_or_upgrade],
-            operating_rounds: 2,
-          },
-          {
-            name: '2.2',
-            on: '3+3',
-            train_limit: { major: 4, minor: 2 },
-            tiles: %i[yellow green],
-            status: %w[can_buy_trains lay_or_upgrade],
-            operating_rounds: 2,
-          },
-          {
-            name: '2.3',
-            on: '4',
-            train_limit: { prussian: 4, major: 3, minor: 1 },
-            tiles: %i[yellow green],
-            status: %w[can_buy_trains lay_or_upgrade],
-            operating_rounds: 2,
-          },
-          {
-            name: '2.4',
-            on: '4+4',
-            train_limit: { prussian: 4, major: 3, minor: 1 },
-            tiles: %i[yellow green],
-            status: %w[can_buy_trains lay_or_upgrade],
-            operating_rounds: 2,
-          },
-          {
-            name: '3.1',
-            on: '5',
-            train_limit: { prussian: 3, major: 2 },
-            tiles: %i[yellow green brown],
-            status: %w[can_buy_trains lay_or_upgrade],
-            operating_rounds: 3,
-          },
-          {
-            name: '3.2',
-            on: '5+5',
-            train_limit: { prussian: 3, major: 2 },
-            tiles: %i[yellow green brown],
-            status: %w[can_buy_trains lay_or_upgrade],
-            operating_rounds: 3,
-          },
-          {
-            name: '3.3',
-            on: '6',
-            train_limit: { prussian: 3, major: 2 },
-            tiles: %i[yellow green brown],
-            status: %w[can_buy_trains lay_or_upgrade],
-            operating_rounds: 3,
-          },
-          {
-            name: '3.4',
-            on: '6+6',
-            train_limit: { prussian: 3, major: 2 },
-            tiles: %i[yellow green brown],
-            status: %w[can_buy_trains lay_or_upgrade],
-            operating_rounds: 3,
-          },
+          { name: '1.1', on: '2', train_limit: { minor: 2, major: 4 }, tiles: [:yellow], status: ['two_tile_lays'], operating_rounds: 1 },
+          { name: '1.2', on: '2+2', train_limit: { minor: 2, major: 4 }, tiles: [:yellow], status: ['two_tile_lays'], operating_rounds: 1 },
+          { name: '2.1', on: '3', train_limit: { minor: 2, major: 4 }, tiles: %i[yellow green], status: %w[can_buy_trains lay_or_upgrade], operating_rounds: 2 },
+          { name: '2.2', on: '3+3', train_limit: { major: 4, minor: 2 }, tiles: %i[yellow green], status: %w[can_buy_trains lay_or_upgrade], operating_rounds: 2 },
+          { name: '2.3', on: '4', train_limit: { prussian: 4, major: 3, minor: 1 }, tiles: %i[yellow green], status: %w[can_buy_trains lay_or_upgrade], operating_rounds: 2 },
+          { name: '2.4', on: '4+4', train_limit: { prussian: 4, major: 3, minor: 1 }, tiles: %i[yellow green], status: %w[can_buy_trains lay_or_upgrade], operating_rounds: 2 },
+          { name: '3.1', on: '5', train_limit: { prussian: 3, major: 2 }, tiles: %i[yellow green brown], status: %w[can_buy_trains lay_or_upgrade], operating_rounds: 3 },
+          { name: '3.2', on: '5+5', train_limit: { prussian: 3, major: 2 }, tiles: %i[yellow green brown], status: %w[can_buy_trains lay_or_upgrade], operating_rounds: 3 },
+          { name: '3.3', on: '6', train_limit: { prussian: 3, major: 2 }, tiles: %i[yellow green brown], status: %w[can_buy_trains lay_or_upgrade], operating_rounds: 3 },
+          { name: '3.4', on: '6+6', train_limit: { prussian: 3, major: 2 }, tiles: %i[yellow green brown], status: %w[can_buy_trains lay_or_upgrade], operating_rounds: 3 },
         ].freeze
 
         def self.plus_train_distance(distance)
@@ -152,13 +79,7 @@ module Engine
                   { name: '3+3', distance: plus_train_distance(3), price: 270, rusts_on: '6+6', num: 3 },
                   { name: '4', distance: 4, price: 360, num: 3, events: [{ 'type' => 'pr_can_form' }] },
                   { name: '4+4', distance: plus_train_distance(4), price: 440, num: 1, events: [{ 'type' => 'pr_must_form' }] },
-                  {
-                    name: '5',
-                    distance: 5,
-                    price: 500,
-                    num: 2,
-                    events: [{ 'type' => 'forced_pr_exchange' }, { 'type' => 'close_companies' }],
-                  },
+                  { name: '5', distance: 5, price: 500, num: 2, events: [{ 'type' => 'forced_pr_exchange' }, { 'type' => 'close_companies' }] },
                   { name: '5+5', distance: plus_train_distance(5), price: 600, num: 1 },
                   { name: '6', distance: 6, price: 600, num: 2 },
                   { name: '6+6', distance: plus_train_distance(6), price: 720, num: 4 }].freeze
@@ -166,8 +87,7 @@ module Engine
         EVENTS_TEXT = Base::EVENTS_TEXT.merge(
           'pr_can_form' => ['Optional Preußen Formation', 'Preußen can choose to form now or at beginning of SR/OR'],
           'pr_must_form' => ['Preußen Formation', 'Preußen forms immediately'],
-          'forced_pr_exchange' => ['Forced Preußen exchange',
-                                   'Remaining Preußen privates and minors will be exchanged for Preußen shares']
+          'forced_pr_exchange' => ['Forced Preußen exchange', 'Remaining Preußen privates and minors will be exchanged for Preußen shares']
         ).freeze
 
         STATUS_TEXT = Base::STATUS_TEXT.merge(
@@ -177,22 +97,17 @@ module Engine
         ).freeze
 
         LAYOUT = :pointy
-
         SELL_MOVEMENT = :down_block
-
         HOME_TOKEN_TIMING = :float
-
         CORPORATION_BLOCKS = [%w[BY SX], %w[BA WT HE PR], %w[MS OL]].freeze
 
         LAY_OR_UPGRADE = [{ lay: true, upgrade: true }].freeze
         TWO_LAYS = [{ lay: true, upgrade: false }, { lay: true, upgrade: false }].freeze
 
         def setup
-          # Restore original safe share placement to keep the IPO dropdown pristine
           prussian.shares.last(7).each { |s| s.buyable = false }
           prussian.shares.first.buyable = false
 
-          # Override ipo_percent on the Prussian instance so the UI tracks the 40% public market
           def prussian.ipo_percent
             shares.select(&:buyable).sum(&:percent)
           end
@@ -202,7 +117,6 @@ module Engine
           end
 
           @draft_finished = false
-
           @draft_round_num = 1
           @preussen_may_float = false
 
@@ -216,6 +130,7 @@ module Engine
           corporation_by_id('OL').forced_share_percent = 10
 
           @corporation_blocks = CORPORATION_BLOCKS.map { |block| block.map { |c| corporation_by_id(c) } }
+          hex_by_id('L6').tile.cities.each { |city| city.reservations << corporation_by_id('BA') }
         end
 
         def company_header(company)
@@ -248,13 +163,10 @@ module Engine
               return 0 if num_players.zero?
 
               if @clemens_turn < num_players
-                # Reverse phase: passes from last down to first
                 num_players - 1 - @clemens_turn
               elsif @clemens_turn < 2 * num_players
-                # Forward snake phase: first player goes twice, climbs back to last
                 @clemens_turn - num_players
               else
-                # Standard clockwise iteration phase for the remainder of the draft
                 (@clemens_turn - (2 * num_players)) % num_players
               end
             end
@@ -301,16 +213,16 @@ module Engine
             end
         end
 
-       def operating_round(round_num)
+        def operating_round(round_num)
           G1835::Round::Operating.new(self, [
             Engine::Step::Bankrupt,
             G1835::Step::MinorExchange,
             Engine::Step::DiscardTrain,
             Engine::Step::SpecialTrack,
-            Engine::Step::HomeToken,
+            G1835::Step::HomeToken,
             G1835::Step::SpecialToken,
             Engine::Step::Track,
-            Engine::Step::HomeToken,
+            G1835::Step::HomeToken,
             G1835::Step::Token,
             Engine::Step::Route,
             G1835::Step::Dividend,
@@ -410,8 +322,6 @@ module Engine
         end
 
         def payout_companies
-          # omit paying out companies if any Prussian conversion could happen. Payout is then handled by MinorExchange
-          # after all choices have been made
           super unless any_conversion_choice_available?
         end
 
@@ -420,10 +330,8 @@ module Engine
         end
 
         def any_conversion_choice_available?
-          # Owner of 2 has the choice to form the PR
           return true if @pr_can_form && !prussian.floated?
 
-          # PR has already been formed and not all minors/companies have been converted yet
           prussian.floated? && !prussian_exchangeables.reject(&:closed?).empty?
         end
 
@@ -444,7 +352,6 @@ module Engine
         end
 
         def entity_can_use_company?(entity, company)
-          # Explicitly forbid minor companies from using private company powers
           return false if entity.minor?
 
           super
@@ -453,23 +360,14 @@ module Engine
         def preprocess_action(action)
           case action
           when Action::LayTile
-            # Direct map-driven hostile closure check for Ostbayrische Bahn (OBB)
             obb = company_by_id('OBB')
             if obb && !obb.closed? && %w[M15 M17].include?(action.hex.id)
-              # Check if the OTHER hex has track before this one gets laid
               other_hex_id = action.hex.id == 'M15' ? 'M17' : 'M15'
               if hex_by_id(other_hex_id).tile.color != :white
                 obb.close!
                 @log << "#{obb.name} closes because both target hexes have been built on."
               end
             end
-
-
-          # nf = company_by_id('NF')
-          #   if nf && !nf.closed? && nf.abilities.none? { |a| a.type == :token }
-          #     nf.close!
-          #     @log << "#{nf.name} closes as its special token action is complete."
-          #   end
 
             pb = company_by_id('PB')
             if pb && !pb.closed? && pb.abilities.none? { |a| a.type == :token } && pb.abilities.none? do |a|
@@ -483,50 +381,9 @@ module Engine
           super
         end
 
-        # test
         def action_processed(action)
           super
           case action
-          when Action::LayTile
-            if action.hex.id == 'L6'
-              @log << "[DEBUG L6] LayTile processed on L6. Active step: #{@round.active_step.class.name}"
-
-              ba = corporation_by_id('BA')
-              if ba
-                @log << "[DEBUG L6] Baden status - Floated?: #{ba.floated?}, Has tokens?: #{!!ba.tokens.first}, Token used?: #{ba.tokens.first&.used}"
-              else
-                @log << '[DEBUG L6] Baden corporation (BA) not found!'
-              end
-
-              if ba && ba.floated? && ba.tokens.first && !ba.tokens.first.used
-                if @round.respond_to?(:pending_tokens)
-                  @log << "[DEBUG L6] pending_tokens exists. Current pending queue size: #{@round.pending_tokens.size}"
-
-                  if @round.pending_tokens.any? { |p| p[:entity] == ba }
-                    @log << '[DEBUG L6] Baden is already present in the pending_tokens queue.'
-                  else
-                    @log << "#{ba.name} must immediately choose city for home token on L6"
-
-                    if @round.active_step.is_a?(Engine::Step::Track)
-                      @log << "[DEBUG L6] Reverting track step laid_tiles count from #{@round.active_step.laid_tiles.size}"
-                      @round.active_step.laid_tiles.pop
-                    end
-
-                    @round.pending_tokens << {
-                      entity: ba,
-                      hexes: [action.hex],
-                      token: ba.tokens.first,
-                    }
-                    @round.clear_cache!
-                    @log << '[DEBUG L6] Baden token pushed to pending_tokens successfully.'
-                  end
-                else
-                  @log << '[DEBUG L6] Round does not respond to pending_tokens!'
-                end
-              else
-                @log << '[DEBUG L6] Baden conditional check failed (either not floated or token already used).'
-              end
-            end
           when Action::PlaceToken
             nf = company_by_id('NF')
             if nf && !nf.closed? && nf.all_abilities.none? { |a| a.type == :token }
@@ -552,46 +409,13 @@ module Engine
         end
 
         def place_home_token(corporation)
-          return unless corporation.next_token
-          return if corporation.tokens.first&.used
-
-          hex = hex_by_id(corporation.coordinates)
-          tile = hex&.tile
-
-          if !tile || (tile.reserved_by?(corporation) && !tile.paths.empty?) || (corporation.id == 'BA' && @round.respond_to?(:pending_tokens))
-            if @round.respond_to?(:pending_tokens) && @round.pending_tokens.any? { |p| p[:entity] == corporation }
-              @round.clear_cache!
-              return
-            end
-
-            hexes = hex ? [hex] : home_token_locations(corporation)
-            return unless hexes
-
-            @log << "#{corporation.name} must choose city for home token"
-            @round.pending_tokens << {
-              entity: corporation,
-              hexes: hexes,
-              token: corporation.find_token_by_type,
-            }
-
-            @round.clear_cache!
+          if corporation.id == 'BA'
+            @log << "#{corporation.name} defers home token placement until hex L6 has a tile laid during its turn."
             return
           end
 
-          cities = tile&.cities || []
-          city = cities.find { |c| c.reserved_by?(corporation) } || cities.first
-          token = corporation.find_token_by_type
-
-          same_hex_allowed = multiple_tokens_allowed_on_home_hex?
-          if city && city.tokenable?(corporation, tokens: token, same_hex_allowed: same_hex_allowed)
-            @log << "#{corporation.name} places a token on #{hex.name}"
-            city.place_token(corporation, token, same_hex_allowed: same_hex_allowed)
-          elsif home_token_can_be_cheater && city
-            @log << "#{corporation.name} places a token on #{hex.name}"
-            city.place_token(corporation, token, cheater: true)
-          end
+          super
         end
-        # --- END FIX ---
 
         def event_pr_can_form!
           @log << "-- Event: #{EVENTS_TEXT['pr_can_form'][1]} --"
@@ -648,12 +472,8 @@ module Engine
             minor.trains.dup.each { |t| buy_train(prussian, t, :free) }
           end
 
-          # Preußen already has a token in Berlin and the rules forbid having more than one token per hex
           unless minor.id == '5'
             token = minor.tokens.first
-
-            # make sure the first token (= home token) gets used or other methods might behave unexpectedly later, e.g.
-            # "maybe_place_home_token" called when buying shares
             new_token = minor.id == '2' ? prussian.tokens.first : Token.new(prussian)
             prussian.tokens << new_token
 
