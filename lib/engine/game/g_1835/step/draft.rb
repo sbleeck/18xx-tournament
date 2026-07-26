@@ -153,7 +153,7 @@ module Engine
           def action_finalized
             return unless finished?
 
-            @round.next_entity_index!
+            @round.next_entity_index! if @game.optional_rules&.include?(:clemens)
           end
 
           def may_choose?(_company)

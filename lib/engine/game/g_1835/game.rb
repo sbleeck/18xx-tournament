@@ -8,6 +8,7 @@ require_relative 'share_pool'
 require_relative 'step/token'
 require_relative 'step/track'
 require_relative 'round/stock'
+require_relative 'round/draft'
 require_relative 'round/clemens_draft'
 require_relative '../../round/operating'
 require_relative '../cities_plus_towns_route_distance_str'
@@ -229,7 +230,7 @@ module Engine
           if @optional_rules&.include?(:clemens)
             G1835::Round::ClemensDraft.new(self, [G1835::Step::Draft])
           else
-            Engine::Round::Draft.new(self, [G1835::Step::Draft])
+            G1835::Round::Draft.new(self, [G1835::Step::Draft])
           end
         end
 
@@ -237,12 +238,12 @@ module Engine
           if @optional_rules&.include?(:clemens)
             G1835::Round::ClemensDraft.new(self, [G1835::Step::Draft])
           else
-            Engine::Round::Draft.new(self, [G1835::Step::Draft])
+            G1835::Round::Draft.new(self, [G1835::Step::Draft])
           end
         end
 
         def next_round!
-          @draft_finished = true if @optional_rules&.include?(:clemens) && companies.none? { |c| c.owner.nil? && !c.closed? }
+          @draft_finished = true if companies.none? { |c| c.owner.nil? && !c.closed? }
 
           if @draft_finished
             reorder_players
@@ -252,13 +253,19 @@ module Engine
           clear_programmed_actions
           @round =
             case @round
-            when Engine::Round::Draft, G1835::Round::ClemensDraft
+            when G1835::Round::Draft, G1835::Round::ClemensDraft
               reorder_players unless @optional_rules&.include?(:clemens)
               new_operating_round(@draft_round_num)
             when G1835::Round::Operating
               @draft_round_num += 1
               new_draft_round
             end
+        end
+
+        def train_limit(entity)
+          return @phase.train_limit[:prussian] if entity == prussian && @phase.train_limit[:prussian]
+
+          super
         end
 
         def reorder_players(order = nil, log_player_order: false, silent: false)
@@ -457,6 +464,7 @@ module Engine
             if pb && !pb.closed? && pb.all_abilities.none? { |a| a.type == :token } && pb.all_abilities.none? do |a|
                  a.type == :tile_lay
                end
+
               pb.close!
               @log << "#{pb.name} closes as both special tile and token actions are complete."
             end
@@ -472,6 +480,7 @@ module Engine
             if pb && !pb.closed? && pb.all_abilities.none? { |a| a.type == :token } && pb.all_abilities.none? do |a|
                  a.type == :tile_lay
                end
+
               pb.close!
               @log << "#{pb.name} closes as both special tile and token actions are complete."
             end
