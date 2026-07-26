@@ -6,6 +6,7 @@ require_relative 'map'
 require_relative 'entities'
 require_relative 'share_pool'
 require_relative 'step/token'
+require_relative 'step/track'
 require_relative 'round/stock'
 require_relative 'round/clemens_draft'
 require_relative '../../round/operating'
@@ -292,7 +293,7 @@ module Engine
             Engine::Step::SpecialTrack,
             G1835::Step::HomeToken,
             G1835::Step::SpecialToken,
-            Engine::Step::Track,
+            G1835::Step::Track,
             G1835::Step::HomeToken,
             G1835::Step::Token,
             Engine::Step::Route,
@@ -384,6 +385,15 @@ module Engine
           return TWO_LAYS if entity.type == :major && @phase.status.include?('two_tile_lays')
 
           LAY_OR_UPGRADE
+        end
+
+        def upgrades_to?(hex, tile, special = false)
+          # L6 requires a green XX tile (210-215) as its first lay, bypassing Phase 1 yellow restriction
+          if hex.id == 'L6' && %w[210 211 212 213 214 215].include?(tile.name)
+            return hex.tile.color == :white || hex.tile.color == :yellow
+          end
+
+          super
         end
 
         def operating_order
