@@ -35,7 +35,7 @@ module Engine
             return bundle.shares.first == bundle.corporation.shares.first unless bundle.corporation == @game.prussian
 
             # Ignore the order for PR: We cannot use the same logic we use for the other corporations, because the very first
-            # share - the president - is reserved. If we used the same logic, no PR share could  ever be bought
+            # share - the president - is reserved. If we used the same logic, no PR share could ever be bought
             true
           end
 

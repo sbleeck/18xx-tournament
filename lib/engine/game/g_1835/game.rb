@@ -6,6 +6,7 @@ require_relative 'map'
 require_relative 'entities'
 require_relative 'share_pool'
 require_relative 'step/token'
+require_relative 'round/stock'
 require_relative '../../round/operating'
 require_relative '../cities_plus_towns_route_distance_str'
 
@@ -458,7 +459,14 @@ module Engine
           company.close!
         end
 
-def merge_minor!(minor, allow_president_change: true)
+        def stock_round
+          G1835::Round::Stock.new(self, [
+            G1835::Step::MinorExchange,
+            G1835::Step::BuySellParShares,
+          ])
+        end
+        
+        def merge_minor!(minor, allow_president_change: true)
           @log << "#{minor.name} merges into #{prussian.name}"
 
           owner = minor.owner
