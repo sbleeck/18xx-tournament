@@ -153,7 +153,13 @@ module Engine
                   { name: '3', distance: 3, price: 180, rusts_on: '6', num: 4 },
                   { name: '3+3', distance: plus_train_distance(3), price: 270, rusts_on: '6+6', num: 3 },
                   { name: '4', distance: 4, price: 360, num: 3, events: [{ 'type' => 'pr_can_form' }] },
-                  { name: '4+4', distance: plus_train_distance(4), price: 440, num: 1, events: [{ 'type' => 'pr_must_form' }] },
+                  {
+                    name: '4+4',
+                    distance: plus_train_distance(4),
+                    price: 440,
+                    num: 1,
+                    events: [{ 'type' => 'pr_must_form' }],
+                  },
                   {
                     name: '5',
                     distance: 5,
@@ -174,7 +180,8 @@ module Engine
 
         STATUS_TEXT = Base::STATUS_TEXT.merge(
           'can_buy_trains' => ['Buy trains', 'Can buy trains from other corporations'],
-          'two_tile_lays' => ['Two tile lays', 'Major corporations may lay 2 yellow tiles, minor corporations lay 1 yellow tile'],
+          'two_tile_lays' => ['Two tile lays',
+                              'Major corporations may lay 2 yellow tiles, minor corporations lay 1 yellow tile'],
           'lay_or_upgrade' => ['Lay or upgrade', 'Corporations may lay 1 tile or upgrade 1 tile']
         ).freeze
 
@@ -203,7 +210,9 @@ module Engine
           @preussen_may_float = false
 
           @corporations.select { |corp| corp.type == :major }.each do |corp|
-            @stock_market.set_par(corp, @stock_market.par_prices.find { |share_price| share_price.price == PAR_PRICES[corp.id] })
+            @stock_market.set_par(corp, @stock_market.par_prices.find do |share_price|
+                                          share_price.price == PAR_PRICES[corp.id]
+                                        end)
           end
 
           corporation_by_id('BY').ipoed = true
@@ -260,12 +269,6 @@ module Engine
               @draft_round_num += 1
               new_draft_round
             end
-        end
-
-        def train_limit(entity)
-          return @phase.train_limit[:prussian] if entity == prussian && @phase.train_limit[:prussian]
-
-          super
         end
 
         def reorder_players(order = nil, log_player_order: false, silent: false)
@@ -337,7 +340,9 @@ module Engine
         def cert_limit(player = nil)
           return @cert_limit unless player
 
-          @cert_limit + @corporations.count { |corporation| corporation.type == :major && player.percent_of(corporation) >= 80 }
+          @cert_limit + @corporations.count do |corporation|
+                          corporation.type == :major && player.percent_of(corporation) >= 80
+                        end
         end
 
         def corporation_available?(corp)
@@ -447,7 +452,9 @@ module Engine
 
         def action_processed(action)
           super
+
           case action
+
           when Action::PlaceToken
             if action.entity.id == 'BA' && action.city.hex.id == 'L6'
               ba_corp = corporation_by_id('BA')
@@ -590,6 +597,16 @@ module Engine
         def close_minor!(minor)
           minor.tokens.each(&:remove!)
           minor.close!
+          # If a minor is closed during an Operating Round (e.g., folded into Prussia),
+          # we must remove it from the round's entities to prevent it from taking a turn.
+          # We dynamically shift the entity_index to ensure the acting entity doesn't lose its turn.
+          if @round.is_a?(Engine::Round::Operating)
+            minor_index = @round.entities.index(minor)
+            if minor_index
+              @round.entities.delete_at(minor_index)
+              @round.instance_variable_set(:@entity_index, @round.entity_index - 1) if @round.entity_index > minor_index
+            end
+          end
         end
 
         def exchange_prussian_share(allow_president_change, exchange_share_percentage, owner, president: false)
@@ -604,7 +621,8 @@ module Engine
           raise GameError, 'Preußen director not owned by Preußen anymore' if president && !exchange_share.president
 
           exchange_share.buyable = true
-          @share_pool.transfer_shares(ShareBundle.new(exchange_share), owner, allow_president_change: allow_president_change)
+          @share_pool.transfer_shares(ShareBundle.new(exchange_share), owner,
+                                      allow_president_change: allow_president_change)
         end
 
         def share_flags(shares)
