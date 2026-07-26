@@ -1,3 +1,4 @@
+# lib/engine/game/g_1835/round/stock.rb
 # frozen_string_literal: true
 
 require_relative '../../../round/stock'

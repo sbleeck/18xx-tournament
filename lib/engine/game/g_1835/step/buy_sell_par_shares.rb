@@ -79,6 +79,24 @@ module Engine
 
             player.percent_of(corporation) > 50
           end
+
+          def pass!
+            super
+            # In 1835, selling shares does not count as an action that keeps the stock round alive.
+            # If the player didn't buy anything this turn, force their state to "passed".
+            unless bought?
+              @round.pass_order |= [current_entity]
+              current_entity&.pass!
+            end
+          end
+
+          def track_action(action, corporation, player_action = true)
+            # Only a purchase action updates the priority deal (last_to_act) in 1835.
+            @round.last_to_act = action.entity.player if self.class::PURCHASE_ACTIONS.include?(action.class)
+
+            @round.current_actions << action if player_action
+            @round.players_history[action.entity.player][corporation] << action
+          end
         end
       end
     end
