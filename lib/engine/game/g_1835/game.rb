@@ -7,6 +7,7 @@ require_relative 'entities'
 require_relative 'share_pool'
 require_relative 'step/token'
 require_relative 'round/stock'
+require_relative 'round/clemens_draft'
 require_relative '../../round/operating'
 require_relative '../cities_plus_towns_route_distance_str'
 
@@ -22,6 +23,7 @@ module Engine
         include G1835::Entities
         include G1835::Map
 
+        TRACK_RESTRICTION = :permissive
         CURRENCY_FORMAT_STR = '%sM'
         GAME_END_CHECK = { bank: :current_or }.freeze
         BANKRUPTCY_ALLOWED = true
@@ -57,16 +59,86 @@ module Engine
                   %w[54 66 76 84 90]].freeze
 
         PHASES = [
-          { name: '1.1', on: '2', train_limit: { minor: 2, major: 4 }, tiles: [:yellow], status: ['two_tile_lays'], operating_rounds: 1 },
-          { name: '1.2', on: '2+2', train_limit: { minor: 2, major: 4 }, tiles: [:yellow], status: ['two_tile_lays'], operating_rounds: 1 },
-          { name: '2.1', on: '3', train_limit: { minor: 2, major: 4 }, tiles: %i[yellow green], status: %w[can_buy_trains lay_or_upgrade], operating_rounds: 2 },
-          { name: '2.2', on: '3+3', train_limit: { major: 4, minor: 2 }, tiles: %i[yellow green], status: %w[can_buy_trains lay_or_upgrade], operating_rounds: 2 },
-          { name: '2.3', on: '4', train_limit: { prussian: 4, major: 3, minor: 1 }, tiles: %i[yellow green], status: %w[can_buy_trains lay_or_upgrade], operating_rounds: 2 },
-          { name: '2.4', on: '4+4', train_limit: { prussian: 4, major: 3, minor: 1 }, tiles: %i[yellow green], status: %w[can_buy_trains lay_or_upgrade], operating_rounds: 2 },
-          { name: '3.1', on: '5', train_limit: { prussian: 3, major: 2 }, tiles: %i[yellow green brown], status: %w[can_buy_trains lay_or_upgrade], operating_rounds: 3 },
-          { name: '3.2', on: '5+5', train_limit: { prussian: 3, major: 2 }, tiles: %i[yellow green brown], status: %w[can_buy_trains lay_or_upgrade], operating_rounds: 3 },
-          { name: '3.3', on: '6', train_limit: { prussian: 3, major: 2 }, tiles: %i[yellow green brown], status: %w[can_buy_trains lay_or_upgrade], operating_rounds: 3 },
-          { name: '3.4', on: '6+6', train_limit: { prussian: 3, major: 2 }, tiles: %i[yellow green brown], status: %w[can_buy_trains lay_or_upgrade], operating_rounds: 3 },
+          {
+            name: '1.1',
+            on: '2',
+            train_limit: { minor: 2, major: 4 },
+            tiles: [:yellow],
+            status: ['two_tile_lays'],
+            operating_rounds: 1,
+          },
+          {
+            name: '1.2',
+            on: '2+2',
+            train_limit: { minor: 2, major: 4 },
+            tiles: [:yellow],
+            status: ['two_tile_lays'],
+            operating_rounds: 1,
+          },
+          {
+            name: '2.1',
+            on: '3',
+            train_limit: { minor: 2, major: 4 },
+            tiles: %i[yellow green],
+            status: %w[can_buy_trains lay_or_upgrade],
+            operating_rounds: 2,
+          },
+          {
+            name: '2.2',
+            on: '3+3',
+            train_limit: { major: 4, minor: 2 },
+            tiles: %i[yellow green],
+            status: %w[can_buy_trains lay_or_upgrade],
+            operating_rounds: 2,
+          },
+          {
+            name: '2.3',
+            on: '4',
+            train_limit: { prussian: 4, major: 3, minor: 1 },
+            tiles: %i[yellow green],
+            status: %w[can_buy_trains lay_or_upgrade],
+            operating_rounds: 2,
+          },
+          {
+            name: '2.4',
+            on: '4+4',
+            train_limit: { prussian: 4, major: 3, minor: 1 },
+            tiles: %i[yellow green],
+            status: %w[can_buy_trains lay_or_upgrade],
+            operating_rounds: 2,
+          },
+          {
+            name: '3.1',
+            on: '5',
+            train_limit: { prussian: 3, major: 2 },
+            tiles: %i[yellow green brown],
+            status: %w[can_buy_trains lay_or_upgrade],
+            operating_rounds: 3,
+          },
+          {
+            name: '3.2',
+            on: '5+5',
+            train_limit: { prussian: 3, major: 2 },
+            tiles: %i[yellow green brown],
+            status: %w[can_buy_trains lay_or_upgrade],
+            operating_rounds: 3,
+          },
+          {
+            name: '3.3',
+            on: '6',
+            train_limit: { prussian: 3, major: 2 },
+            tiles: %i[yellow green brown],
+            status: %w[can_buy_trains lay_or_upgrade],
+            operating_rounds: 3,
+          },
+          {
+            name: '3.4',
+            on: '6+6',
+            train_limit: { prussian: 3, major: 2 },
+            tiles: %i[yellow green brown],
+            status: %w[can_buy_trains lay_or_upgrade],
+            operating_rounds: 3,
+          },
         ].freeze
 
         def self.plus_train_distance(distance)
@@ -80,7 +152,13 @@ module Engine
                   { name: '3+3', distance: plus_train_distance(3), price: 270, rusts_on: '6+6', num: 3 },
                   { name: '4', distance: 4, price: 360, num: 3, events: [{ 'type' => 'pr_can_form' }] },
                   { name: '4+4', distance: plus_train_distance(4), price: 440, num: 1, events: [{ 'type' => 'pr_must_form' }] },
-                  { name: '5', distance: 5, price: 500, num: 2, events: [{ 'type' => 'forced_pr_exchange' }, { 'type' => 'close_companies' }] },
+                  {
+                    name: '5',
+                    distance: 5,
+                    price: 500,
+                    num: 2,
+                    events: [{ 'type' => 'forced_pr_exchange' }, { 'type' => 'close_companies' }],
+                  },
                   { name: '5+5', distance: plus_train_distance(5), price: 600, num: 1 },
                   { name: '6', distance: 6, price: 600, num: 2 },
                   { name: '6+6', distance: plus_train_distance(6), price: 720, num: 4 }].freeze
@@ -88,7 +166,8 @@ module Engine
         EVENTS_TEXT = Base::EVENTS_TEXT.merge(
           'pr_can_form' => ['Optional Preußen Formation', 'Preußen can choose to form now or at beginning of SR/OR'],
           'pr_must_form' => ['Preußen Formation', 'Preußen forms immediately'],
-          'forced_pr_exchange' => ['Forced Preußen exchange', 'Remaining Preußen privates and minors will be exchanged for Preußen shares']
+          'forced_pr_exchange' => ['Forced Preußen exchange',
+                                   'Remaining Preußen privates and minors will be exchanged for Preußen shares']
         ).freeze
 
         STATUS_TEXT = Base::STATUS_TEXT.merge(
@@ -145,73 +224,64 @@ module Engine
           G1835::SharePool.new(self)
         end
 
-        def ensure_clemens_round_defined!
-          return if self.class.const_defined?(:ClemensDraftRound)
-
-          klass = Class.new(G1835::Round::Draft) do
-            def setup
-              super
-              @clemens_turn = 0
-              @entity_index = current_clemens_index
-            end
-
-            def current_entity
-              entities[current_clemens_index]
-            end
-
-            def current_clemens_index
-              num_players = entities.size
-              return 0 if num_players.zero?
-
-              if @clemens_turn < num_players
-                num_players - 1 - @clemens_turn
-              elsif @clemens_turn < 2 * num_players
-                @clemens_turn - num_players
-              else
-                (@clemens_turn - (2 * num_players)) % num_players
-              end
-            end
-
-            def next_entity_index!
-              @clemens_turn += 1
-              @entity_index = current_clemens_index
-            end
-          end
-
-          self.class.const_set(:ClemensDraftRound, klass)
-        end
-
         def init_round
           if @optional_rules&.include?(:clemens)
-            ensure_clemens_round_defined!
-            self.class::ClemensDraftRound.new(self, [G1835::Step::Draft])
+            G1835::Round::ClemensDraft.new(self, [G1835::Step::Draft])
           else
-            G1835::Round::Draft.new(self, [G1835::Step::Draft])
+            Engine::Round::Draft.new(self, [G1835::Step::Draft])
           end
         end
 
         def new_draft_round
           if @optional_rules&.include?(:clemens)
-            ensure_clemens_round_defined!
-            self.class::ClemensDraftRound.new(self, [G1835::Step::Draft])
+            G1835::Round::ClemensDraft.new(self, [G1835::Step::Draft])
           else
-            G1835::Round::Draft.new(self, [G1835::Step::Draft])
+            Engine::Round::Draft.new(self, [G1835::Step::Draft])
           end
         end
 
         def next_round!
-          return super if @draft_finished
+          @draft_finished = true if @optional_rules&.include?(:clemens) && companies.none? { |c| c.owner.nil? && !c.closed? }
+
+          if @draft_finished
+            reorder_players
+            return super
+          end
 
           clear_programmed_actions
           @round =
             case @round
-            when G1835::Round::Draft
-              reorder_players
+            when Engine::Round::Draft, G1835::Round::ClemensDraft
+              reorder_players unless @optional_rules&.include?(:clemens)
               new_operating_round(@draft_round_num)
             when G1835::Round::Operating
               @draft_round_num += 1
               new_draft_round
             end
+        end
+
+        def reorder_players(order = nil, log_player_order: false, silent: false)
+          order ||= next_sr_player_order
+          if order == :after_last_to_act
+            active_players = @players.reject(&:bankrupt)
+            player = if @round&.last_to_act && active_players.include?(@round.last_to_act)
+                       last_idx = active_players.index(@round.last_to_act)
+                       active_players[(last_idx + 1) % active_players.size]
+                     else
+                       active_players[(@round&.entity_index || 0) % active_players.size]
+                     end
+            @players.rotate!(@players.index(player))
+            @log << "#{player.name} has priority deal" unless silent
+            return
+          end
+
+          super
+        end
+
+        def check_sale_timing(entity, bundle)
+          return true if @optional_rules&.include?(:clemens) && bundle.corporation.operated?
+
+          super
         end
 
         def operating_round(round_num)
@@ -358,13 +428,11 @@ module Engine
           super
         end
 
-        
-
         def action_processed(action)
           super
           case action
           when Action::PlaceToken
-           if action.entity.id == 'BA' && action.city.hex.id == 'L6'
+            if action.entity.id == 'BA' && action.city.hex.id == 'L6'
               ba_corp = corporation_by_id('BA')
               action.city.hex.tile.cities.each do |c|
                 c.remove_reservation!(ba_corp)
@@ -382,17 +450,18 @@ module Engine
               pb.close!
               @log << "#{pb.name} closes as both special tile and token actions are complete."
             end
-            when Action::LayTile
+          when Action::LayTile
             obb = company_by_id('OBB')
-            if obb && !obb.closed? && %w[M15 M17].include?(action.hex.id)
-              if hex_by_id('M15').tile.color != :white && hex_by_id('M17').tile.color != :white
-                obb.close!
-                @log << "#{obb.name} closes because both target hexes have been built on."
-              end
+            if obb && !obb.closed? && %w[M15
+                                         M17].include?(action.hex.id) && (hex_by_id('M15').tile.color != :white && hex_by_id('M17').tile.color != :white)
+              obb.close!
+              @log << "#{obb.name} closes because both target hexes have been built on."
             end
 
             pb = company_by_id('PB')
-            if pb && !pb.closed? && pb.all_abilities.none? { |a| a.type == :token } && pb.all_abilities.none? { |a| a.type == :tile_lay }
+            if pb && !pb.closed? && pb.all_abilities.none? { |a| a.type == :token } && pb.all_abilities.none? do |a|
+                 a.type == :tile_lay
+               end
               pb.close!
               @log << "#{pb.name} closes as both special tile and token actions are complete."
             end
@@ -400,10 +469,10 @@ module Engine
         end
 
         def ability_usable?(ability)
-         if ability.type == :token && ability.owner.sym == 'PB'
+          if ability.type == :token && ability.owner.sym == 'PB'
             ba = corporation_by_id('BA')
             is_usable = ba&.floated? && ba.tokens.first&.used
-            
+
             # Use a state flag to avoid crashing the UI render loop while ensuring exactly one log when state changes
             unless @logged_pb_ability_state == is_usable
               @log << "[LOG] PB Token ability: Usable=#{!!is_usable}, from_owner=#{ability.from_owner}, special_only=#{ability.special_only}"
@@ -416,9 +485,7 @@ module Engine
         end
 
         def place_home_token(corporation)
-          if corporation.id == 'BA'
-            return
-          end
+          return if corporation.id == 'BA'
 
           super
         end
@@ -465,14 +532,15 @@ module Engine
             G1835::Step::BuySellParShares,
           ])
         end
-        
+
         def merge_minor!(minor, allow_president_change: true)
           @log << "#{minor.name} merges into #{prussian.name}"
 
           owner = minor.owner
           exchange_share_percentage = %w[2 4 M2 M4].include?(minor.id) ? 10 : 5
 
-          exchange_prussian_share(allow_president_change, exchange_share_percentage, owner, president: %w[2 M2].include?(minor.id))
+          exchange_prussian_share(allow_president_change, exchange_share_percentage, owner,
+                                  president: %w[2 M2].include?(minor.id))
 
           if minor.cash.positive?
             @log << "#{prussian.name} receives #{format_currency(minor.cash)} from #{minor.name}'s treasury"

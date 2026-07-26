@@ -87,12 +87,13 @@ module Engine
           def actions(entity)
             return [] if finished?
 
-            unless @companies.any? { |c| current_entity.cash >= min_bid(c) }
-              @log << "#{current_entity.name} has no valid actions and passes"
-              return []
-            end
-
             entity == current_entity ? ACTIONS : []
+          end
+
+          def auto_actions(entity)
+            return [Engine::Action::Pass.new(entity)] if entity.player? && !@companies.any? { |c| entity.cash >= c.value }
+
+            []
           end
 
           def skip!
@@ -144,6 +145,7 @@ module Engine
           def process_pass(action)
             @log << "#{action.entity.name} passes"
             action.entity.pass!
+            @round.last_to_act = action.entity
             @round.next_entity_index!
             action_finalized
           end
@@ -188,7 +190,18 @@ module Engine
             # allow president change for SX when LD is being sold, but for BY only if the BY director has been sold,
             # which might be during the current or any earlier action
             allow_president_change = share.president || !share.corporation.shares.first.president
-            @game.share_pool.transfer_shares(ShareBundle.new(share), player, allow_president_change: allow_president_change)
+            @game.share_pool.transfer_shares(ShareBundle.new(share), player,
+                                             allow_president_change: allow_president_change)
+
+            # Under Clemens rules, force BY to float immediately once 50% of its total equity is player-held
+            by_corp = share.corporation
+            if @game.optional_rules&.include?(:clemens) && by_corp.name == 'BY' && !by_corp.floated?
+              total_held = by_corp.player_share_holders.values.sum
+              if total_held >= 50
+                by_corp.floated = true
+                @log << "#{by_corp.name} floats early via the Clemens Gate at #{total_held}% shares sold!"
+              end
+            end
 
             @game.place_home_token(share.corporation) if share.corporation.floated?
           end

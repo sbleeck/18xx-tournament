@@ -11,7 +11,7 @@ require 'view/game/stock_market'
 require 'view/game/tranches'
 require 'view/game/actionable'
 require 'lib/truncate'
-# require 'lib/row_animation'
+require 'view/game/dashboard/row_animation'
 require 'view/game/dashboard/dashboard_bank'
 require 'view/game/dashboard/dashboard_upcoming_trains'
 require 'view/game/dashboard/dashboard_card_animation'
@@ -190,17 +190,17 @@ module View
           rows << loans_cells
         end
 
-        # 4. Time Row
-        time_cells = [h('th.left', 'Time')]
-        display_players.each_with_index do |p, idx|
-          bg_color = p == active_player ? COLOR_ACTIVE : COLOR_INACTIVE
-          is_last = idx == @game.players.size - 1
-          time_val, formatted_time = player_time_details(p)
-          text_color = time_val.negative? ? '#ff0000' : '#000000'
-          time_cells << h("td.padded_number#{'.thick-right' if is_last}",
-                          { style: { backgroundColor: bg_color, color: text_color } }, formatted_time)
-        end
-        rows << time_cells
+        # # 4. Time Row
+        # time_cells = [h('th.left', 'Time')]
+        # display_players.each_with_index do |p, idx|
+        #   bg_color = p == active_player ? COLOR_ACTIVE : COLOR_INACTIVE
+        #   is_last = idx == @game.players.size - 1
+        #   time_val, formatted_time = player_time_details(p)
+        #   text_color = time_val.negative? ? '#ff0000' : '#000000'
+        #   time_cells << h("td.padded_number#{'.thick-right' if is_last}",
+        #                   { style: { backgroundColor: bg_color, color: text_color } }, formatted_time)
+        # end
+        # rows << time_cells
 
         # 5. Companies Row (Renamed to Privates)
         comp_cells = [h('th.left', 'Privates')]
@@ -250,7 +250,7 @@ module View
             h('tbody#player_details', [
               render_player_cash,
               render_player_loans,
-              render_player_time,
+              # render_player_time,
               render_player_companies,
               render_player_certs,
             ]),
@@ -268,11 +268,15 @@ module View
             Lib::Storage["cmd_buy_train_price_#{owner_key}_#{train.id}"] = active_entity.cash
             update
           else # Bank/Depot train at fixed value
-            process_action(Engine::Action::BuyTrain.new(
-              active_entity,
-              train: train,
-              price: train.price
-            ))
+            source_selector = '#extra_cards'
+            target_selector = "#trains_#{active_entity.id}"
+            Lib::CardAnimation.fly(source_selector, target_selector) do
+              process_action(Engine::Action::BuyTrain.new(
+                active_entity,
+                train: train,
+                price: train.price
+              ))
+            end
           end
         end
 
@@ -524,7 +528,7 @@ module View
 
         # Attach DOM tracking and the FLIP animation hooks
         tr_props[:key] = corporation.id
-        # tr_props[:hook] = Lib::RowAnimation.hook(corporation.id)
+        tr_props[:hook] = Lib::RowAnimation.hook(corporation.id)
 
         row_classes = []
 
@@ -661,12 +665,8 @@ module View
                             else
                               lambda {
                                 bnd = valid_player_buys.first.to_bundle
-                                process_action(Engine::Action::BuyShares.new(
-                                  active_player,
-                                  shares: bnd.shares,
-                                  share_price: bnd.share_price,
-                                  percent: bnd.percent
-                                ))
+                                source_selector = "#player_shares_#{p.id}_#{corporation.id} .game-card"
+                                exec_buy_shares(source_selector, active_player, bnd, corporation.id)
                               }
                             end
           end
@@ -768,13 +768,8 @@ module View
                     action: lambda {
                       Lib::Storage['buy_player_menu_player'] = nil
                       Lib::Storage['buy_player_menu_corp'] = nil
-                      bnd = share.to_bundle
-                      process_action(Engine::Action::BuyShares.new(
-                        active_player,
-                        shares: bnd.shares,
-                        share_price: bnd.share_price,
-                        percent: bnd.percent
-                      ))
+                      source_selector = "#player_shares_#{p.id}_#{corporation.id} .game-card"
+                      exec_buy_shares(source_selector, active_player, share.to_bundle, corporation.id)
                     },
                   }
                 end
@@ -1090,10 +1085,14 @@ module View
             card_classes << 'clickable'
 
             train_click_handler = lambda {
-              process_action(Engine::Action::DiscardTrain.new(
-                active_entity,
-                train: t
-              ))
+              source_selector = "#train_wrapper_#{corporation.id}_#{t.id} .game-card"
+              target_selector = '#extra_cards'
+              Lib::CardAnimation.fly(source_selector, target_selector) do
+                process_action(Engine::Action::DiscardTrain.new(
+                  active_entity,
+                  train: t
+                ))
+              end
             }
           end
 
@@ -1368,9 +1367,12 @@ module View
           if matching_special_action
             card_classes << 'action-buy'
             card_classes << 'clickable'
-
             company_click_handler = lambda {
-              process_action(matching_special_action[1].new(active_ent, company: c))
+              source_selector = "#company_wrapper_#{entity.id}_#{c.id} .game-card"
+              target_selector = "#companies_#{active_ent.id}"
+              Lib::CardAnimation.fly(source_selector, target_selector) do
+                process_action(matching_special_action[1].new(active_ent, company: c))
+              end
             }
 
           elsif company_buyable_step && not_own_company && is_buyable
@@ -1411,11 +1413,16 @@ module View
 
                 Lib::Storage[menu_storage_key] = nil
                 Lib::Storage[price_storage_key] = nil
-                process_action(Engine::Action::BuyCompany.new(
-                  active_ent,
-                  company: c,
-                  price: price_value
-                ))
+
+                source_selector = "#company_wrapper_#{entity.id}_#{c.id} .game-card"
+                target_selector = "#companies_#{active_ent.id}"
+                Lib::CardAnimation.fly(source_selector, target_selector) do
+                  process_action(Engine::Action::BuyCompany.new(
+                    active_ent,
+                    company: c,
+                    price: price_value
+                  ))
+                end
               }
 
               cancel_handler = lambda {
@@ -1539,21 +1546,21 @@ module View
         ])
       end
 
-      def render_player_time
-        h(:tr, tr_default_props, [
-          h('th.left', 'Time'),
-          *display_players.map.with_index do |p, idx|
-            is_active_col = (p == active_player)
-            bg_color = is_active_col ? COLOR_ACTIVE : COLOR_INACTIVE
-            is_last = idx == @game.players.size - 1
-            time_val, formatted_time = player_time_details(p)
-            text_color = time_val.negative? ? '#ff0000' : '#000000'
-            h("td.padded_number#{'.thick-right' if is_last}", { style: { backgroundColor: bg_color, color: text_color } },
-              formatted_time)
-          end,
-          h(:td, { attrs: { colspan: 30 }, style: { border: 'none' } }, ''),
-        ])
-      end
+      # def render_player_time
+      #   h(:tr, tr_default_props, [
+      #     h('th.left', 'Time'),
+      #     *display_players.map.with_index do |p, idx|
+      #       is_active_col = (p == active_player)
+      #       bg_color = is_active_col ? COLOR_ACTIVE : COLOR_INACTIVE
+      #       is_last = idx == @game.players.size - 1
+      #       time_val, formatted_time = player_time_details(p)
+      #       text_color = time_val.negative? ? '#ff0000' : '#000000'
+      #       h("td.padded_number#{'.thick-right' if is_last}", { style: { backgroundColor: bg_color, color: text_color } },
+      #         formatted_time)
+      #     end,
+      #     h(:td, { attrs: { colspan: 30 }, style: { border: 'none' } }, ''),
+      #   ])
+      # end
 
       def render_player_certs
         cert_limit = @game.cert_limit

@@ -82,6 +82,10 @@ module View
         width: "#{WIDTH_TOTAL - (2 * PAD) - (2 * BORDER)}px",
       }.freeze
 
+      def active_corporations(corporations)
+        corporations.select { |c| c.floated? && !c.closed? }
+      end
+
       def box_style_1d
         {
           position: 'relative',
@@ -97,7 +101,9 @@ module View
 
       def box_height_1d
         tokens_height = [*@game.stock_market.market.first.map do |p|
-                           p.corporations.sum { |c| TOKEN_SIZES[@game.corporation_size(c)] + VERTICAL_TOKEN_PAD }
+                           active_corporations(p.corporations).sum do |c|
+                             TOKEN_SIZES[@game.corporation_size(c)] + VERTICAL_TOKEN_PAD
+                           end
                          end,
                          MIN_TOKENS_HEIGHT].max
         "#{tokens_height + VERTICAL_TOKEN_PAD + PRICE_HEIGHT - (2 * BORDER)}px"
@@ -211,7 +217,6 @@ module View
                        end
         if operated?(corporation)
           props[:attrs][:title] = "#{corporation.name} has operated"
-          # props[:attrs][:opacity] = '1.0'
           props[:attrs]['clip-path'] = 'polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)'
 
           under_shape = [
@@ -271,7 +276,7 @@ module View
 
       def grid_1d
         row = @game.stock_market.market.first.map do |price|
-          tokens = price.corporations.map { |corporation| h(:img, token_props(corporation)) }
+          tokens = active_corporations(price.corporations).map { |corporation| h(:img, token_props(corporation)) }
 
           box_style = box_style_1d
           box_style[:height] = box_height_1d
@@ -305,7 +310,7 @@ module View
         row1 = [h(:div, style: cell_style(half_box_style, @game.stock_market.market.first.first.types))]
 
         @game.stock_market.market.first.each_with_index do |price, idx|
-          tokens = price.corporations.map { |corporation| h(:img, token_props(corporation)) }
+          tokens = active_corporations(price.corporations).map { |corporation| h(:img, token_props(corporation)) }
 
           cell_elements = [h(:div, { style: PRICE_STYLE_1D }, price.price),
                            h(:div, { style: TOKEN_STYLE_1D }, tokens)]
@@ -372,7 +377,7 @@ module View
           row.each_with_index do |price, c_index|
             next if price.nil?
 
-            corporations = price.corporations
+            corporations = active_corporations(price.corporations)
             num = corporations.size
             spacing = num > 1 ? (HEX_RIGHT_TOKEN_POS - HEX_LEFT_TOKEN_POS) / (num - 1) : 0
             tokens = corporations.reverse.map.with_index { |corp, index| token_svgs(corp, index, num, spacing) }
@@ -406,7 +411,7 @@ module View
 
           row = row_prices.each_with_index.map do |price, col_i|
             if price
-              corporations = price.corporations
+              corporations = active_corporations(price.corporations)
               num = corporations.size
               spacing = num > 1 ? (RIGHT_TOKEN_POS - LEFT_TOKEN_POS) / (num - 1) : 0
               tokens = corporations.map.with_index { |corp, index| h(:img, token_props(corp, index, num, spacing)) }

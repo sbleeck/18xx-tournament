@@ -16,6 +16,7 @@ module Engine
             # Dynamically activate for Baden on its turn if L6 has track and home token is unplaced.
             # Using current_operator instead of current_entity prevents UI recursion loops.
             return {} unless @round.respond_to?(:current_operator)
+
             operating_entity = @round.current_operator
             return {} unless operating_entity&.id == 'BA'
 
