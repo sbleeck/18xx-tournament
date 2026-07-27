@@ -138,6 +138,8 @@ module View
           h(Game::Tools, game: @game, game_data: @game_data, user: @user)
         when 'auto'
           h(Game::Auto, game: @game, game_data: @game_data, user: @user)
+        when 'dashboard'
+          h(Game::DashboardVisualizer, game: @game, game_data: @game_data, user: @user)
         end
       LOGGER.debug do
         "Done rendering game view: #{Time.now - @_logger[:render]} seconds"
@@ -278,6 +280,8 @@ module View
           change_anchor('#tools')
         when 'a'
           change_anchor('#auto')
+        when 'd'
+          change_anchor('#dashboard')
         when '1'
           button_click('pass')
         when '2'
@@ -367,6 +371,7 @@ module View
       menu_items << item('T|iles', '#tiles') unless @game.layout == :none
       menu_items << item('S|preadsheet', '#spreadsheet')
       menu_items << item("To|ols#{' 📝' if note}", '#tools')
+      menu_items << item('D|ashboard', '#dashboard')
 
       enabled = !@game.programmed_actions[@game.player_by_id(@user['id'])].empty? if @user
       menu_items << item("A|uto#{' ✅' if enabled}", '#auto') if @game_data[:mode] != :hotseat && !cursor
