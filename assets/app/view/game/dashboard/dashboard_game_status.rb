@@ -67,54 +67,55 @@ module View
         end
 
         css = <<~CSS
-                                                                                                                                   :root {
-                                                                                                                                     --font-money: 'Courier New', monospace;
-                                                                                                                                     --font-standard: "Helvetica Neue", Helvetica, Arial, sans-serif;
-                                                                                                                                     --color-money-text: #4c1d95;
-                                                                                                                                     --accent-action-color: #2563eb;
-                                                                                                                                     --pulse-opacity-min: 0.75;
-                                                                                                                                     --pulse-scale-duration: 2s;
-                                                                                                                                     --opacity-unopened-row: 0.45;
-                                                                                                                                     --bg-active-row: #ffffff;
-                                                                                                                                     --bg-market-zone: #e6f4ea; /* Soft Sage Green */
-                                                                                                                                     --bg-corporate-zone: #f3e8ff;
-                                                                                                                                     --action-buy-edge: #16a34a;
-                                                                                                                                     --action-sell-edge: #dc2626;
-                                                                                                                                     --shadow-card: 0 1px 3px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.24);
-                                                                                                                                   }
-                                                                      #spreadsheet table { border-collapse: collapse; border: 3px solid #333333; background-color: #{COLOR_INACTIVE}; }
-                                                            #spreadsheet th, #spreadsheet td { border: 1px solid #b3b3b3 !important; vertical-align: middle !important; padding: 4px 2px !important; }
-                                                                                           #spreadsheet thead tr:last-child th { border-bottom: 3px solid #333333 !important; }
-                                                                                           #spreadsheet tr.last-player-row th, #spreadsheet tr.last-player-row td { border-bottom: 3px solid #333333 !important; }
-                                                                                           #spreadsheet tr.last-minor-row th, #spreadsheet tr.last-minor-row td { border-bottom: 3px solid #333333 !important; }
-                                                                                                    .thick-right { border-right: 3px solid #333333 !important; }
-                                                                                           .no-border { border: none !important; }
-                                                                                                                      .money-value, .padded_number { text-align: right !important; padding-right: 0.5rem !important; }
-                                        .money-value { font-family: var(--font-money) !important; font-weight: bold !important; color: var(--color-money-text) !important; font-variant-numeric: tabular-nums !important; }
+                                                                                                                                             :root {
+                                                                                                                                               --font-money: 'Courier New', monospace;
+                                                                                                                                               --font-standard: "Helvetica Neue", Helvetica, Arial, sans-serif;
+                                                                                                                                               --color-money-text: #4c1d95;
+                                                                                                                                               --accent-action-color: #2563eb;
+                                                                                                                                               --pulse-opacity-min: 0.75;
+                                                                                                                                               --pulse-scale-duration: 2s;
+                                                                                                                                               --opacity-unopened-row: 0.45;
+                                                                                                                                               --bg-active-row: #ffffff;
+                                                                                                                                               --bg-market-zone: #e6f4ea; /* Soft Sage Green */
+                                                                                                                                               --bg-corporate-zone: #f3e8ff;
+                                                                                                                                               --action-buy-edge: #16a34a;
+                                                                                                                                               --action-sell-edge: #dc2626;
+                                                                                                                                               --shadow-card: 0 1px 3px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.24);
+                                                                                                                                             }
+                                                                                #spreadsheet table { border-collapse: collapse; border: 3px solid #333333; background-color: #{COLOR_INACTIVE}; }
+                                                                      #spreadsheet th, #spreadsheet td { border: 1px solid #b3b3b3 !important; vertical-align: middle !important; padding: 4px 2px !important; }
+                                                                                                     #spreadsheet thead tr:last-child th { border-bottom: 3px solid #333333 !important; }
+                                                                                                     #spreadsheet tr.last-player-row th, #spreadsheet tr.last-player-row td { border-bottom: 3px solid #333333 !important; }
+                                                                                                     #spreadsheet tr.last-minor-row th, #spreadsheet tr.last-minor-row td { border-bottom: 3px solid #333333 !important; }
+                                                                                                              .thick-right { border-right: 3px solid #333333 !important; }
+                                                                                                     .no-border { border: none !important; }
+                                                                                                                                .money-value, .padded_number { text-align: right !important; padding-right: 0.5rem !important; }
+                                                  .money-value { font-family: var(--font-money) !important; font-weight: bold !important; color: var(--color-money-text) !important; font-variant-numeric: tabular-nums !important; }
 
-                              .game-card { display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; min-width: 3.5rem; height: 1.45rem; font-size: 0.85rem; padding: 0 4px; margin: 2px; border: 1px solid #888888; border-radius: 4px; background-color: #fdfbf7; color: #000000; box-shadow: var(--shadow-card); transition: transform 0.1s ease; font-family: var(--font-standard); }
-                                                                                                     .game-card.clickable:hover { cursor: pointer; transform: translateY(-1px); box-shadow: 0 2px 5px rgba(0,0,0,0.2); }
-          .game-card.action-sell { border: 2px solid var(--action-sell-edge) !important; background-color: #fef2f2 !important; box-shadow: 0 0 0 1px var(--action-sell-edge) !important; }
-
-
-                                                                                                     .game-card.action-buy { border: 2px solid var(--action-buy-edge) !important; background-color: #e6f4ea !important; box-shadow: 0 0 0 1px var(--action-buy-edge) !important; }                                                  #{'                                         '}
-                                                                                                                                   .sell-restricted { text-decoration: line-through !important; opacity: 0.5 !important; cursor: not-allowed !important; }
-                                                                                                                                   .token-bond { display: inline-block; width: 12px; height: 12px; background-color: #b91c1c; border-radius: 2px; }
-                                                                                                                                   .align-top { vertical-align: top !important; }
+                                        .game-card { display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; min-width: 3.5rem; height: 1.45rem; font-size: 0.85rem; padding: 0 4px; margin: 2px; border: 1px solid #888888; border-radius: 4px; background-color: #fdfbf7; color: #000000; box-shadow: var(--shadow-card); transition: transform 0.1s ease; font-family: var(--font-standard); }
+                                                                                                               .game-card.clickable:hover { cursor: pointer; transform: translateY(-1px); box-shadow: 0 2px 5px rgba(0,0,0,0.2); }
+                    .game-card.action-sell { border: 2px solid var(--action-sell-edge) !important; background-color: #fef2f2 !important; box-shadow: 0 0 0 1px var(--action-sell-edge) !important; }
 
 
-                                                           tr.active-turn-focus { background-color: var(--bg-active-row) !important; animation: zeroJankPulse var(--pulse-scale-duration) infinite ease-in-out; }                                                                                                   tr.active-turn-focus th, tr.active-turn-focus td { box-shadow: inset 0 3px 0 var(--accent-action-color), inset 0 -3px 0 var(--accent-action-color) !important; }
-                                                                                                                                   tr.active-turn-focus th:first-child, tr.active-turn-focus td:first-child { box-shadow: inset 3px 3px 0 var(--accent-action-color), inset 0 -3px 0 var(--accent-action-color) !important; }
-                                                                                                                                   tr.active-turn-focus th:last-child, tr.active-turn-focus td:last-child { box-shadow: inset -3px 3px 0 var(--accent-action-color), inset 0 -3px 0 var(--accent-action-color) !important; }
-                                                                                          #{'                                         '}
-                                                                                                                                   @keyframes zeroJankPulse { 0% { opacity: 1; } 50% { opacity: var(--pulse-opacity-min); } 100% { opacity: 1; } }
+                                                                                                               .game-card.action-buy { border: 2px solid var(--action-buy-edge) !important; background-color: #e6f4ea !important; box-shadow: 0 0 0 1px var(--action-buy-edge) !important; }                                                  #{'                                         '}
+                                                                                                                                             .sell-restricted { text-decoration: line-through !important; opacity: 0.5 !important; cursor: not-allowed !important; }
+                                                                                                                                             .token-bond { display: inline-block; width: 12px; height: 12px; background-color: #b91c1c; border-radius: 2px; }
+                                                                                                                                             .align-top { vertical-align: top !important; }
 
-                                                                                                                                   tr.directed-by-active-player { background-color: rgba(37, 99, 235, 0.06) !important; }
-                                                                                                                                   tr.company-row-unfloated, tr.company-row-closed { opacity: var(--opacity-unopened-row) !important; filter: grayscale(40%) !important; }
 
-                                                                                                                                   .column-zone-market { background-color: var(--bg-market-zone) !important; }
-                                                                                                                                   .column-zone-corporate { background-color: var(--bg-corporate-zone) !important; }
-                                                                                                                                   th.column-zone-corporate { background-color: #e9d5ff !important; color: #4c1d95 !important; }
+                                                                     tr.active-turn-focus { background-color: var(--bg-active-row) !important; animation: zeroJankPulse var(--pulse-scale-duration) infinite ease-in-out; }                                                                                                   tr.active-turn-focus th, tr.active-turn-focus td { box-shadow: inset 0 3px 0 var(--accent-action-color), inset 0 -3px 0 var(--accent-action-color) !important; }
+                                                                                                                                             tr.active-turn-focus th:first-child, tr.active-turn-focus td:first-child { box-shadow: inset 3px 3px 0 var(--accent-action-color), inset 0 -3px 0 var(--accent-action-color) !important; }
+                                                                                                                                             tr.active-turn-focus th:last-child, tr.active-turn-focus td:last-child { box-shadow: inset -3px 3px 0 var(--accent-action-color), inset 0 -3px 0 var(--accent-action-color) !important; }
+                                                                                                    #{'                                         '}
+                                                                                                                                             @keyframes zeroJankPulse { 0% { opacity: 1; } 50% { opacity: var(--pulse-opacity-min); } 100% { opacity: 1; } }
+
+                                                                                                                                             tr.directed-by-active-player { background-color: rgba(37, 99, 235, 0.06) !important; }
+                                                                                                                                             tr.company-row-unfloated, tr.company-row-closed { opacity: var(--opacity-unopened-row) !important; filter: grayscale(40%) !important; }
+
+                                                                                                                                 .column-zone-market { background-color: var(--bg-market-zone) !important; }
+          .column-zone-corporate { background-color: var(--bg-corporate-zone) !important; }
+          tr.active-turn-focus td.column-zone-market, tr.active-turn-focus td.column-zone-corporate { background-color: var(--bg-active-row) !important; }
+                      th.column-zone-corporate { background-color: #e9d5ff !important; color: #4c1d95 !important; }
         CSS
 
         h(:div, [
@@ -268,8 +269,11 @@ module View
             Lib::Storage["cmd_buy_train_price_#{owner_key}_#{train.id}"] = active_entity.cash
             update
           else # Bank/Depot train at fixed value
-            source_selector = '#extra_cards'
-            target_selector = "#trains_#{active_entity.id}"
+            escaped_train_id = `CSS.escape('bank_train_' + #{train.id})`
+            escaped_dest_id = `CSS.escape('trains_' + #{active_entity.id})`
+            source_selector = "##{escaped_train_id} .game-card"
+            target_selector = "##{escaped_dest_id}"
+
             Lib::CardAnimation.fly(source_selector, target_selector) do
               process_action(Engine::Action::BuyTrain.new(
                 active_entity,
@@ -551,7 +555,7 @@ module View
 
         row_classes << 'company-row-unfloated' if should_grey_unfloated
         row_classes << 'active-turn-focus' if is_active_row
-        row_classes << 'directed-by-active-player' if is_directed
+        row_classes << 'directed-by-active-player' if is_directed && !is_active_row
         row_classes << 'last-minor-row' if is_last_minor
 
         tr_props[:attrs][:class] = row_classes.join(' ') unless row_classes.empty?
@@ -617,7 +621,8 @@ module View
           player_shares = p.respond_to?(:shares_of) ? p.shares_of(corporation) : []
           bundles = []
 
-          if step&.current_actions&.include?('sell_shares') && p == active_player
+          p_actions = @game.round.respond_to?(:actions_for) ? (@game.round.actions_for(p) || []) : (step&.current_actions || [])
+          if p_actions.include?('sell_shares') && p == active_player
             sorted_shares = player_shares.sort_by { |s| s.respond_to?(:president) && s.president ? 1 : 0 }
 
             (1..sorted_shares.size).each do |num|
@@ -1000,7 +1005,8 @@ module View
                 Lib::Storage[menu_storage_key] = nil
                 Lib::Storage[price_storage_key] = nil
 
-                source_selector = "#train_wrapper_#{corporation.id}_#{t.id} .game-card"
+                escaped_train_wrapper_id = `CSS.escape('train_wrapper_' + #{corporation.id} + '_' + #{t.id})`
+                source_selector = "##{escaped_train_wrapper_id} .game-card"
                 exec_buy_corporate_train(source_selector, active_entity, t, price_value)
               }
 
@@ -1085,7 +1091,8 @@ module View
             card_classes << 'clickable'
 
             train_click_handler = lambda {
-              source_selector = "#train_wrapper_#{corporation.id}_#{t.id} .game-card"
+              escaped_train_wrapper_id = `CSS.escape('train_wrapper_' + #{corporation.id} + '_' + #{t.id})`
+              source_selector = "##{escaped_train_wrapper_id} .game-card"
               target_selector = '#extra_cards'
               Lib::CardAnimation.fly(source_selector, target_selector) do
                 process_action(Engine::Action::DiscardTrain.new(
@@ -1655,7 +1662,8 @@ module View
       end
 
       def exec_buy_corporate_train(source_selector, active_entity, train, price_value)
-        Lib::CardAnimation.fly(source_selector, "#trains_#{active_entity.id}") do
+        escaped_dest_id = `CSS.escape('trains_' + #{active_entity.id})`
+        Lib::CardAnimation.fly(source_selector, "##{escaped_dest_id}") do
           process_action(Engine::Action::BuyTrain.new(
             active_entity,
             train: train,

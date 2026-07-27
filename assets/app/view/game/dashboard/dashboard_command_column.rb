@@ -5,6 +5,7 @@
 require 'view/game/actionable'
 require 'view/game/dashboard/results_overlay'
 require 'view/game/dashboard/dashboard_stock'
+require 'view/game/dashboard/dashboard_card_animation'
 
 module View
   module Game
@@ -370,7 +371,7 @@ module View
         end
 
         h(:div,
-          { style: { display: 'flex', flexDirection: 'row', justifyContent: 'center', flexWrap: 'wrap', padding: '0.2rem 0', margin: '0.2rem 0' } }, train_boxes)
+          { attrs: { id: "cmd_owned_trains_#{current_entity.id}" }, style: { display: 'flex', flexDirection: 'row', justifyContent: 'center', flexWrap: 'wrap', padding: '0.2rem 0', margin: '0.2rem 0' } }, train_boxes)
       end
 
       def render_company_tokens(current_entity)
@@ -515,8 +516,12 @@ module View
           max_price = if step.respond_to?(:max_price)
                         step.max_price(current_entity, c)
                       else
-                      (c.respond_to?(:max_price) ? c.max_price : (current_entity.respond_to?(:cash) ? current_entity.cash : 0))
-                    end
+                        (if c.respond_to?(:max_price)
+                           c.max_price
+                         else
+                           (current_entity.respond_to?(:cash) ? current_entity.cash : 0)
+                         end)
+                      end
 
           menu_storage_key = "cmd_buy_company_menu_#{c.id}"
           price_storage_key = "cmd_buy_company_price_#{c.id}"
@@ -655,7 +660,10 @@ module View
 
         active_p = current_entity&.player? ? current_entity : current_entity&.owner
 
-        train_boxes = trains.map do |t|
+        grouped_trains = trains.group_by { |t| [t.owner, t.name, t.price] }
+        train_boxes = grouped_trains.map do |_, grouped|
+          t = grouped.first
+          count = grouped.size
           owner_entity = t.owner
           next nil unless owner_entity
 
@@ -665,32 +673,53 @@ module View
           # Filter out trains that already belong to the active company
           next nil if current_entity && owner_entity == current_entity
 
+          # Check affordability for bank depot trains
+          if is_bank
+            can_afford = (current_entity.respond_to?(:cash) && current_entity.cash >= t.price) ||
+                         (current_entity.respond_to?(:trains) && current_entity.trains.empty?)
+            next nil unless can_afford
+          end
+
           # Only show corporate trains if they belong to a company with the same owner
           if is_corp
             owned_by_same_player = active_p && owner_entity.owner == active_p
             next nil unless owned_by_same_player
           end
 
+          can_afford = true
+          if is_bank && current_entity.respond_to?(:cash) && current_entity.respond_to?(:trains)
+            can_afford = current_entity.cash >= t.price || current_entity.trains.empty?
+          end
+
           is_adjustable_price = is_corp
-          train_border_color = '#00cc00'
+          train_border_color = can_afford ? '#16a34a' : '#888888'
 
           owner_key = owner_entity.respond_to?(:id) ? owner_entity.id : 'depot'
           menu_storage_key = "cmd_buy_train_menu_#{owner_key}_#{t.id}"
           price_storage_key = "cmd_buy_train_price_#{owner_key}_#{t.id}"
 
-          train_click_handler = lambda {
-            if is_adjustable_price
-              Lib::Storage[menu_storage_key] = true
-              Lib::Storage[price_storage_key] = current_entity.cash
-              update
-            else
-              process_action(Engine::Action::BuyTrain.new(
-                current_entity,
-                train: t,
-                price: t.price
-              ))
-            end
-          }
+          train_click_handler = nil
+          if can_afford
+            train_click_handler = lambda {
+              if is_adjustable_price
+                Lib::Storage[menu_storage_key] = true
+                Lib::Storage[price_storage_key] = current_entity.cash
+                update
+              else
+                source_id_str = is_bank ? "bank_train_#{t.id}" : "train_wrapper_#{owner_entity.id}_#{t.id}"
+                dest_id_str = "trains_#{current_entity.id}"
+                source_selector = "##{`CSS.escape(#{source_id_str})`} .game-card"
+                dest_selector = "##{`CSS.escape(#{dest_id_str})`}"
+                Lib::CardAnimation.fly(source_selector, dest_selector) do
+                  process_action(Engine::Action::BuyTrain.new(
+                    current_entity,
+                    train: t,
+                    price: t.price
+                  ))
+                end
+              end
+            }
+          end
 
           menu_dropdown = nil
           if is_adjustable_price && Lib::Storage[menu_storage_key]
@@ -702,11 +731,17 @@ module View
 
               Lib::Storage[menu_storage_key] = nil
               Lib::Storage[price_storage_key] = nil
-              process_action(Engine::Action::BuyTrain.new(
-                current_entity,
-                train: t,
-                price: price_value
-              ))
+              source_id_str = is_bank ? "bank_train_#{t.id}" : "train_wrapper_#{owner_entity.id}_#{t.id}"
+              dest_id_str = "trains_#{current_entity.id}"
+              source_selector = "##{`CSS.escape(#{source_id_str})`} .game-card"
+              dest_selector = "##{`CSS.escape(#{dest_id_str})`}"
+              Lib::CardAnimation.fly(source_selector, dest_selector) do
+                process_action(Engine::Action::BuyTrain.new(
+                  current_entity,
+                  train: t,
+                  price: price_value
+                ))
+              end
             }
 
             cancel_handler = lambda {
@@ -788,8 +823,9 @@ module View
             ])
           end
 
+          card_text = count > 1 ? "#{t.name} (x#{count})" : t.name
           card_element = h(:div,
-                           { attrs: { class: 'game-card clickable' }, style: { border: "2px solid #{train_border_color}" } }, t.name)
+                           { attrs: { id: "cmd_buy_train_#{t.id}", class: 'game-card clickable' }, style: { border: "2px solid #{train_border_color}" } }, card_text)
 
           source_name = is_bank ? 'Bank' : owner_entity.name
           info_string = is_adjustable_price ? "from #{source_name}" : "from #{source_name} (#{@game.format_currency(t.price)})"
@@ -892,8 +928,8 @@ module View
         return h(UpgradeOrDiscardTrains) if actions.include?('discard_train') && actions.include?('swap_train')
         return h(DiscardTrains) if actions.include?('discard_train')
 
-        if actions.include?('par') && step&.respond_to?(:corporation_pending_par) && step.corporation_pending_par
-            return h(CorporationPendingPar, corporation: step.corporation_pending_par)
+        if actions.include?('par') && step&.respond_to?(:corporation_pending_par) && step&.corporation_pending_par
+          return h(CorporationPendingPar, corporation: step.corporation_pending_par)
         end
 
         case @game.round
@@ -909,7 +945,7 @@ module View
           else
             components = []
 
-          convert_track = step&.respond_to?(:conversion?) && step.conversion?
+            convert_track = step&.respond_to?(:conversion?) && step&.conversion?
             loans_rendered = false
 
             components << h(SpecialBuy) if actions.include?('special_buy')
@@ -929,7 +965,7 @@ module View
               components << h(BuyPower)
             elsif actions.include?('borrow_train')
               components << h(BorrowTrain)
-           elsif step&.respond_to?(:cash_crisis?) && step.cash_crisis?
+            elsif step&.respond_to?(:cash_crisis?) && step&.cash_crisis?
               components << h(CashCrisis)
               loans_rendered = true if (%w[take_loan payoff_loan] & actions).any?
             elsif actions.include?('buy_shares') || actions.include?('sell_shares') || actions.include?('par')
@@ -961,10 +997,10 @@ module View
 
               # Protect against out-of-context rendering by checking step status flags
               show_bankrupt = false
-              if step&.respond_to?(:must_buy_train?) && step.must_buy_train?(entity)
+              if step&.respond_to?(:must_buy_train?) && step&.must_buy_train?(entity)
                 # Operating Round emergency train buy trigger context
                 show_bankrupt = @game.respond_to?(:can_go_bankrupt?) ? @game.can_go_bankrupt?(player, entity) : true
-              elsif @game.round.respond_to?(:stock?) && @game.round.stock? && step&.respond_to?(:must_sell?) && step.must_sell?(player)
+              elsif @game.round.respond_to?(:stock?) && @game.round.stock? && step&.respond_to?(:must_sell?) && step&.must_sell?(player)
                 # Stock Round emergency cert dump context
                 show_bankrupt = true
               end
@@ -1040,8 +1076,6 @@ module View
           end
         end
       end
-
-
     end
   end
 end

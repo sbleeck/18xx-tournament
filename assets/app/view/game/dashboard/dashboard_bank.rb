@@ -163,21 +163,29 @@ module View
         click_handler = nil
 
         if train_buyable_step && active_entity&.corporation?
-          card_classes << 'action-buy'
-          card_classes << 'clickable'
-          click_handler = lambda {
-            process_action(Engine::Action::BuyTrain.new(
-              active_entity,
-              train: next_train,
-              price: next_train.price
-            ))
-          }
+          can_afford = active_entity.cash >= next_train.price || active_entity.trains.empty?
+
+          if can_afford
+            card_classes << 'action-buy'
+            card_classes << 'clickable'
+            click_handler = lambda {
+              if @train_handler
+                @train_handler.call(next_train)
+              else
+                process_action(Engine::Action::BuyTrain.new(
+                  active_entity,
+                  train: next_train,
+                  price: next_train.price
+                ))
+              end
+            }
+          end
         end
 
         card_props = { attrs: { class: card_classes.join(' ') } }
         card_props[:on] = { click: click_handler } if click_handler
 
-        train_card = h(:div, { style: { display: 'inline-block', margin: '2px', textAlign: 'center', verticalAlign: 'top' } }, [
+        train_card = h(:div, { attrs: { id: "bank_train_#{next_train.id}" }, style: { display: 'inline-block', margin: '2px', textAlign: 'center', verticalAlign: 'top' } }, [
           h(:div, card_props, next_train.name),
           h(:div,
             { style: { fontFamily: FONT_CASH, color: COLOR_CASH, fontSize: '0.75rem', fontWeight: 'bold', marginTop: '2px' } }, @game.format_currency(next_train.price)),
@@ -238,15 +246,23 @@ module View
           click_handler = nil
 
           if train_buyable_step && active_entity && active_entity.corporation?
-            card_classes << 'action-buy'
-            card_classes << 'clickable'
-            click_handler = lambda {
-              process_action(Engine::Action::BuyTrain.new(
-                active_entity,
-                train: train,
-                price: train.price
-              ))
-            }
+            can_afford = active_entity.cash >= train.price || active_entity.trains.empty?
+
+            if can_afford
+              card_classes << 'action-buy'
+              card_classes << 'clickable'
+              click_handler = lambda {
+                if @train_handler
+                  @train_handler.call(train)
+                else
+                  process_action(Engine::Action::BuyTrain.new(
+                    active_entity,
+                    train: train,
+                    price: train.price
+                  ))
+                end
+              }
+            end
           end
 
           card_props = { attrs: { class: card_classes.join(' ') } }
@@ -264,14 +280,14 @@ module View
           end
 
           h(:tr, { style: { borderBottom: '1px solid #cccccc' } }, [
-h('td.center', { style: { padding: '0.4rem 0.6rem', verticalAlign: 'middle' } }, [
+            h('td.center', { attrs: { id: "bank_train_#{train.id}" }, style: { padding: '0.4rem 0.6rem', verticalAlign: 'middle' } }, [
               h(:div, card_props, train.name),
             ]),
-h('td.right', { style: { fontFamily: FONT_CASH, color: COLOR_CASH, padding: '0.4rem 0.6rem', fontWeight: 'bold' } },
-  price),
-h('td.center', { style: { fontFamily: FONT_STD, padding: '0.4rem 0.6rem', verticalAlign: 'middle' } }, count_text),
-h('td.left', { style: { fontFamily: FONT_STD, padding: '0.4rem 0.6rem', fontSize: '0.8rem', color: '#444444', verticalAlign: 'middle' } },
-  effects.join(' | ')),
+            h('td.right', { style: { fontFamily: FONT_CASH, color: COLOR_CASH, padding: '0.4rem 0.6rem', fontWeight: 'bold' } },
+              price),
+            h('td.center', { style: { fontFamily: FONT_STD, padding: '0.4rem 0.6rem', verticalAlign: 'middle' } }, count_text),
+            h('td.left', { style: { fontFamily: FONT_STD, padding: '0.4rem 0.6rem', fontSize: '0.8rem', color: '#444444', verticalAlign: 'middle' } },
+              effects.join(' | ')),
           ])
         end
 
