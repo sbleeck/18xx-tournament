@@ -2,6 +2,14 @@
 
 # rubocop:disable Layout/LineLength
 
+module Engine
+  class Minor
+    def par_via_exchange
+      nil
+    end
+  end
+end
+
 require 'lib/settings'
 require 'lib/storage'
 require 'view/link'
@@ -880,7 +888,7 @@ module View
         ipo_click_handler = nil
         valid_ipo_shares = []
 
-        can_par = active_player && @game.respond_to?(:can_par?) && @game.can_par?(corporation, active_player)
+        can_par = active_player && corporation.corporation? && @game.respond_to?(:can_par?) && @game.can_par?(corporation, active_player)
         par_prices = []
         if can_par
           par_prices = if step.respond_to?(:get_par_prices_with_help)

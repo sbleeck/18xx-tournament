@@ -161,40 +161,40 @@ module View
 
             upper_content << h(:div, { style: { backgroundColor: bg_color, color: text_color, padding: '0.4rem', textAlign: 'center', fontWeight: 'bold', borderRadius: '4px', border: '1px solid #999', marginBottom: '0.4rem', fontSize: '0.85rem' } }, entity_label)
 
-            # 3. CONDITIONAL ASSET PANEL (SUPPRESSED FOR STOCK ROUNDS)
-            unless @game.round.stock? || (@game.round.respond_to?(:stock?) && @game.round.stock?)
-              if @game.round.operating?
+          #   # 3. CONDITIONAL ASSET PANEL (SUPPRESSED FOR STOCK ROUNDS)
+          #   unless @game.round.stock? || (@game.round.respond_to?(:stock?) && @game.round.stock?)
+          #     if @game.round.operating?
 
-                mauve_box_children = [
-                   h(:div, { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #b886b8', paddingBottom: '0.2rem' } }, [
-                     h(:div, { style: { fontSize: '0.8rem', fontWeight: 'bold' } }, 'Cash'),
-                     h(:div, { style: { fontSize: '1.2rem', fontWeight: 'bold', fontFamily: '"Courier New", Courier, monospace', color: '#4c1d95' } }, @game.format_currency(treasury)),
-                   ]),
-                   h(:div, { style: { textAlign: 'center' } }, [
-                     render_owned_trains(current_entity, phase),
-                   ]),
-                   h(:div, { style: { textAlign: 'center' } }, [
-                     render_company_tokens(current_entity),
-                   ]),
-                ]
+          #       mauve_box_children = [
+          #          h(:div, { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #b886b8', paddingBottom: '0.2rem' } }, [
+          #            h(:div, { style: { fontSize: '0.8rem', fontWeight: 'bold' } }, 'Cash'),
+          #            h(:div, { style: { fontSize: '1.2rem', fontWeight: 'bold', fontFamily: '"Courier New", Courier, monospace', color: '#4c1d95' } }, @game.format_currency(treasury)),
+          #          ]),
+          #          h(:div, { style: { textAlign: 'center' } }, [
+          #            render_owned_trains(current_entity, phase),
+          #          ]),
+          #          h(:div, { style: { textAlign: 'center' } }, [
+          #            render_company_tokens(current_entity),
+          #          ]),
+          #       ]
 
-                if @game.respond_to?(:total_loans) && @game.total_loans&.nonzero?
-                  mauve_box_children << h(:div, { style: { textAlign: 'center' } }, [
-                    render_loan_dots(current_entity),
-                  ])
-                end
+          #       if @game.respond_to?(:total_loans) && @game.total_loans&.nonzero?
+          #         mauve_box_children << h(:div, { style: { textAlign: 'center' } }, [
+          #           render_loan_dots(current_entity),
+          #         ])
+          #       end
 
-                upper_content << h(:div, { style: { border: '1px solid #999', padding: '0.4rem', marginBottom: '0.4rem', backgroundColor: '#f3e8ff', borderRadius: '4px', display: 'flex', flexDirection: 'column', gap: '0.4rem', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' } }, mauve_box_children)
-              else
-                # Compact display for Non-Operating, Non-Stock phases (e.g., Mergers, Auctions)
-                upper_content << h(:div, { style: { border: '1px solid #ccc', padding: '0.4rem', marginBottom: '0.4rem', backgroundColor: '#f8f9fa', borderRadius: '4px', textAlign: 'center' } }, [
-                h(:div, { style: { fontSize: '0.8rem', fontWeight: 'bold' } }, [
-                    h(:span, 'Treasury Cash: '),
-                    h(:span, { style: { fontFamily: '"Courier New", Courier, monospace', color: '#4c1d95' } }, @game.format_currency(treasury)),
-                  ]),
-                 ])
-              end
-            end
+          #       upper_content << h(:div, { style: { border: '1px solid #999', padding: '0.4rem', marginBottom: '0.4rem', backgroundColor: '#f3e8ff', borderRadius: '4px', display: 'flex', flexDirection: 'column', gap: '0.4rem', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' } }, mauve_box_children)
+          #     else
+          #       # Compact display for Non-Operating, Non-Stock phases (e.g., Mergers, Auctions)
+          #       upper_content << h(:div, { style: { border: '1px solid #ccc', padding: '0.4rem', marginBottom: '0.4rem', backgroundColor: '#f8f9fa', borderRadius: '4px', textAlign: 'center' } }, [
+          #       h(:div, { style: { fontSize: '0.8rem', fontWeight: 'bold' } }, [
+          #           h(:span, 'Treasury Cash: '),
+          #           h(:span, { style: { fontFamily: '"Courier New", Courier, monospace', color: '#4c1d95' } }, @game.format_currency(treasury)),
+          #         ]),
+          #        ])
+          #     end
+          #   end
           end
 
           # 4. PHASE 1-4 COMPACT ACTIONS (EXCLUSIVELY FOR OPERATING ROUNDS)

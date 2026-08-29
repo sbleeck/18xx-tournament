@@ -77,11 +77,10 @@ module View
       SIDE_TO_SIDE = 87
       FONT_SIZE = 25
       GAP = 25
-      SCALE = 0.5
 
       def compute_axes(hexes)
         min, max = hexes.minmax
-        ((min.next)..(max.next)).to_a
+        (min..max).to_a
       end
 
       def render
@@ -93,10 +92,11 @@ module View
         @cols = compute_axes(axes_hexes.map(&:x))
         @rows = compute_axes(axes_hexes.map(&:y))
 
-        @start_pos = [@cols.first, @rows.first]
-        @scale = SCALE * map_zoom
+       @start_pos = [@cols.first, @rows.first]
+        @scale = 1.0 # Force native 1:1 pixel rendering; JS scaler handles window fit
 
         step = @game.round.active_step(@selected_company)
+
         current_entity = @selected_company || step&.current_entity
         combo_entities = (@selected_combos || []).map { |id| @game.company_by_id(id) }
         entity_or_entities = combo_entities.empty? ? current_entity : [current_entity, *combo_entities]
@@ -191,102 +191,99 @@ module View
         end
         @hexes.compact!
 
-        children = [render_map]
+       map_w, map_h = map_size
+          children = [render_map(map_w, map_h)]
 
         if current_entity && @tile_selector
           left = (@tile_selector.x + map_x) * @scale
           top = (@tile_selector.y + map_y) * @scale
-          selector =
-            if @tile_selector.is_a?(Lib::TokenSelector)
-              h(TokenSelector, zoom: map_zoom)
-            elsif @tile_selector.role != :map
-            elsif @tile_selector.hex.tile != @tile_selector.tile
-              h(TileConfirmation, zoom: map_zoom)
-            else
-              tiles = step.upgradeable_tiles(entity_or_entities, @tile_selector.hex)
-              all_upgrades = @game.all_potential_upgrades(@tile_selector.hex.tile, selected_company: @selected_company)
-              phase_colors = step.potential_tile_colors(current_entity, @tile_selector.hex)
-              select_tiles = all_upgrades.map do |tile|
-                real_tile = tiles.find { |t| t.name == tile.name }
-                if real_tile
-                  tiles.delete(real_tile)
-                  [real_tile, nil]
-                elsif !@game.tile_valid_for_phase?(tile, hex: @tile_selector.hex, phase_color_cache: phase_colors)
-                  [tile, 'Later Phase']
-                elsif @game.tiles.none? { |t| t.name == tile.name }
-                  [tile, 'None Left']
-                end
-              end.compact
-
-              select_tiles.append(*tiles.map { |t| [t, nil] })
-
-              if select_tiles.empty?
-                h(:div)
+            selector =
+              if @tile_selector.is_a?(Lib::TokenSelector)
+                h(TokenSelector, zoom: 1.0)
+              elsif @tile_selector.role != :map
+              elsif @tile_selector.hex.tile != @tile_selector.tile
+                h(TileConfirmation, zoom: 1.0)
               else
-                distance = TileSelector::DISTANCE * map_zoom
-                width, height = map_size
-                ts_ds = [TileSelector::DROP_SHADOW_SIZE - 5, 0].max
-                left_col = left < distance
-                right_col = width - left < distance + ts_ds
-                top_row = top < distance
-                bottom_row = height - top < distance + ts_ds
+                tiles = step.upgradeable_tiles(entity_or_entities, @tile_selector.hex)
+                all_upgrades = @game.all_potential_upgrades(@tile_selector.hex.tile, selected_company: @selected_company)
+                phase_colors = step.potential_tile_colors(current_entity, @tile_selector.hex)
+                select_tiles = all_upgrades.map do |tile|
+                  real_tile = tiles.find { |t| t.name == tile.name }
+                  if real_tile
+                    tiles.delete(real_tile)
+                    [real_tile, nil]
+                  elsif !@game.tile_valid_for_phase?(tile, hex: @tile_selector.hex, phase_color_cache: phase_colors)
+                    [tile, 'Later Phase']
+                  elsif @game.tiles.none? { |t| t.name == tile.name }
+                    [tile, 'None Left']
+                  end
+                end.compact
 
-                h(TileSelector, layout: @layout, tiles: select_tiles, actions: actions, zoom: map_zoom,
-                                top_row: top_row, left_col: left_col, right_col: right_col, bottom_row: bottom_row)
+                select_tiles.append(*tiles.map { |t| [t, nil] })
+
+                if select_tiles.empty?
+                  h(:div)
+                else
+                  distance = TileSelector::DISTANCE * 1.0
+                  width, height = [map_w, map_h]
+                  ts_ds = [TileSelector::DROP_SHADOW_SIZE - 5, 0].max
+                  left_col = left < distance
+                  right_col = width - left < distance + ts_ds
+                  top_row = top < distance
+                  bottom_row = height - top < distance + ts_ds
+
+                  h(TileSelector, layout: @layout, tiles: select_tiles, actions: actions, zoom: 1.0,
+                                  top_row: top_row, left_col: left_col, right_col: right_col, bottom_row: bottom_row)
+                end
               end
-            end
 
-          props = {
+            props = {
+              style: {
+                position: 'absolute',
+                left: "#{left}px",
+                top: "#{top}px",
+              },
+            }
+            children.unshift(h(:div, props, [selector]))
+          end
+props = {
             style: {
-              position: 'absolute',
-              left: "#{left}px",
-              top: "#{top}px",
+              width: 'max-content',
+              height: 'max-content',
+              margin: '0',
+              position: 'relative',
             },
           }
-          children.unshift(h(:div, props, [selector]))
+
+          h(:div, props, children)
         end
 
-        props = {
-          style: {
-            overflow: 'hidden',
-            margin: '0',
-            position: 'relative',
-          },
-        }
-
-        h(:div, { style: { width: '100%', height: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center' } }, [
-          h(:div, props, children),
-        ])
-      end
-
-      def map_x
-        GAP + FONT_SIZE
-      end
-
-      def map_y
-        GAP + (@layout == :flat ? (FONT_SIZE / 2) : FONT_SIZE)
-      end
-
-      def map_size
-        if @layout == :flat
-          [((((@cols.size * 1.5) + 0.5) * EDGE_LENGTH) + (2 * GAP)) * map_zoom,
-           ((((@rows.size / 2) + 0.5) * SIDE_TO_SIDE) + (2 * GAP)) * map_zoom]
-        else
-          [(((((@cols.size / 2) + 0.5) * SIDE_TO_SIDE) + (2 * GAP)) + 1) * map_zoom,
-           ((((@rows.size * 1.5) + 0.5) * EDGE_LENGTH) + (2 * GAP)) * map_zoom]
+        def map_x
+          GAP + FONT_SIZE
         end
-      end
 
-      def render_map
-        width, height = map_size
+        def map_y
+          GAP + (@layout == :flat ? (FONT_SIZE / 2) : FONT_SIZE)
+        end
 
-        props = {
-          attrs: {
-            id: 'map',
-            width: width.to_s,
-            height: height.to_s,
-          },
-        }
+        def map_size
+          if @layout == :flat
+            [((((@cols.size * 1.5) + 0.5) * EDGE_LENGTH) + (2 * GAP)) * @scale,
+             ((((@rows.size / 2.0) + 0.5) * SIDE_TO_SIDE) + (2 * GAP)) * @scale]
+          else
+            [(((((@cols.size / 2.0) + 0.5) * SIDE_TO_SIDE) + (2 * GAP)) + 1) * @scale,
+             ((((@rows.size * 1.5) + 0.5) * EDGE_LENGTH) + (2 * GAP)) * @scale]
+          end
+        end
+
+        def render_map(width, height)
+          props = {
+            attrs: {
+              id: 'map',
+              width: width.to_s,
+              height: height.to_s,
+            }
+          }
 
         h(:svg, props, [
           h(:g, { attrs: { transform: "scale(#{@scale})" } }, [

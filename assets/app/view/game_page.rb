@@ -142,7 +142,7 @@ module View
           h(Game::DashboardVisualizer, game: @game, game_data: @game_data, user: @user)
         end
       LOGGER.debug do
-        "Done rendering game view: #{Time.now - @_logger[:render]} seconds"
+        # "Done rendering game view: #{Time.now - @_logger[:render]} seconds"
       end
 
       @connection = nil if @game_data[:mode] == :hotseat || cursor

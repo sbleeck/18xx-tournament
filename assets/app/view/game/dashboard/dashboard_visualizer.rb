@@ -13,14 +13,10 @@ module View
       needs :game_data, store: true
       needs :tile_selector, default: nil
       needs :routes, store: true, default: []
-      needs :tick_trigger, store: true, default: 0
       needs :user, default: nil
       include Actionable
 
-      def tick_clock
-        store(:tick_trigger, Time.now.to_i)
-        update! if respond_to?(:update!)
-      end
+
 
       def active_entity
         @game.round.active_step&.current_entity
@@ -153,55 +149,92 @@ module View
                           }
 
 
-var fitObserver = new ResizeObserver(function(entries) {
-                            var dynStyle = document.getElementById('dynamic-scaler-styles');
-                            if (!dynStyle) {
-                              dynStyle = document.createElement('style');
-                              dynStyle.id = 'dynamic-scaler-styles';
-                              document.head.appendChild(dynStyle);
-                            }
-                            window.scalerScales = window.scalerScales || {};
+                          var fitObserver = new ResizeObserver(function(entries) {
+                          var dynStyle = document.getElementById('dynamic-scaler-styles');
+                          if (!dynStyle) {
+                            dynStyle = document.createElement('style');
+                            dynStyle.id = 'dynamic-scaler-styles';
+                            document.head.appendChild(dynStyle);
+                          }
+                          window.scalerScales = window.scalerScales || {};
 
-                            for (var i = 0; i < entries.length; i++) {
-                              var panel = entries[i].target;
-                              if (!panel.id) continue;
-                              var wrapper = panel.querySelector('.scaler-content');
-                              if (!wrapper) continue;
+                          for (var i = 0; i < entries.length; i++) {
+                            var panel = entries[i].target;
+                            if (!panel.id) continue;
+                            var wrapper = panel.querySelector('.scaler-content');
+                            if (!wrapper) continue;
 
+                          var cw = wrapper.scrollWidth;
+                            var ch = wrapper.scrollHeight;
 
-                              var cw = wrapper.scrollWidth;
-                              var ch = wrapper.scrollHeight;
-
-                              // For panel-3-bot, inspect inner grid/table child directly for unscaled bounds
-                              if (panel.id === 'panel-3-bot') {
-                                var innerChild = wrapper.firstElementChild;
-                                if (innerChild) {
-                                  cw = Math.max(cw, innerChild.scrollWidth || 0, innerChild.offsetWidth || 0);
-                                  ch = Math.max(ch, innerChild.scrollHeight || 0, innerChild.offsetHeight || 0);
-                                }
-                                // Add explicit padding to unscaled height so bottom rows never touch frame borders
-                                ch += 80;
+                            // Target the map directly to calculate true unclipped dimensions
+                            if (panel.id === 'panel-2-bot') {
+                              var svg = wrapper.querySelector('svg');
+                              var topG = svg ? svg.querySelector('g') : null; // Captures all hexes, axes, and text
+                              
+                              if (svg && topG) {
+                                // 1. Interrogate the exact physical bounds of all drawn art
+                                var bbox = topG.getBBox();
+                                
+                                // 2. Compute the exact bottom-right boundary pixel with a 50px safety margin
+                                var requiredWidth = bbox.x + bbox.width + 50;
+                                var requiredHeight = bbox.y + bbox.height + 50;
+                                
+                                // 3. Force the SVG and its CSS strictly to the true dimensions
+                                svg.setAttribute('width', requiredWidth);
+                                svg.setAttribute('height', requiredHeight);
+                                svg.style.width = requiredWidth + 'px';
+                                svg.style.height = requiredHeight + 'px';
+                                
+                                wrapper.style.width = requiredWidth + 'px';
+                                wrapper.style.height = requiredHeight + 'px';
+                                
+                                // 4. Feed the perfect bounds into the scaler
+                                cw = requiredWidth;
+                                ch = requiredHeight;
                               }
+                            }
 
-                              var pw = entries[i].contentRect.width - 16;
-                              var ph = entries[i].contentRect.height - 16;
+                            // For panel-3-bot, inspect inner grid/table child directly for unscaled bounds
+                            if (panel.id === 'panel-3-bot') {
+                              var innerChild = wrapper.firstElementChild;
+                              if (innerChild) {
+                                cw = Math.max(cw, innerChild.scrollWidth || 0, innerChild.offsetWidth || 0);
+                                ch = Math.max(ch, innerChild.scrollHeight || 0, innerChild.offsetHeight || 0);
+                              }
+                              // Add explicit padding to unscaled height so bottom rows never touch frame borders
+                              ch += 80;
+                            }
 
-                              if (cw > 0 && ch > 0) {
-                                window.scalerScales[panel.id] = Math.min(pw / cw, ph / ch);
+                            var pw = entries[i].contentRect.width - 16;
+                            var ph = entries[i].contentRect.height - 16;
+
+                            if (cw > 0 && ch > 0) {
+                              var computedScale = Math.min(pw / cw, ph / ch);
+                              window.scalerScales[panel.id] = computedScale;
+
+                              if (panel.id === 'panel-2-bot') {
+                                console.log("=== Map Resizing Diagnostics ===");
+                                console.log("Canvas Size (Available Window Space): " + pw.toFixed(2) + " x " + ph.toFixed(2));
+                                console.log("Map Size ('Wants to be' / Unscaled): " + cw.toFixed(2) + " x " + ch.toFixed(2));
+                                console.log("Applied Scale Factor: " + computedScale.toFixed(4));
+                                console.log("Resulting Scaled Map Size: " + (cw * computedScale).toFixed(2) + " x " + (ch * computedScale).toFixed(2));
+                                console.log("================================");
                               }
                             }
+                          }
 
-                            var css = '';
-                            for (var id in window.scalerScales) {
-                              css += '#' + id + ' .scaler-content { transform: scale(' + window.scalerScales[id] + ') !important; transform-origin: top left !important; }\n';
-                            }
-                            dynStyle.innerHTML = css;
-                          });
+                          var css = '';
+                          for (var id in window.scalerScales) {
+                            css += '#' + id + ' .scaler-content { transform: scale(' + window.scalerScales[id] + ') !important; transform-origin: top left !important; }\n';
+                          }
+                          dynStyle.innerHTML = css;
+                        });
 
 
 
 
-              ['col-1', 'panel-2-bot', 'panel-3-top', 'panel-3-bot'].forEach(function(id) {
+                        ['col-1', 'panel-2-bot', 'panel-3-top', 'panel-3-bot'].forEach(function(id) {
                             var el = document.getElementById(id);
                             if (el) fitObserver.observe(el);
                           });
@@ -209,10 +242,6 @@ var fitObserver = new ResizeObserver(function(entries) {
                         setTimeout(window.init18xxResizers, 200);)
                       },
               destroy: lambda {
-                         `clearInterval(#{@clock_ticker})`
-                         `document.body.style.overflow = ''`
-                         `document.body.style.margin = ''`
-                         `document.body.style.padding = ''`
                          `document.body.style.backgroundColor = ''`
                          `document.getElementById('app') && Object.assign(document.getElementById('app').style, { overflow: '', padding: '', margin: '', maxWidth: '', width: '', height: '', backgroundColor: '' })`
                          `document.getElementById('game') && Object.assign(document.getElementById('game').style, { overflow: '', width: '', height: '', maxWidth: '', maxHeight: '' })`
@@ -247,13 +276,16 @@ var fitObserver = new ResizeObserver(function(entries) {
           h(:div, { attrs: { id: 'resizer-h-2' }, style: { flex: '0 0 0.5rem', cursor: 'row-resize', zIndex: 10 } }),
 
           # Map Panel Box
-          h(:div, { attrs: { id: 'panel-2-bot' }, style: { flex: '1 1 auto', border: '1px solid #ccc', borderRadius: '4px', backgroundColor: '#fff', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', overflow: 'hidden' } }, [
+    h(:div, { attrs: { id: 'panel-2-bot' }, style: { flex: '1 1 auto', border: '1px solid #ccc', borderRadius: '4px', backgroundColor: '#fff', overflow: 'hidden', position: 'relative' } }, [
                                       h(:div, {
                                           attrs: { class: 'scaler-content' },
                                           style: {
-                                            display: 'flex',
-                                            justifyContent: 'center',
-                                            alignItems: 'center',
+                                            position: 'absolute',
+                                            top: '0',
+                                            left: '0',
+                                            width: 'max-content',
+                                            height: 'max-content',
+                                            transformOrigin: 'top left',
                                           },
                                         }, [
             h(View::Game::DashboardMap, game: @game, user: @user),
