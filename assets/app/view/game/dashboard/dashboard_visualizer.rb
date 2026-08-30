@@ -2,15 +2,13 @@
 
 # rubocop:disable Layout/LineLength
 
-
-
-# # how to restart docker
-# (base) bleeck@HF36F99QXN 18xx-tournament % /usr/local/bin/docker compose -f docker-compose.yml -f docker-compose.dev.yml run --rm rack bundle exec rake compile
-# /usr/local/bin/docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
-
 require 'view/game/actionable'
 require 'view/game/dashboard/dashboard_command_column'
 require 'view/game/dashboard/dashboard_map'
+require 'view/game/dashboard/dashboard_entity_order'
+require 'view/game/dashboard/dashboard_game_status'
+require 'view/game/dashboard/dashboard_stock_market'
+require 'view/game/history_and_undo'
 
 module View
   module Game
@@ -21,8 +19,6 @@ module View
       needs :routes, store: true, default: []
       needs :user, default: nil
       include Actionable
-
-
 
       def active_entity
         @game.round.active_step&.current_entity
@@ -48,37 +44,38 @@ module View
           return h(:div, {
                      style: { display: 'flex', flexDirection: 'row', width: '100vw', height: '100vh', padding: '0.5rem', boxSizing: 'border-box', backgroundColor: '#ffffff', gap: '0.75rem' },
                    }, [
-            # Column 1: Static Game Ended Command Column
-            h(:div, { style: { width: '10%', height: '100%', border: '1px solid #ccc', borderRadius: '4px', backgroundColor: '#e2e3e5', display: 'flex', alignItems: 'center', justifyContent: 'center' } }, [
-              h(:h2, { style: { color: '#dc3545', margin: '0', textAlign: 'center', fontFamily: '"Helvetica Neue", Helvetica, Arial, sans-serif' } }, 'Game Ended'),
-            ]),
-
-            # Column 2: Map
-            h(:div, { style: { width: '41%', height: '100%', display: 'flex', flexDirection: 'column', gap: '0.5rem', overflow: 'hidden' } }, [
+            h(:div, { style: { width: '55%', height: '100%', display: 'flex', flexDirection: 'column', gap: '0.5rem', overflow: 'hidden' } }, [
               h(:div, { style: { flex: '1 1 auto', border: '1px solid #ccc', borderRadius: '4px', display: 'flex', justifyContent: 'center', alignItems: 'center', overflow: 'hidden' } }, [
-              h(:div, { attrs: { class: 'scaler-content' }, style: { display: 'flex', justifyContent: 'center', alignItems: 'center' } }, [
-              h(View::Game::DashboardMap, game: @game, user: @user, minimal: true),
+                h(:div, { attrs: { class: 'scaler-content' }, style: { display: 'flex', justifyContent: 'center', alignItems: 'center' } }, [
+                  h(View::Game::DashboardMap, game: @game, user: @user, minimal: true),
                 ]),
               ]),
             ]),
-
-            # Column 3: Final Status and Stock Market
-            h(:div, { style: { width: '49%', display: 'flex', flexDirection: 'column', height: '100%', gap: '0.5rem' } }, [
+            h(:div, { style: { width: '45%', display: 'flex', flexDirection: 'column', height: '100%', gap: '0.5rem' } }, [
               h(:div, { style: { flex: '1 1 62%', border: '1px solid #ccc', padding: '2rem', borderRadius: '4px', textAlign: 'center', fontFamily: '"Helvetica Neue", Helvetica, Arial, sans-serif' } }, [
                 h(:h3, 'Final Match State'),
                 h(:p, 'The 1846 game has concluded. Active turn components and ledgers are disabled.'),
               ]),
               h(:div, { style: { flex: '1 1 30%', minHeight: '0', border: '1px solid #ccc', padding: '0.5rem', borderRadius: '4px', display: 'flex', justifyContent: 'center', alignItems: 'flex-start', overflow: 'hidden' } }, [
-                        h(:div, { attrs: { class: 'scaler-content' }, style: { width: 'max-content', height: 'max-content', minWidth: '100%', display: 'flex', justifyContent: 'center', alignItems: 'flex-start', transformOrigin: 'center top' } }, [
-                                              h(View::Game::DashboardStockMarket, game: @game),
-                              ]),
-                            ]),
+                h(:div, { attrs: { class: 'scaler-content' }, style: { width: 'max-content', height: 'max-content', minWidth: '100%', display: 'flex', justifyContent: 'center', alignItems: 'flex-start', transformOrigin: 'center top' } }, [
+                  h(View::Game::DashboardStockMarket, game: @game),
+                ]),
+              ]),
             ]),
           ])
         end
 
-        # Capture the Snabberb component instance to survive the JS boundary
-        comp = self
+        last_action = @game.respond_to?(:raw_actions) && @game.raw_actions ? @game.raw_actions.last : nil
+        last_action_id = if last_action.is_a?(Hash)
+                           last_action['id'] || last_action[:id] || 0
+                         elsif last_action.respond_to?(:id)
+                           last_action.id
+                         elsif @game_data && @game_data['actions']
+                           @game_data['actions'].last&.fetch('id', 0) || 0
+                         else
+                           0
+                         end
+
         h(:div, {
             hook: {
               insert: lambda {
@@ -88,7 +85,6 @@ module View
                         `document.body.style.backgroundColor = '#ffffff'`
                         `document.getElementById('app') && Object.assign(document.getElementById('app').style, { overflow: 'hidden', padding: '0', margin: '0', maxWidth: '100vw', width: '100vw', height: '100vh', backgroundColor: '#ffffff' })`
                         `document.getElementById('game') && Object.assign(document.getElementById('game').style, { overflow: 'hidden', width: '100vw', height: '100vh', maxWidth: '100vw', maxHeight: '100vh' })`
-
 
                         %x(window.init18xxResizers = function() {
                           var createResizer = function(resizerId, prevId, nextId, isVertical) {
@@ -112,22 +108,14 @@ module View
                               var totalFlex = prevFlex + nextFlex;
                               var newPrevFlex = Math.max(0, prevFlex + delta);
                               var newNextFlex = Math.max(0, totalFlex - newPrevFlex);
+                              
                               prev.style.flex = '0 0 ' + newPrevFlex + 'px';
-
-                              if (isVertical && nextId === 'panel-3-bot') {
-                                next.style.flex = '1 1 auto';
-                              } else if (!isVertical && nextId === 'col-3') {
-                                next.style.flex = '1 1 auto';
-                              } else {
-                                next.style.flex = '0 0 ' + newNextFlex + 'px';
-                              }
-
+                              next.style.flex = '1 1 auto';
+                              
                               if (!isVertical) {
                                 prev.style.height = '100%';
                                 next.style.height = '100%';
                               }
-
-
                             };
                             var mouseUpHandler = function() {
                               document.removeEventListener('mousemove', mouseMoveHandler);
@@ -136,13 +124,12 @@ module View
                             };
                             resizer.addEventListener('mousedown', mouseDownHandler);
                           };
-                          createResizer('resizer-v-1', 'col-2', 'col-1', false);
-                          createResizer('resizer-v-2', 'col-1', 'col-3', false);
-                          createResizer('resizer-h-3-1', 'panel-3-top', 'panel-3-bot', true);
-                          createResizer('resizer-h-3-2', 'panel-3-top', 'panel-3-bot', true);
+                          
+                          createResizer('resizer-v-main', 'col-left', 'col-right', false);
+                          createResizer('resizer-h-cmd-map', 'command-space-top', 'map-panel-bot', true);
+                          createResizer('resizer-h-ledger-market', 'panel-ledger', 'panel-market', true);
 
-
-                        var styleTag = document.getElementById('dashboard-map-svg-styles');
+                          var styleTag = document.getElementById('dashboard-map-svg-styles');
                           if (!styleTag) {
                             styleTag = document.createElement('style');
                             styleTag.id = 'dashboard-map-svg-styles';
@@ -152,93 +139,86 @@ module View
                             document.head.appendChild(styleTag);
                           }
 
-
                           var fitObserver = new ResizeObserver(function(entries) {
-                          var dynStyle = document.getElementById('dynamic-scaler-styles');
-                          if (!dynStyle) {
-                            dynStyle = document.createElement('style');
-                            dynStyle.id = 'dynamic-scaler-styles';
-                            document.head.appendChild(dynStyle);
-                          }
-                          window.scalerScales = window.scalerScales || {};
+                            var dynStyle = document.getElementById('dynamic-scaler-styles');
+                            if (!dynStyle) {
+                              dynStyle = document.createElement('style');
+                              dynStyle.id = 'dynamic-scaler-styles';
+                              document.head.appendChild(dynStyle);
+                            }
+                            window.scalerScales = window.scalerScales || {};
 
-                          for (var i = 0; i < entries.length; i++) {
-                            var panel = entries[i].target;
-                            if (!panel.id) continue;
-                            var wrapper = panel.querySelector('.scaler-content');
-                            if (!wrapper) continue;
+                            for (var i = 0; i < entries.length; i++) {
+                              var panel = entries[i].target;
+                              if (!panel.id) continue;
+                              var wrapper = panel.querySelector('.scaler-content');
+                              if (!wrapper) continue;
 
-                          var cw = wrapper.scrollWidth;
-                            var ch = wrapper.scrollHeight;
+                              var cw = wrapper.scrollWidth;
+                              var ch = wrapper.scrollHeight;
 
-                            // Target the map directly to calculate true unclipped dimensions
-                            if (panel.id === 'panel-2-bot') {
-                              var svg = wrapper.querySelector('svg');
-                              var topG = svg ? svg.querySelector('g') : null; // Captures all hexes, axes, and text
-                              
-                              if (svg && topG) {
-                                // 1. Interrogate the exact physical bounds of all drawn art
-                                var bbox = topG.getBBox();
-                                
-                                // 2. Compute the exact bottom-right boundary pixel with a 50px safety margin
-                                var requiredWidth = bbox.x + bbox.width + 50;
-                                var requiredHeight = bbox.y + bbox.height + 50;
-                                
-                                // 3. Force the SVG and its CSS strictly to the true dimensions
-                                svg.setAttribute('width', requiredWidth);
-                                svg.setAttribute('height', requiredHeight);
-                                svg.style.width = requiredWidth + 'px';
-                                svg.style.height = requiredHeight + 'px';
-                                
-                                wrapper.style.width = requiredWidth + 'px';
-                                wrapper.style.height = requiredHeight + 'px';
-                                
-                                // 4. Feed the perfect bounds into the scaler
-                                cw = requiredWidth;
-                                ch = requiredHeight;
+                              if (panel.id === 'map-panel-bot') {
+                                var svg = wrapper.querySelector('svg');
+                                var topG = svg ? svg.querySelector('g') : null;
+                                if (svg && topG) {
+                                  var bbox = topG.getBBox();
+                                  var requiredWidth = bbox.x + bbox.width + 50;
+                                  var requiredHeight = bbox.y + bbox.height + 50;
+                                  svg.setAttribute('width', requiredWidth);
+                                  svg.setAttribute('height', requiredHeight);
+                                  svg.style.width = requiredWidth + 'px';
+                                  svg.style.height = requiredHeight + 'px';
+                                  wrapper.style.width = requiredWidth + 'px';
+                                  wrapper.style.height = requiredHeight + 'px';
+                                  cw = requiredWidth;
+                                  ch = requiredHeight;
+                                }
+                              }
+
+                              if (panel.id === 'panel-market') {
+                                var innerChild = wrapper.firstElementChild;
+                                if (innerChild) {
+                                  var svg = innerChild.tagName && innerChild.tagName.toLowerCase() === 'svg' ? innerChild : innerChild.querySelector('svg');
+                                  if (svg) {
+                                    var topG = svg.querySelector('g');
+                                    if (topG) {
+                                      var bbox = topG.getBBox();
+                                      var requiredWidth = bbox.x + bbox.width + 20;
+                                      var requiredHeight = bbox.y + bbox.height + 20;
+                                      svg.setAttribute('width', requiredWidth);
+                                      svg.setAttribute('height', requiredHeight);
+                                      svg.style.width = requiredWidth + 'px';
+                                      svg.style.height = requiredHeight + 'px';
+                                      wrapper.style.width = requiredWidth + 'px';
+                                      wrapper.style.height = requiredHeight + 'px';
+                                      cw = requiredWidth;
+                                      ch = requiredHeight;
+                                    }
+                                  } else {
+                                    cw = innerChild.scrollWidth;
+                                    ch = innerChild.scrollHeight;
+                                    wrapper.style.width = cw + 'px';
+                                    wrapper.style.height = ch + 'px';
+                                  }
+                                }
+                              }
+
+                              var pw = entries[i].contentRect.width - 16;
+                              var ph = entries[i].contentRect.height - 16;
+
+                              if (cw > 0 && ch > 0) {
+                                window.scalerScales[panel.id] = Math.min(pw / cw, ph / ch);
                               }
                             }
 
-                            // For panel-3-bot, inspect inner grid/table child directly for unscaled bounds
-                            if (panel.id === 'panel-3-bot') {
-                              var innerChild = wrapper.firstElementChild;
-                              if (innerChild) {
-                                cw = Math.max(cw, innerChild.scrollWidth || 0, innerChild.offsetWidth || 0);
-                                ch = Math.max(ch, innerChild.scrollHeight || 0, innerChild.offsetHeight || 0);
-                              }
-                              // Add explicit padding to unscaled height so bottom rows never touch frame borders
-                              ch += 80;
+                            var css = '';
+                            for (var id in window.scalerScales) {
+                              css += '#' + id + ' .scaler-content { transform: scale(' + window.scalerScales[id] + ') !important; transform-origin: top left !important; }\n';
                             }
+                            dynStyle.innerHTML = css;
+                          });
 
-                            var pw = entries[i].contentRect.width - 16;
-                            var ph = entries[i].contentRect.height - 16;
-
-                            if (cw > 0 && ch > 0) {
-                              var computedScale = Math.min(pw / cw, ph / ch);
-                              window.scalerScales[panel.id] = computedScale;
-
-                              if (panel.id === 'panel-2-bot') {
-                                console.log("=== Map Resizing Diagnostics ===");
-                                console.log("Canvas Size (Available Window Space): " + pw.toFixed(2) + " x " + ph.toFixed(2));
-                                console.log("Map Size ('Wants to be' / Unscaled): " + cw.toFixed(2) + " x " + ch.toFixed(2));
-                                console.log("Applied Scale Factor: " + computedScale.toFixed(4));
-                                console.log("Resulting Scaled Map Size: " + (cw * computedScale).toFixed(2) + " x " + (ch * computedScale).toFixed(2));
-                                console.log("================================");
-                              }
-                            }
-                          }
-
-                          var css = '';
-                          for (var id in window.scalerScales) {
-                            css += '#' + id + ' .scaler-content { transform: scale(' + window.scalerScales[id] + ') !important; transform-origin: top left !important; }\n';
-                          }
-                          dynStyle.innerHTML = css;
-                        });
-
-
-
-
-                        ['col-1', 'panel-2-bot', 'panel-3-top', 'panel-3-bot'].forEach(function(id) {
+                          ['map-panel-bot', 'panel-ledger', 'panel-market'].forEach(function(id) {
                             var el = document.getElementById(id);
                             if (el) fitObserver.observe(el);
                           });
@@ -246,10 +226,9 @@ module View
                         setTimeout(window.init18xxResizers, 200);)
                       },
               destroy: lambda {
-                        `if (#{@clock_ticker}) clearInterval(#{@clock_ticker})`
-                         `document.body.style.backgroundColor = ''`
-                         `document.getElementById('app') && Object.assign(document.getElementById('app').style, { overflow: '', padding: '', margin: '', maxWidth: '', width: '', height: '', backgroundColor: '' })`
-                         `document.getElementById('game') && Object.assign(document.getElementById('game').style, { overflow: '', width: '', height: '', maxWidth: '', maxHeight: '' })`
+                        `document.body.style.backgroundColor = ''`
+                        `document.getElementById('app') && Object.assign(document.getElementById('app').style, { overflow: '', padding: '', margin: '', maxWidth: '', width: '', height: '', backgroundColor: '' })`
+                        `document.getElementById('game') && Object.assign(document.getElementById('game').style, { overflow: '', width: '', height: '', maxWidth: '', maxHeight: '' })`
                        },
             },
             attrs: { id: 'viz-master-frame' },
@@ -266,10 +245,37 @@ module View
               backgroundColor: '#ffffff',
             },
           }, [
-        # Column 2 (Now Far Left): Entity Order (Top) & Map Canvas (Bottom)
-        h(:div, { attrs: { id: 'col-2' }, style: { flex: '0 0 41%', height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' } }, [
-          # Narrow Strip: Entity Order Section
-          h(:div, { attrs: { id: 'panel-2-top' }, style: { flex: '0 0 auto', minHeight: '3rem', border: '1px solid #ccc', borderRadius: '4px', backgroundColor: '#fff', padding: '0.25rem', overflow: 'auto' } }, [
+          # COLUMN 1 (LEFT): COMMAND SPACE (TOP) + MAP CANVAS (BOTTOM)
+          h(:div, { attrs: { id: 'col-left' }, style: { flex: '0 0 55%', height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' } }, [
+        # Command Row (Flexible height controlled by resizer)
+            h(:div, { attrs: { id: 'command-space-top' }, style: { flex: '0 0 7.5rem', minHeight: '4.5rem', border: '1px solid #ccc', borderRadius: '4px', backgroundColor: '#fff', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxSizing: 'border-box' } }, [
+              h(:div, { style: { padding: '0.2rem', height: '100%', boxSizing: 'border-box', overflowY: 'hidden' } }, [
+                h(View::Game::DashboardCommandColumn, game: @game),
+              ]),
+            ]),
+
+            # Horizontal Resizer between Command Space and Map
+            h(:div, { attrs: { id: 'resizer-h-cmd-map' }, style: { flex: '0 0 0.5rem', cursor: 'row-resize', zIndex: 10 } }),
+
+            # Map Panel Box
+            h(:div, { attrs: { id: 'map-panel-bot' }, style: { flex: '1 1 auto', border: '1px solid #ccc', borderRadius: '4px', backgroundColor: '#fff', overflow: 'hidden', position: 'relative' } }, [   
+          
+          
+          
+          h(:div, { attrs: { class: 'scaler-content' }, style: { position: 'absolute', top: '0', left: '0', width: 'max-content', height: 'max-content', transformOrigin: 'top left' } }, [
+                h(View::Game::DashboardMap, game: @game, user: @user),
+              ]),
+            ]),
+          ]),
+
+          # VERTICAL RESIZER
+          h(:div, { attrs: { id: 'resizer-v-main' }, style: { flex: '0 0 0.75rem', cursor: 'col-resize', zIndex: 10 } }),
+
+          # COLUMN 2 (RIGHT): GLOBAL CONTROLS, TURN ORDER & DATA LEDGERS
+          h(:div, { attrs: { id: 'col-right' }, style: { flex: '1 1 auto', display: 'flex', flexDirection: 'column', height: '100%', maxHeight: '100%', overflow: 'hidden', gap: '0.5rem' } }, [
+            
+           # Entity Turn Tracker Hub
+            h(:div, { attrs: { id: 'temporal-hub' }, style: { flex: '0 0 auto', display: 'flex', flexDirection: 'column', border: '1px solid #ccc', borderRadius: '4px', backgroundColor: '#f8f9fa', padding: '0.25rem', minHeight: '2.8rem', overflowX: 'auto' } }, [
               if @game.respond_to?(:finished?) && @game.finished?
                 h(View::Game::DashboardEntityOrder, round: nil)
               else
@@ -277,276 +283,23 @@ module View
               end,
             ]),
 
-          # Horizontal Resizer 2 (replaces 0.5rem gap)
-          h(:div, { attrs: { id: 'resizer-h-2' }, style: { flex: '0 0 0.5rem', cursor: 'row-resize', zIndex: 10 } }),
-
-          # Map Panel Box
-    h(:div, { attrs: { id: 'panel-2-bot' }, style: { flex: '1 1 auto', border: '1px solid #ccc', borderRadius: '4px', backgroundColor: '#fff', overflow: 'hidden', position: 'relative' } }, [
-                                      h(:div, {
-                                          attrs: { class: 'scaler-content' },
-                                          style: {
-                                            position: 'absolute',
-                                            top: '0',
-                                            left: '0',
-                                            width: 'max-content',
-                                            height: 'max-content',
-                                            transformOrigin: 'top left',
-                                          },
-                                        }, [
-            h(View::Game::DashboardMap, game: @game, user: @user),
-          ]),
-                      ]),
-        ]),
-
-        # Vertical Resizer 1 (Sizable left border of Command Column)
-        h(:div, { attrs: { id: 'resizer-v-1' }, style: { flex: '0 0 0.75rem', cursor: 'col-resize', zIndex: 10 } }),
-
-        # Column 1 (Now Middle): Command Column Tracker (Full Height)
-        h(:div, { attrs: { id: 'col-1' }, style: { flex: '0 0 10%', height: '100%', border: '1px solid #ccc', borderRadius: '4px', backgroundColor: '#fff', overflow: 'hidden' } }, [
-          h(View::Game::DashboardCommandColumn, game: @game),
-        ]),
-
-        # Vertical Resizer 2 (Sizable right border of Command Column)
-        h(:div, { attrs: { id: 'resizer-v-2' }, style: { flex: '0 0 0.75rem', cursor: 'col-resize', zIndex: 10 } }),
-
-        # Column 3 (Far Right): Status Stack (49% width)
-        # Vertical Resizer 2 (replaces 0.75rem gap)
-        h(:div, { attrs: { id: 'resizer-v-2' }, style: { flex: '0 0 0.75rem', cursor: 'col-resize', zIndex: 10 } }),
-
-        # Column 3 (Far Right): Status Stack
-        h(:div, { attrs: { id: 'col-3' }, style: { flex: '1 1 auto', display: 'flex', flexDirection: 'column', height: '100%', maxHeight: '100%', overflow: 'hidden' } }, [
-          # Spreadsheet Ledger Component
-          h(:div, {
-              attrs: { id: 'panel-3-top' },
-              style: {
-                flex: '0 0 62%',
-                overflow: 'hidden',
-                border: '1px solid #ccc',
-                padding: '0.4rem',
-                borderRadius: '4px',
-                backgroundColor: '#fff',
-                display: 'flex',
-                flexDirection: 'column',
-                '& div': { overflow: 'hidden !important' },
-                '& table': {
-                  width: '100% !important',
-                  tableLayout: 'auto',
-                  borderCollapse: 'collapse',
-                  fontSize: '0.85rem',
-                },
-                '& th': {
-                  padding: '2px !important',
-                  fontWeight: 'bold',
-                  borderBottom: '2px solid #ccc',
-                  textOverflow: 'ellipsis',
-                  overflow: 'hidden',
-                  whiteSpace: 'nowrap',
-                },
-                '& td': {
-                  padding: '2px !important',
-                  whiteSpace: 'nowrap',
-                  textOverflow: 'ellipsis',
-                  borderBottom: '1px solid #eee',
-                },
-              },
-            }, [
+            # Status Table & Cash / Trains Ledger
+            h(:div, { attrs: { id: 'panel-ledger' }, style: { flex: '1 1 auto', overflow: 'hidden', border: '1px solid #ccc', padding: '0.4rem', borderRadius: '4px', backgroundColor: '#fff', display: 'flex', flexDirection: 'column' } }, [
               h(:div, { attrs: { class: 'scaler-content' }, style: { display: 'flex', flexDirection: 'column', width: 'max-content', minWidth: '100%', transformOrigin: 'top left' } }, [
-                  if @game.respond_to?(:finished?) && @game.finished?
-                    h(:div, { style: { padding: '1rem', fontFamily: '"Helvetica Neue", Helvetica, Arial, sans-serif', textAlign: 'center' } }, [
-                      h(:h3, { style: { color: '#dc3545', margin: '0 0 0.5rem 0' } }, 'Match Verification Complete'),
-                      h(:p, { style: { fontSize: '0.85rem', color: '#555', margin: '0' } },
-                        'The 1846 game engine successfully processed all historical match movements deterministically. Active turn ledger is disabled for completed states.'),
-                    ])
-                  else
-                    h(View::Game::DashboardGameStatus, game: @game)
-                  end,
+                h(View::Game::DashboardGameStatus, game: @game)
               ]),
+            ]),
+
+            # Horizontal Resizer
+            h(:div, { attrs: { id: 'resizer-h-ledger-market' }, style: { flex: '0 0 0.5rem', cursor: 'row-resize', zIndex: 10 } }),
+
+            # Stock Market Grid
+            h(:div, { attrs: { id: 'panel-market' }, style: { flex: '1 1 auto', minHeight: '0', overflow: 'hidden', border: '1px solid #ccc', padding: '0.5rem', borderRadius: '4px', backgroundColor: '#fff', boxSizing: 'border-box', position: 'relative' } }, [
+              h(:div, { attrs: { class: 'scaler-content' }, style: { display: 'flex', flexDirection: 'column', width: 'max-content', height: 'max-content', minWidth: '100%', transformOrigin: 'top left', margin: '0', padding: '0' } }, [
+                h(View::Game::DashboardStockMarket, game: @game),
               ]),
-
-          # Horizontal Resizer 3-1
-          h(:div, { attrs: { id: 'resizer-h-3-1' }, style: { flex: '0 0 0.5rem', cursor: 'row-resize', zIndex: 10 } }),
-
-          h(:div, {
-              attrs: { id: 'panel-3-mid' },
-              style: {
-                flex: '0 0 auto',
-                minHeight: '3.5rem',
-                border: '1px solid #ccc',
-                borderRadius: '4px',
-                backgroundColor: '#fff',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'flex-start',
-                padding: '0 0.75rem',
-                boxSizing: 'border-box',
-              },
-            }, begin
-              active_p = active_player
-              step = begin
-                @game.round.active_step
-              rescue NotImplementedError, Exception
-                nil
-              end
-              current_entity = step&.current_entity
-              actions = if current_entity && step.respond_to?(:actions)
-                          begin
-                            step.actions(current_entity)
-                          rescue StandardError
-                            []
-                          end
-                        else
-                          []
-                        end
-
-              if @game.round.respond_to?(:stock?) && @game.round.stock?
-                'Pass'
-              elsif actions.include?('lay_tile')
-                'Skip Build'
-              elsif actions.include?('place_token')
-                'Skip Token'
-              elsif actions.include?('run_routes')
-                lambda {
-                  active_routes = @routes.select { |r| r.chains.any? }
-                  base_revenue = active_routes.any? ? active_routes.sum(&:revenue) : 0
-                  storage_key = "rev_override_#{current_entity&.id}"
-                  current_revenue = Lib::Storage[storage_key] ? Lib::Storage[storage_key].to_i : base_revenue
-                  process_action(Engine::Action::RunRoutes.new(
-                    current_entity,
-                    routes: active_routes,
-                    extra_revenue: @game.extra_revenue(current_entity,
-                                                       active_routes) + (current_revenue - base_revenue),
-                    subsidy: @game.routes_subsidy(active_routes)
-                  ))
-                }
-              elsif actions.include?('dividend')
-                lambda {
-                  if current_entity && actions.include?('dividend')
-                    process_action(Engine::Action::Dividend.new(current_entity, kind: 'payout'))
-                  end
-                }
-              elsif actions.include?('buy_train')
-                'Finished Buying'
-              end
-              button_style = {
-                padding: '0.5rem 1.5rem',
-                fontSize: '1.1rem',
-                fontWeight: 'bold',
-                marginRight: '0.75rem',
-                cursor: 'pointer',
-                borderRadius: '4px',
-                border: '1px solid #999',
-                verticalAlign: 'middle',
-              }
-
-              # Check for endgame state immediately to avoid executing any un-implemented engine action queries
-              if (@game.respond_to?(:finished?) && @game.finished?) || begin @game.round.active_step
-                                                                             false
-              rescue NotImplementedError, StandardError
-                true
-              end
-                [
-                  h(:button,
-                    { style: button_style.merge(backgroundColor: '#e0e0e0', color: '#a0a0a0', cursor: 'not-allowed'), attrs: { disabled: true } }, 'Undo'),
-                  h(:button,
-                    { style: button_style.merge(backgroundColor: '#e0e0e0', color: '#a0a0a0', cursor: 'not-allowed'), attrs: { disabled: true } }, 'Redo'),
-                  h(:button,
-                    { style: button_style.merge(backgroundColor: '#e0e0e0', color: '#a0a0a0', cursor: 'not-allowed'), attrs: { disabled: true } }, 'Match Complete'),
-                ]
-              else
-                active_p = active_player
-                step = begin
-                  @game.round.active_step
-                rescue StandardError
-                  nil
-                end
-                current_entity = step&.current_entity
-                actions = if current_entity && step.respond_to?(:actions)
-                            begin
-                              step.actions(current_entity)
-                            rescue StandardError
-                              []
-                            end
-                          else
-                            []
-                          end
-
-                undo_handler = -> { process_action(Engine::Action::Undo.new(active_p)) if active_p }
-                redo_handler = -> { process_action(Engine::Action::Redo.new(active_p)) if active_p }
-
-                default_btn_text = 'Pass'
-                default_handler = lambda {
-                  process_action(Engine::Action::Pass.new(current_entity)) if current_entity && actions.include?('pass')
-                }
-
-                if @game.round.respond_to?(:stock?) && @game.round.stock?
-                  default_btn_text = 'Pass'
-                elsif actions.include?('lay_tile')
-                  default_btn_text = 'Skip Build'
-                elsif actions.include?('place_token')
-                  default_btn_text = 'Skip Token'
-                elsif actions.include?('run_routes')
-                  default_btn_text = 'Submit Revenue'
-                  default_handler = lambda {
-                    active_routes = @routes.select { |r| r.chains.any? }
-                    base_revenue = active_routes.any? ? active_routes.sum(&:revenue) : 0
-                    storage_key = "rev_override_#{current_entity&.id}"
-                    current_revenue = Lib::Storage[storage_key] ? Lib::Storage[storage_key].to_i : base_revenue
-                    process_action(Engine::Action::RunRoutes.new(
-                      current_entity,
-                      routes: active_routes,
-                      extra_revenue: @game.extra_revenue(current_entity, active_routes) + (current_revenue - base_revenue),
-                      subsidy: @game.routes_subsidy(active_routes)
-                    ))
-                  }
-                elsif actions.include?('dividend')
-                  default_btn_text = 'Pay Out'
-                  default_handler = lambda {
-                    if current_entity && actions.include?('dividend')
-                      process_action(Engine::Action::Dividend.new(current_entity, kind: 'payout'))
-                    end
-                  }
-                elsif actions.include?('buy_train')
-                  default_btn_text = 'Done Buying'
-                end
-
-                btns = [
-                   h(:button,
-                     { attrs: { id: 'undo' }, style: button_style.merge(backgroundColor: '#e0e0e0', color: '#000000'), on: { click: undo_handler } }, 'Undo'),
-                   h(:button,
-                     { attrs: { id: 'redo' }, style: button_style.merge(backgroundColor: '#e0e0e0', color: '#000000'), on: { click: redo_handler } }, 'Redo'),
-                   h(:button,
-                     { attrs: { id: 'pass' }, style: button_style.merge(backgroundColor: '#007bff', borderColor: '#0056b3', color: '#ffffff'), on: { click: default_handler } }, default_btn_text),
-                 ]
-
-                if active_p
-                  btns << h(:span, { style: { marginLeft: 'auto', marginRight: '1rem', whiteSpace: 'nowrap', fontSize: '2.5rem', fontWeight: 'bold', color: '#000000' } }, active_p.name)
-                end
-
-                btns
-              end
-            end),
-          # Horizontal Resizer 3-2
-          h(:div, { attrs: { id: 'resizer-h-3-2' }, style: { flex: '0 0 0.5rem', cursor: 'row-resize', zIndex: 10 } }),
-
-          # Stock Market Component
-          h(:div, { attrs: { id: 'panel-3-bot' }, style: { flex: '1 1 auto', minHeight: '0', overflow: 'hidden', border: '1px solid #ccc', padding: '0.5rem', borderRadius: '4px', backgroundColor: '#fff', boxSizing: 'border-box', position: 'relative' } }, [
-                          h(:div, {
-                              attrs: { class: 'scaler-content' },
-                              style: {
-                                display: 'flex',
-                                flexDirection: 'column',
-                                width: 'max-content',
-                                height: 'max-content',
-                                minWidth: '100%',
-                                transformOrigin: 'top left',
-                                margin: '0',
-                                padding: '0',
-                              },
-                            }, [
-                                        h(View::Game::DashboardStockMarket, game: @game),
-                          ]),
-                        ]),
-        ]),
+            ]),
+          ]),
         ])
       end
     end

@@ -32,26 +32,26 @@ module View
       }.freeze
 
       # All markets
-      PAD = 4                                     # between box contents and border
+      PAD = 4
       BORDER = 1
-      WIDTH_TOTAL = 50                            # of entire box, including border
+      WIDTH_TOTAL = 50
       TOKEN_SIZE = 25
       TOKEN_SIZES = { small: 25, medium: 32, large: 40 }.freeze
 
       # 1D markets
-      VERTICAL_TOKEN_PAD = 4                      # vertical space between tokens
-      MIN_NUM_TOKENS = 3                          # guarantee space for this many tokens
-      PRICE_HEIGHT = 20                           # depends on font and size!
+      VERTICAL_TOKEN_PAD = 4
+      MIN_NUM_TOKENS = 3
+      PRICE_HEIGHT = 20
       MIN_TOKENS_HEIGHT = MIN_NUM_TOKENS * (TOKEN_SIZE + VERTICAL_TOKEN_PAD)
 
       # 2D markets
       HEIGHT_TOTAL = 50
-      TOKEN_PAD = 3                               # left/right padding of tokens within box
+      TOKEN_PAD = 3
       BOX_WIDTH = WIDTH_TOTAL - (2 * BORDER)
-      LEFT_MARGIN = TOKEN_PAD                     # left edge of leftmost token
-      RIGHT_MARGIN = BOX_WIDTH - TOKEN_PAD        # right edge of rightmost token
+      LEFT_MARGIN = TOKEN_PAD
+      RIGHT_MARGIN = BOX_WIDTH - TOKEN_PAD
       LEFT_TOKEN_POS = LEFT_MARGIN
-      RIGHT_TOKEN_POS = RIGHT_MARGIN - TOKEN_SIZE # left edge of rightmost token
+      RIGHT_TOKEN_POS = RIGHT_MARGIN - TOKEN_SIZE
       MID_TOKEN_POS = (LEFT_TOKEN_POS + RIGHT_TOKEN_POS) / 2
       TOKEN_BORDER_WIDTH = 2
 
@@ -220,25 +220,24 @@ module View
           props[:attrs]['clip-path'] = 'polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)'
 
           under_shape = [
-                          h(:polygon, {
-                              attrs: {
-                                points: "-#{(width / 2) + 1},0 0,#{(width / 2) + 1} #{(width / 2) + 1},0 0,-#{(width / 2) + 1}",
-                                stroke: corporation.color,
-                                'stroke-width': 2,
-                                fill: 'transparent',
-                              },
-                            }),
-                          h(:polygon, {
-                              attrs: {
-                                points: "-#{(width / 2) + 1},0 0,#{(width / 2) + 1} #{(width / 2) + 1},0 0,-#{(width / 2) + 1}",
-                                stroke: border_color,
-                                'stroke-width': 2,
-                                fill: 'transparent',
-                                'stroke-dasharray': '4',
-                              },
-                            }),
-
-                        ]
+            h(:polygon, {
+                attrs: {
+                  points: "-#{(width / 2) + 1},0 0,#{(width / 2) + 1} #{(width / 2) + 1},0 0,-#{(width / 2) + 1}",
+                  stroke: corporation.color,
+                  'stroke-width': 2,
+                  fill: 'transparent',
+                },
+              }),
+            h(:polygon, {
+                attrs: {
+                  points: "-#{(width / 2) + 1},0 0,#{(width / 2) + 1} #{(width / 2) + 1},0 0,-#{(width / 2) + 1}",
+                  stroke: border_color,
+                  'stroke-width': 2,
+                  fill: 'transparent',
+                  'stroke-dasharray': '4',
+                },
+              }),
+          ]
         else
           under_shape = [h(:circle, {
                              attrs: {
@@ -247,7 +246,7 @@ module View
                                fill: 'transparent',
                                r: "#{width / 2}px",
                              },
-                           },)]
+                           })]
         end
 
         g_props = {
@@ -291,7 +290,6 @@ module View
           h(:div, { style: cell_style(box_style, price.types) }, elements)
         end
 
-        # Wrap if the row too long
         rows = row.size < 60 ? [row] : [row.shift((row.size / 2.0).ceil), row]
         rows.map { |r| h(:div, { style: { width: 'max-content' } }, r) }
       end
@@ -324,7 +322,6 @@ module View
           end
         end
 
-        # Determine which row needs to end in a half-box
         shorter_row = row1.size > row0.size ? row0 : row1
         shorter_row << h(:div, style: cell_style(half_box_style, @game.stock_market.market.first.last.types))
 
@@ -404,7 +401,6 @@ module View
       end
 
       def grid_2d
-        # Need to peek at row below to know if sitting on ledge.
         (@game.stock_market.market + [[]]).each_cons(2).with_index.map do |rows, row_i|
           row_prices, next_row = rows
           first_price = true
@@ -416,11 +412,9 @@ module View
               spacing = num > 1 ? (RIGHT_TOKEN_POS - LEFT_TOKEN_POS) / (num - 1) : 0
               tokens = corporations.map.with_index { |corp, index| h(:img, token_props(corp, index, num, spacing)) }
 
-              # first cell on left, not on bottom row, has price in cell below
               if first_price && !next_row.empty? && next_row[col_i]
                 align = { left: 0, bottom: 0 }
                 arrow = '⭣'
-              # last cell on right, not top row
               elsif !row_i.zero? && @game.stock_market.right_ledge?([row_i, col_i])
                 align = { right: 0, top: 0 }
                 arrow = '⭡'
@@ -453,7 +447,6 @@ module View
       end
 
       def render
-        # For locations in the grid with no cells
         @space_style_2d = {
           position: 'relative',
           display: 'inline-block',
@@ -465,7 +458,6 @@ module View
           verticalAlign: 'top',
         }
 
-        # For cells with prices
         @box_style_2d = @space_style_2d.merge(
           border: "solid #{BORDER}px rgba(0,0,0,0.2)",
           color: color_for(:font2),
@@ -483,8 +475,6 @@ module View
                  grid_2d
                end
 
-        children = []
-
         grid_props = {
           style: {
             width: 'max-content',
@@ -494,73 +484,8 @@ module View
             padding: '0',
           },
         }
-        children << h(:div, grid_props, grid)
 
-        if @explain_colors
-          type_text = @game.class::MARKET_TEXT
-
-          # Sort types starting at bottom row, left column
-          type_to_first_col = {}
-          @game.stock_market.market.reverse.flatten.compact.each do |sp|
-            this_col = sp.coordinates[1]
-            sp.types&.each do |t|
-              min_col = type_to_first_col[t]
-              type_to_first_col[t] = this_col if !min_col || this_col < min_col
-            end
-          end
-          types_in_market = type_to_first_col.sort_by { |_t, col| col }.map(&:first)
-
-          legend_items = types_in_market.map do |type|
-            line_props = {
-              style: {
-                display: 'inline-grid',
-                grid: '1fr / auto 1fr',
-                gap: '0.5rem',
-                alignItems: 'center',
-                margin: '1rem 1rem 0 0',
-              },
-            }
-
-            h(:div, line_props, [
-              h(:div, { style: cell_style(@box_style_2d, [type]) }, []),
-              h(:div, { style: { maxWidth: '24rem' } }, type_text[type]),
-            ])
-          end
-
-          children << h('div#legend', legend_items)
-        end
-
-        if @game.respond_to?(:price_movement_chart)
-          header, *chart = @game.price_movement_chart
-
-          rows = chart.map do |r|
-            h(:tr, [
-              h('td.padded_number', r[0]),
-              h(:td, r[1]),
-            ])
-          end
-
-          table_props = {
-            style: {
-              margin: '1rem 0',
-            },
-          }
-
-          children << h(:table, table_props, [
-            h(:thead, [
-              h(:tr, [
-                h(:th, header[0]),
-                h(:th, header[1]),
-              ]),
-            ]),
-            h(:tbody, rows),
-          ])
-        end
-
-        children << h(ParChart) if @game.respond_to?(:par_chart) && @game.par_chart
-        children << h(LoanChart) if @game.respond_to?(:loan_chart)
-
-        h(:div, children)
+        h(:div, grid_props, grid)
       end
     end
   end

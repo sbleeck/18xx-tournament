@@ -21,40 +21,7 @@ module View
         @depot = @game.depot
         return nil if @depot.trains.empty?
 
-        rust_schedule = Hash.new { |h, k| h[k] = [] }
-        obsolete_schedule = Hash.new { |h, k| h[k] = [] }
-
-        begin
-          @depot.trains.group_by(&:name).each do |_name, trains|
-            first = trains.first
-            next unless first
-
-            base_variant = first.variants.values.find { |v| !v[:ignore_rust_obsolete_schedule] }
-            next unless base_variant
-
-            base_rust = base_variant[:rusts_on]
-            base_obsolete = base_variant[:obsolete_on]
-
-            first.variants.each do |name, train_variant|
-              next if train_variant[:ignore_rust_obsolete_schedule]
-
-              train_variant[:rusts_on] ||= base_rust
-              train_variant[:obsolete_on] ||= base_obsolete
-
-              Array(train_variant[:rusts_on]).each do |rusts_on|
-                rust_schedule[rusts_on].append(name) unless rust_schedule[rusts_on].include?(name)
-              end
-              Array(train_variant[:obsolete_on]).each do |obsolete_on|
-                obsolete_schedule[obsolete_on].append(name) unless obsolete_schedule[obsolete_on].include?(name)
-              end
-            end
-          end
-        rescue NotImplementedError, StandardError
-          return h(:div, { style: { padding: '0.5rem', fontStyle: 'italic', color: '#666' } },
-                   'Train schedule unavailable (Game Finished)')
-        end
-
-        rows = @depot.trains.reject(&:reserved).group_by(&:sym).map do |sym, trains|
+        train_rows = @depot.trains.reject(&:reserved).group_by(&:sym).map do |sym, trains|
           remaining = @depot.upcoming.select { |t| t.sym == sym }
           next nil if remaining.empty?
 
@@ -62,69 +29,43 @@ module View
 
           name = @game.info_train_name(train)
           price = @game.info_train_price(train)
-          rem_text = train.unlimited ? '∞' : "#{remaining.size} / #{trains.size}"
+          rem_text = train.unlimited ? '(∞)' : "(#{remaining.size})"
 
-          effects = []
-
-          train.names_to_prices.keys.each do |key|
-            if (rust = rust_schedule[key]) && !rust.empty?
-              effects << "Rusts: #{rust.join(', ')}"
-            end
-          end
-
-          if obsolete_schedule[train.name] && !obsolete_schedule[train.name].empty?
-            effects << "Phases out: #{obsolete_schedule[train.name].join(', ')}"
-          end
-
-          train_events = []
-          remaining.each do |t2|
-            t2.events.each do |e|
-              next if e['hidden']
-
-              ev_name = e['type']
-              ev_name = @game.class::EVENTS_TEXT[ev_name][0] if @game.class::EVENTS_TEXT[ev_name]
-              train_events << ev_name unless train_events.include?(ev_name)
-            end
-          end
-          effects << "Events: #{train_events.join(', ')}" unless train_events.empty?
-
-          h(:tr, { style: { borderBottom: '1px solid #cccccc' } }, [
-h('td.center', { style: { padding: '0.4rem 0.6rem', verticalAlign: 'middle' } }, [
-              h(:div, { attrs: { class: 'game-card' } }, name),
-            ]),
-h('td.right', { style: { fontFamily: FONT_CASH, color: COLOR_CASH, padding: '0.4rem 0.6rem', fontWeight: 'bold' } },
-  price),
-h('td.center', { style: { fontFamily: FONT_STD, padding: '0.4rem 0.6rem', verticalAlign: 'middle' } }, rem_text),
-h('td.left', { style: { fontFamily: FONT_STD, padding: '0.4rem 0.6rem', fontSize: '0.8rem', color: '#444444', verticalAlign: 'middle' } },
-  effects.join(' | ')),
+          h(:div, {
+            style: {
+              display: 'flex',
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              padding: '2px 4px',
+              borderBottom: '1px solid #e0e0e0',
+              gap: '0.5rem',
+            },
+          }, [
+            h(:div, { attrs: { class: 'game-card' }, style: { margin: '0', minWidth: '3.2rem', padding: '0 4px', fontSize: '0.8rem', height: '1.3rem' } }, name),
+            h(:div, { style: { fontFamily: FONT_CASH, color: COLOR_CASH, fontWeight: 'bold', fontSize: '0.85rem', textAlign: 'right', flex: '1 1 auto' } }, price),
+            h(:div, { style: { fontFamily: FONT_STD, fontSize: '0.85rem', fontWeight: 'bold', color: '#000000', minWidth: '2rem', textAlign: 'right' } }, rem_text),
           ])
         end.compact
 
-        title_props = {
+title_props = {
+          attrs: { class: 'column-zone-market' },
           style: {
-            padding: '0.4rem',
-            backgroundColor: color_for(:bg2),
-            color: color_for(:font2),
-            fontStyle: 'italic',
+            padding: '0.3rem',
+            backgroundColor: 'var(--bg-market-zone)',
+            color: '#000000',
+            fontFamily: FONT_STD,
+            fontSize: '1.1rem',
             fontWeight: 'bold',
+            letterSpacing: '1px',
+            textAlign: 'center',
+            borderBottom: '1px solid #b3b3b3',
           },
         }
 
-        h('div#upcoming_trains.card', [
-          h('div.title', title_props, 'Upcoming Trains'),
-          h(:div, { style: { margin: '0.3rem 0.5rem 0.4rem', overflowX: 'auto' } }, [
-            h(:table, { style: { borderCollapse: 'collapse', width: '100%', fontSize: '0.85rem' } }, [
-              h(:thead, [
-                h(:tr, { style: { borderBottom: '2px solid #333333' } }, [
-                  h('th.center', { style: { padding: '0.4rem 0.6rem' } }, 'Type'),
-                  h('th.right', { style: { padding: '0.4rem 0.6rem' } }, 'Price'),
-                  h('th.center', { style: { padding: '0.4rem 0.6rem' } }, 'Remaining'),
-                  h('th.left', { style: { padding: '0.4rem 0.6rem' } }, 'Effect'),
-                ]),
-              ]),
-              h(:tbody, rows),
-            ]),
-          ]),
+            h('div#upcoming_trains.card.column-zone-market', { style: { minWidth: '130px', maxWidth: '210px' } }, [
+            h('div.title', title_props, 'Upcoming Trains'),
+          h(:div, { style: { padding: '2px 4px', display: 'flex', flexDirection: 'column' } }, train_rows),
         ])
       end
     end

@@ -211,7 +211,7 @@ module View
         # end
         # rows << time_cells
 
-        # 5. Companies Row (Renamed to Privates)
+    # 5. Companies Row (Renamed to Privates)
         comp_cells = [h('th.left', 'Privates')]
         display_players.each_with_index do |p, idx|
           bg_color = p == active_player ? COLOR_ACTIVE : COLOR_INACTIVE
@@ -411,16 +411,17 @@ module View
             render_sort_link('Price', :par_price)),
         ]
 
-        corporation_subtitles = [
+       corporation_subtitles = [
           h('th.column-zone-corporate', {}, render_sort_link('Treasury', :cash)),
           *treasury,
-          h('th.column-zone-corporate', {}, render_sort_link('Last Run', :prev_revenue)),
           h('th.column-zone-corporate', {}, render_sort_link('Trains', :trains)),
           h('th.column-zone-corporate', {}, render_sort_link('Tokens', :tokens)),
           *extra,
         ]
 
         corporation_subtitles << h('th.column-zone-corporate', {}, render_sort_link('Privates', :companies)) if @show_privates
+        corporation_subtitles << h('th.column-zone-corporate', {}, render_sort_link('Last Run', :prev_revenue))
+        
         titles = [
           players_title,
           pool_title,
@@ -638,14 +639,14 @@ module View
           player_shares = p.respond_to?(:shares_of) ? p.shares_of(corporation) : []
           bundles = []
 
-     
-
-          active_step_actions = if step.respond_to?(:actions)
+     active_step_actions = if step.respond_to?(:actions)
                                   begin
                                     step.actions(p) || []
                                   rescue StandardError
                                     []
                                   end
+                                elsif step.respond_to?(:current_actions)
+                                  step.current_actions || []
                                 else
                                   []
                                 end
@@ -653,14 +654,20 @@ module View
           can_sell_now = (p == active_player) && active_step_actions.include?('sell_shares')
 
           if @game.round.operating?
+            # In an Operating Round, selling is only permitted during an emergency train purchase / cash crisis
             emergency_active = if step.respond_to?(:can_sell_shares?)
                                  step.can_sell_shares?(p)
                                elsif step.respond_to?(:must_sell?)
                                  step.must_sell?(p)
+                               elsif step.respond_to?(:must_buy_train?)
+                                 step.must_buy_train?(active_entity)
                                elsif step.respond_to?(:cash_crisis?)
                                  step.cash_crisis?
+                               elsif step.respond_to?(:emergency?)
+                                 step.emergency?
                                else
-                                 step.respond_to?(:emergency?) && step.emergency?
+                                 # Fallback to checking step class name or direct actions on active entity
+                                 step.class.name.include?('BuyTrain') && active_step_actions.include?('sell_shares')
                                end
             can_sell_now = false unless emergency_active
           end
@@ -1203,15 +1210,15 @@ module View
                   h('td.padded_number.column-zone-corporate.money-value',
                     { hook: Lib::MoneyAnimation.hook }, clean_corp_cash),
                   *treasury,
-                  h('td.padded_number.column-zone-corporate.money-value',
-                    { hook: Lib::MoneyAnimation.hook }, clean_rev),
                   h('td.column-zone-corporate',
                     { attrs: { id: "trains_#{corporation.id}" } }, train_cards),
                   h('td.column-zone-corporate', {}, [render_unplaced_tokens(corporation)]),
                   *extra,
                 ]
-        corporation_row_content << render_companies(corporation) if @show_privates
-
+        corporation_row_content << render_companies(corporation, 'var(--bg-corporate-zone)') if @show_privates
+        corporation_row_content << h('td.padded_number.column-zone-corporate.money-value',
+                                     { hook: Lib::MoneyAnimation.hook }, clean_rev)
+       
         row_content = []
         row_content.concat(players_row_content)
         row_content.concat(pool_row_content)
@@ -1484,120 +1491,88 @@ module View
               update
             }
 
-            if Lib::Storage[menu_storage_key]
-              menu_title = "Buy #{c.name} from #{entity.name} (#{min_price}-#{max_price}):"
-
-              confirm_handler = lambda {
-                price_value = Lib::Storage[price_storage_key].to_i
-                price_value = min_price if price_value < min_price
-                price_value = max_price if price_value > max_price
-
-                Lib::Storage[menu_storage_key] = nil
-                Lib::Storage[price_storage_key] = nil
-
-                source_selector = "#company_wrapper_#{entity.id}_#{c.id} .game-card"
-                target_selector = "#companies_#{active_ent.id}"
-                Lib::CardAnimation.fly(source_selector, target_selector) do
-                  process_action(Engine::Action::BuyCompany.new(
-                    active_ent,
-                    company: c,
-                    price: price_value
-                  ))
-                end
-              }
-
-              cancel_handler = lambda {
-                Lib::Storage[menu_storage_key] = nil
-                Lib::Storage[price_storage_key] = nil
-                update
-              }
-
-              menu_dropdown = h(:div, {
-                                  style: {
-                                    position: 'fixed',
-                                    top: '50%',
-                                    left: '50%',
-                                    transform: 'translate(-50%, -50%)',
-                                    backgroundColor: '#ffffff',
-                                    border: '2px solid #333333',
-                                    borderRadius: '8px',
-                                    padding: '1.5rem',
-                                    zIndex: '10000',
-                                    boxShadow: '0px 10px 30px rgba(0,0,0,0.5)',
-                                    color: '#000000',
-                                    minWidth: '250px',
-                                    textAlign: 'center',
-                                  },
-                                }, [
-                h(:div, { style: { fontSize: '0.85rem', fontWeight: 'bold', marginBottom: '0.8rem', whiteSpace: 'nowrap' } },
-                  menu_title),
-                h(:input, {
-                    style: {
-                      display: 'block',
-                      width: '100%',
-                      marginBottom: '0.8rem',
-                      boxSizing: 'border-box',
-                      padding: '5px 8px',
-                      fontSize: '1rem',
-                    },
-                    props: {
-                      value: Lib::Storage[price_storage_key] || min_price.to_s,
-                    },
-                    attrs: {
-                      type: 'number',
-                      min: min_price.to_s,
-                      max: max_price.to_s,
-                    },
-                    on: {
-                      input: lambda { |event|
-                        Lib::Storage[price_storage_key] = event.target.value
-                        update
-                      },
-                    },
-                  }),
-                h(:button, {
-                    style: {
-                      display: 'block',
-                      width: '100%',
-                      marginBottom: '0.2rem',
-                      cursor: 'pointer',
-                      fontSize: '0.75rem',
-                      fontWeight: 'bold',
-                      padding: '3px 6px',
-                      backgroundColor: '#007bff',
-                      border: '1px solid #0056b3',
-                      color: '#ffffff',
-                      borderRadius: '3px',
-                    },
-                    on: { click: confirm_handler },
-                  }, 'Confirm'),
-                h(:button, {
-                    style: {
-                      display: 'block',
-                      width: '100%',
-                      cursor: 'pointer',
-                      fontSize: '0.75rem',
-                      padding: '3px 6px',
-                      backgroundColor: '#e0e0e0',
-                      border: '1px solid #999',
-                      borderRadius: '3px',
-                    },
-                    on: { click: cancel_handler },
-                  }, 'Cancel'),
-              ])
-            end
           end
 
           card_props = { attrs: { class: card_classes.join(' ') } }
           card_props[:on] = { click: company_click_handler } if company_click_handler
 
-          h(:div, { attrs: { id: "company_wrapper_#{entity.id}_#{c.id}" }, style: { display: 'inline-block', position: 'relative' } }, [
-                        h(:div, card_props, c.sym),
-                        menu_dropdown,
-                      ].compact)
+
+          desc_text = if c.respond_to?(:desc) && c.desc && !c.desc.empty?
+                        c.desc
+                      elsif c.respond_to?(:abilities) && c.abilities&.any?
+                        c.abilities.map { |a| a.respond_to?(:description) ? a.description : nil }.compact.join(' ')
+                      else
+                        'No special abilities.'
+                      end
+
+          value_str = @game.format_currency(c.value || 0)
+          revenue_str = @game.format_currency(c.revenue || 0)
+          owner_name = c.owner&.name || 'Bank'
+
+          tooltip_card = h(:div, {
+            attrs: { class: 'status-company-tooltip' },
+            style: {
+              display: 'none',
+              position: 'fixed',
+              top: '50%',
+              left: '50%',
+              transform: 'translate(-50%, -50%)',
+              width: '300px',
+              backgroundColor: '#ffffff',
+              border: '2px solid #333333',
+              borderRadius: '6px',
+              padding: '8px',
+              boxShadow: '0 8px 24px rgba(0,0,0,0.35)',
+              zIndex: '99999',
+              pointerEvents: 'none',
+              color: '#000000',
+              textAlign: 'left',
+              boxSizing: 'border-box',
+              whiteSpace: 'normal',
+            },
+          }, [
+            h(:div, {
+              style: {
+                backgroundColor: '#ffff00',
+                border: '1px solid #000000',
+                fontWeight: 'bold',
+                fontSize: '0.8rem',
+                textAlign: 'center',
+                padding: '2px 4px',
+                marginBottom: '4px',
+                textTransform: 'uppercase',
+                borderRadius: '3px',
+              },
+            }, 'Private Company'),
+            h(:div, { style: { fontWeight: 'bold', fontSize: '0.9rem', textAlign: 'center', marginBottom: '4px' } }, c.name),
+            h(:div, { style: { fontSize: '0.78rem', lineHeight: '1.25', marginBottom: '6px', color: '#222222' } }, desc_text),
+            h(:div, { style: { display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', fontWeight: 'bold', borderTop: '1px solid #ddd', paddingTop: '4px', marginBottom: '2px' } }, [
+              h(:span, "Value: #{value_str}"),
+              h(:span, "Revenue: #{revenue_str}"),
+            ]),
+            h(:div, { style: { fontSize: '0.78rem', fontWeight: 'bold', textAlign: 'center', color: '#555555' } }, "Owner: #{owner_name}"),
+          ])
+
+          h(:div, {
+            attrs: { id: "company_wrapper_#{entity.id}_#{c.id}", class: 'status-company-wrapper' },
+            style: { display: 'inline-block', position: 'relative' },
+          }, [
+            tooltip_card,
+            h(:div, card_props, c.sym),
+            menu_dropdown,
+          ].compact)
         end
 
-        h(:td, props, company_cards)
+        h(:td, props, [
+          h(:style, {}, '
+            .status-company-wrapper:hover .status-company-tooltip {
+              display: block !important;
+            }
+          '),
+          *company_cards,
+        ])
+
+
       end
 
       def render_player_companies

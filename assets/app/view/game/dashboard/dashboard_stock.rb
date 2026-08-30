@@ -280,18 +280,17 @@ module View
         end.compact
       end
 
-      def render_input(corporation)
+    def render_input(corporation)
+        pre_ipo = corporation.ipoed ? h(::View::Game::BuySellShares, corporation: corporation) : render_pre_ipo(corporation)
         inputs = [
-        corporation.ipoed ? nil : render_pre_ipo(corporation),
-        render_loan(corporation),
-    ]
-        inputs << h(::View::Game::IssueShares, entity: corporation) unless (@step.actions(corporation) & %w[buy_shares
-                                                                                                            sell_shares]).empty?
+          pre_ipo,
+          render_loan(corporation),
+        ]
+        inputs << h(::View::Game::IssueShares, entity: corporation) unless (@step.actions(corporation) & %w[buy_shares sell_shares]).empty?
         inputs << h(::View::Game::BuyTrains, corporation: corporation) if @step.actions(corporation).include?('buy_train')
         inputs << h(::View::Game::ScrapTrains, corporation: corporation) if @step.actions(corporation).include?('scrap_train')
         if @current_actions.include?('choose') && @step.choice_available?(corporation)
-          inputs << h(::View::Game::Choose,
-                      entity: corporation)
+          inputs << h(::View::Game::Choose, entity: corporation)
         end
 
         inputs = inputs.compact
@@ -300,39 +299,17 @@ module View
 
       def render_pre_ipo(corporation)
         children = []
-        case @step.ipo_type(corporation)
-        when :bid
-          children << h(::View::Game::Round::Bid, entity: @current_entity, biddable: corporation) if should_render_bid?
-        when :form
-          children << h(::View::Game::FormCorporation, corporation: corporation) if @current_actions.include?('par')
-        when String
-          children << h(:div, @step.ipo_type(corporation))
-        end
-        children.compact!
-        children.empty? ? nil : h(:div, children)
-      end
+        ipo_kind = if @step.respond_to?(:ipo_type)
+                     @step.ipo_type(corporation)
+                   elsif @game.respond_to?(:ipo_type)
+                     @game.ipo_type(corporation)
+                   elsif corporation.respond_to?(:ipo_type)
+                     corporation.ipo_type
+                   else
+                     :par
+                   end
 
-      def render_input(corporation)
-        inputs = [
-        corporation.ipoed ? h(::View::Game::BuySellShares, corporation: corporation) : render_pre_ipo(corporation),
-        render_loan(corporation),
-    ]
-        inputs << h(::View::Game::IssueShares, entity: corporation) unless (@step.actions(corporation) & %w[buy_shares
-                                                                                                            sell_shares]).empty?
-        inputs << h(::View::Game::BuyTrains, corporation: corporation) if @step.actions(corporation).include?('buy_train')
-        inputs << h(::View::Game::ScrapTrains, corporation: corporation) if @step.actions(corporation).include?('scrap_train')
-        if @current_actions.include?('choose') && @step.choice_available?(corporation)
-          inputs << h(::View::Game::Choose,
-                      entity: corporation)
-        end
-
-        inputs = inputs.compact
-        h('div.margined_bottom', { style: { width: '100%' } }, inputs) if inputs.any?
-      end
-
-      def render_pre_ipo(corporation)
-        children = []
-        case @step.ipo_type(corporation)
+        case ipo_kind
         when :par
           children << h(::View::Game::Par, corporation: corporation) if @current_actions.include?('par')
         when :bid
@@ -340,13 +317,13 @@ module View
         when :form
           children << h(::View::Game::FormCorporation, corporation: corporation) if @current_actions.include?('par')
         when String
-          children << h(:div, @step.ipo_type(corporation))
+          children << h(:div, ipo_kind)
         end
         children << h(::View::Game::BuySellShares, corporation: corporation)
         children.compact!
         children.empty? ? nil : h(:div, children)
       end
-
+      
       def render_subsidiaries
         return [] unless @current_actions.include?('assign')
 

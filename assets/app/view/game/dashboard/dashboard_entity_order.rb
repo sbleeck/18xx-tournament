@@ -16,9 +16,20 @@ module View
           return h(:div,
                    { style: { display: 'flex', alignItems: 'center', padding: '0.5rem', fontFamily: '"Helvetica Neue", Helvetica, Arial, sans-serif', fontWeight: 'bold', fontSize: '1.5rem', color: '#dc3545' } }, 'Game Over / Match Finished')
         end
-        # Extract unified round title tracker matching command column ground truth
-        round_class_name = @game.round.class.name.split('::').last
-        header_text = @game.round_description(round_class_name)
+
+        current_round = @round || @game.round
+        header_text = if current_round.nil?
+                        'Round'
+                      elsif current_round.respond_to?(:stock?) && current_round.stock?
+                        'Stock Round'
+                      elsif current_round.respond_to?(:operating?) && current_round.operating?
+                        curr_or = current_round.respond_to?(:round_num) ? current_round.round_num : 1
+                        total_or = @game.respond_to?(:operating_rounds) ? @game.operating_rounds : 1
+                        "Operating Round #{curr_or}/#{total_or}"
+                      else
+                        round_class_name = current_round.class.name.split('::').last
+                        @game.round_description(round_class_name)
+                      end
 
         header_el = h(:div, {
                         style: {
@@ -37,31 +48,34 @@ module View
                         },
                       }, header_text)
 
-        # Gather operating entities for the queue
-        if @round.respond_to?(:context_entities)
-          context_entities = @round.context_entities.dup
-          active_context_entity = @round.active_context_entity
-        elsif @round.active_step.respond_to?(:context_entities)
-          context_entities = @round.active_step.context_entities.dup
-          active_context_entity = @round.active_step.active_context_entity
-        end
-
-        entities =
-          if @round.active_step.respond_to?(:override_entities)
-            @round.active_step.override_entities
-          else
-            @round.entities
-          end.dup
-
-        current_operating = @round.current_entity
-        entities.unshift(current_operating) if current_operating && !entities.include?(current_operating)
-
-        # Build row layout containing both the round identifier and simple markers together
         row_children = [header_el]
-        list_entities = context_entities || entities
-        acting_entity = context_entities ? active_context_entity : current_operating
+        is_stock_round = current_round.respond_to?(:stock?) && current_round.stock?
 
-        row_children.concat(build_marker_list(list_entities, acting_entity))
+        if !is_stock_round && @round
+          if @round.respond_to?(:context_entities)
+            context_entities = @round.context_entities.dup
+            active_context_entity = @round.active_context_entity
+          elsif @round.respond_to?(:active_step) && @round.active_step.respond_to?(:context_entities)
+            context_entities = @round.active_step.context_entities.dup
+            active_context_entity = @round.active_step.active_context_entity
+          end
+
+          entities = if @round.respond_to?(:active_step) && @round.active_step.respond_to?(:override_entities)
+                       @round.active_step.override_entities
+                     elsif @round.respond_to?(:entities)
+                       @round.entities
+                     else
+                       []
+                     end.dup
+
+          current_operating = @round.respond_to?(:current_entity) ? @round.current_entity : nil
+          entities.unshift(current_operating) if current_operating && !entities.include?(current_operating)
+
+          list_entities = context_entities || entities
+          acting_entity = context_entities ? active_context_entity : current_operating
+
+          row_children.concat(build_marker_list(list_entities, acting_entity))
+        end
 
         h(:div, {
             style: {
@@ -88,7 +102,6 @@ module View
           has_operated = finished_entities.include?(entity) ||
                          (entities.index(acting_entity) && index < entities.index(acting_entity) && !is_active)
 
-          # Replicate exact simple vs fancy logo selection logic from game_status.rb
           logo_src = begin
             setting_for(:simple_logos, @game) ? entity.simple_logo : entity.logo
           rescue StandardError
@@ -98,7 +111,6 @@ module View
           corp_color = entity.respond_to?(:color) && entity.color ? entity.color : '#ffffff'
           text_color = entity.respond_to?(:text_color) && entity.text_color ? entity.text_color : '#000000'
 
-          # Clean token circle container matching render_unplaced_tokens
           marker_style = {
             width: '24px',
             height: '24px',
@@ -130,7 +142,6 @@ module View
                              h(:span, display_text)
                            end
 
-          # Wrap individual token markers to apply state highlights cleanly
           item_style = {
             display: 'inline-flex',
             alignItems: 'center',
@@ -141,17 +152,14 @@ module View
           }
 
           if is_active
-            # Highlight wrapper for the active company currently "at go"
             item_style[:backgroundColor] = '#f8d7da'
             item_style[:border] = '2px solid #dc3545'
           elsif has_operated
-            # Clear faded presentation for completed entities
             item_style[:opacity] = '0.4'
           end
 
           elements << h(:div, { style: item_style }, [h(:div, { style: marker_style }, [marker_content])])
 
-          # Append structural arrow separators between sequential elements
           next unless index < entities.size - 1
 
           elements << h(:span, {

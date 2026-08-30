@@ -24,13 +24,18 @@ module View
       end
 
       def render
-        title_props = {
+     title_props = {
+          attrs: { class: 'column-zone-market' },
           style: {
-            padding: '0.4rem',
-            backgroundColor: color_for(:bg2),
-            color: color_for(:font2),
-            fontStyle: 'italic',
+            padding: '0.3rem',
+            backgroundColor: 'var(--bg-market-zone)',
+            color: '#000000',
+            fontFamily: FONT_STD,
+            fontSize: '1.1rem',
             fontWeight: 'bold',
+            letterSpacing: '1px',
+            textAlign: 'center',
+            borderBottom: '1px solid #b3b3b3',
           },
         }
         body_props = {
@@ -58,9 +63,9 @@ module View
 
         if @game.game_end_check_values.include?(:bank)
           clean_bank_cash = @game.format_currency(@game.bank_cash)
-          trs << h(:tr, [
-            h('td.left', { style: { fontFamily: FONT_STD } }, 'Cash'),
-            h('td.right', { style: { fontFamily: FONT_MONEY, fontWeight: 'bold', color: COLOR_CASH } }, clean_bank_cash),
+         trs << h(:tr, { style: { backgroundColor: 'var(--bg-market-zone)' } }, [
+            h('td.middle', { style: { fontFamily: FONT_STD, textAlign: 'center', width: '50%' } }, 'Cash'),
+            h('td.middle', { style: { fontFamily: FONT_MONEY, fontWeight: 'bold', color: COLOR_CASH, textAlign: 'center', width: '50%' } }, clean_bank_cash),
           ])
         end
 
