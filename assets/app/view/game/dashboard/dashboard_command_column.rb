@@ -144,57 +144,56 @@ module View
           upper_content << h(View::Game::Dashboard::ResultsOverlay, game: @game) if Lib::Storage['show_results_overlay']
         else
 
-          # 1. UNIFIED ROUND TITLE TRACKER (MATCHING GAME_PAGE GROUND TRUTH)
-          round_class_name = @game.round.class.name.split('::').last
-          round_title_str = @game.round_description(round_class_name)
-
-          upper_content << h(:div, { style: { padding: '0.5rem 0.2rem', textAlign: 'center', color: '#333', borderBottom: '2px solid #ccc', marginBottom: '0.4rem' } }, [
-            h(:div, { style: { fontSize: '1.1rem', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.5px' } }, round_title_str),
-          ])
+         
 
           # 2. CURRENT ENTITY AND ORGANIZATION DISCOVERY
-          if current_entity
-            entity_label = current_entity.name
-            if current_entity.respond_to?(:owner) && current_entity.owner && current_entity.owner != current_entity
-              entity_label += " (#{current_entity.owner.name})"
+         if current_entity
+            logo_src = begin
+              setting_for(:simple_logos, @game) ? current_entity.simple_logo : current_entity.logo
+            rescue StandardError
+              nil
             end
 
-            upper_content << h(:div, { style: { backgroundColor: bg_color, color: text_color, padding: '0.4rem', textAlign: 'center', fontWeight: 'bold', borderRadius: '4px', border: '1px solid #999', marginBottom: '0.4rem', fontSize: '0.85rem' } }, entity_label)
+            header_elements = []
 
-          #   # 3. CONDITIONAL ASSET PANEL (SUPPRESSED FOR STOCK ROUNDS)
-          #   unless @game.round.stock? || (@game.round.respond_to?(:stock?) && @game.round.stock?)
-          #     if @game.round.operating?
+            if logo_src
+              header_elements << h(:img, {
+                attrs: { src: logo_src },
+                style: {
+                  maxHeight: '75px',
+                  maxWidth: '140px',
+                  display: 'block',
+                  margin: '0 auto 0.4rem auto',
+                },
+              })
+            end
 
-          #       mauve_box_children = [
-          #          h(:div, { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #b886b8', paddingBottom: '0.2rem' } }, [
-          #            h(:div, { style: { fontSize: '0.8rem', fontWeight: 'bold' } }, 'Cash'),
-          #            h(:div, { style: { fontSize: '1.2rem', fontWeight: 'bold', fontFamily: '"Courier New", Courier, monospace', color: '#4c1d95' } }, @game.format_currency(treasury)),
-          #          ]),
-          #          h(:div, { style: { textAlign: 'center' } }, [
-          #            render_owned_trains(current_entity, phase),
-          #          ]),
-          #          h(:div, { style: { textAlign: 'center' } }, [
-          #            render_company_tokens(current_entity),
-          #          ]),
-          #       ]
+          
 
-          #       if @game.respond_to?(:total_loans) && @game.total_loans&.nonzero?
-          #         mauve_box_children << h(:div, { style: { textAlign: 'center' } }, [
-          #           render_loan_dots(current_entity),
-          #         ])
-          #       end
+            owner_obj = current_entity.respond_to?(:owner) ? current_entity.owner : nil
+            if owner_obj && owner_obj != current_entity
+              header_elements << h(:div, {
+                style: {
+                  fontSize: '1rem',
+                  fontWeight: '600',
+                  marginTop: '0.3rem',
+                  opacity: '0.95',
+                },
+              }, owner_obj.name)
+            end
 
-          #       upper_content << h(:div, { style: { border: '1px solid #999', padding: '0.4rem', marginBottom: '0.4rem', backgroundColor: '#f3e8ff', borderRadius: '4px', display: 'flex', flexDirection: 'column', gap: '0.4rem', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' } }, mauve_box_children)
-          #     else
-          #       # Compact display for Non-Operating, Non-Stock phases (e.g., Mergers, Auctions)
-          #       upper_content << h(:div, { style: { border: '1px solid #ccc', padding: '0.4rem', marginBottom: '0.4rem', backgroundColor: '#f8f9fa', borderRadius: '4px', textAlign: 'center' } }, [
-          #       h(:div, { style: { fontSize: '0.8rem', fontWeight: 'bold' } }, [
-          #           h(:span, 'Treasury Cash: '),
-          #           h(:span, { style: { fontFamily: '"Courier New", Courier, monospace', color: '#4c1d95' } }, @game.format_currency(treasury)),
-          #         ]),
-          #        ])
-          #     end
-          #   end
+            upper_content << h(:div, {
+              style: {
+                backgroundColor: bg_color,
+                color: text_color,
+                padding: '0.6rem 0.4rem',
+                textAlign: 'center',
+                borderRadius: '6px',
+                border: '2px solid #333333',
+                marginBottom: '0.5rem',
+                boxShadow: '0 2px 5px rgba(0,0,0,0.25)',
+              },
+            }, header_elements)
           end
 
           # 4. PHASE 1-4 COMPACT ACTIONS (EXCLUSIVELY FOR OPERATING ROUNDS)
@@ -250,38 +249,60 @@ module View
               upper_content << render_phase_box('Revenue', false, div_buttons, actions, current_entity, nil, '8.5rem')
             end
 
-            buyable_list = phase == :buy_train ? render_buyable_trains(step, current_entity) : h(:div)
-            upper_content << render_phase_box('Buy Trains', phase == :buy_train, ['Done Buying'], actions, current_entity, buyable_list, '8.5rem')
+            upper_content << render_phase_box('Buy Trains', phase == :buy_train, ['Done Buying'], actions, current_entity, nil, '4.5rem')
 
             if phase == :discard_train
               upper_content << render_phase_box('Discard Train', true, [], actions, current_entity, h(:div), '4.5rem')
             end
           end
 
-          show_abilities = Lib::Storage["show_abilities_#{@game.id}"]
-          upper_content << h(:button, {
-                               style: {
-                                 width: '100%',
-                                 padding: '0.35rem',
-                                 marginTop: '0.4rem',
-                                 fontSize: '0.75rem',
-                                 backgroundColor: '#6c757d',
-                                 color: 'white',
-                                 border: 'none',
-                                 borderRadius: '4px',
-                                 cursor: 'pointer',
-                                 fontWeight: 'bold',
-                                 textAlign: 'center',
-                               },
-                               on: {
-                                 click: lambda {
-                                   Lib::Storage["show_abilities_#{@game.id}"] = !show_abilities
-                                   update
-                                 },
-                               },
-                             }, "#{show_abilities ? 'Hide' : 'Show'} Private Company Abilities")
+      has_abilities = current_entity && (@game.companies || []).any? do |c|
+            next false if c.respond_to?(:closed?) && c.closed?
 
-          upper_content << h(Abilities) if show_abilities
+            is_owner = c.owner == current_entity ||
+                       (current_entity.respond_to?(:owner) && c.owner && c.owner == current_entity.owner)
+            next false unless is_owner
+
+            abilities = c.respond_to?(:all_abilities) ? (c.all_abilities || []).dup : []
+            abilities.concat(c.abilities || []) if c.respond_to?(:abilities)
+            
+            abilities.any? do |a|
+              next false if a.respond_to?(:passive?) && a.passive?
+              next false if a.respond_to?(:closed?) && a.closed?
+              next false if a.respond_to?(:used?) && a.used?
+              true
+            end
+          end
+
+          if has_abilities
+            show_abilities = Lib::Storage["show_abilities_#{@game.id}"]
+            upper_content << h(:button, {
+                                 style: {
+                                   display: 'block',
+                                   width: '90%',
+                                   margin: '0.5rem auto',
+                                   padding: '0.5rem',
+                                   fontSize: '0.85rem',
+                                   backgroundColor: '#007bff',
+                                   color: 'white',
+                                   border: '1px solid #0056b3',
+                                   borderRadius: '6px',
+                                   boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+                                   cursor: 'pointer',
+                                   fontWeight: 'bold',
+                                   textAlign: 'center',
+                                 },
+                                 on: {
+                                   click: lambda {
+                                     Lib::Storage["show_abilities_#{@game.id}"] = !show_abilities
+                                     update
+                                   },
+                                 },
+                               }, "#{show_abilities ? 'Hide' : 'Show'} Private Company Abilities")
+
+            upper_content << h(Abilities) if show_abilities
+          end
+
 
           upper_content << h(:div, { style: { marginTop: '0.5rem', paddingTop: '0.5rem', borderTop: '2px solid #ccc' } }, [
             render_ground_truth_actions(actions, step),
@@ -649,208 +670,6 @@ module View
           { style: { display: 'flex', flexDirection: 'column', width: '100%', padding: '0.2rem 0', boxSizing: 'border-box' } }, company_boxes)
       end
 
-      def render_buyable_trains(step, current_entity)
-        return h(:div) unless step.respond_to?(:buyable_trains)
-
-        trains = step.buyable_trains(current_entity)
-        if trains.empty?
-          return h(:div, { style: { fontSize: '0.75rem', color: '#666', fontStyle: 'italic', padding: '0.2rem' } },
-                   'No trains available')
-        end
-
-        active_p = current_entity&.player? ? current_entity : current_entity&.owner
-
-        grouped_trains = trains.group_by { |t| [t.owner, t.name, t.price] }
-        train_boxes = grouped_trains.map do |_, grouped|
-          t = grouped.first
-          count = grouped.size
-          owner_entity = t.owner
-          next nil unless owner_entity
-
-          is_corp = owner_entity.respond_to?(:owner)
-          is_bank = !is_corp
-
-          # Filter out trains that already belong to the active company
-          next nil if current_entity && owner_entity == current_entity
-
-          # Check affordability for bank depot trains
-          if is_bank
-            can_afford = (current_entity.respond_to?(:cash) && current_entity.cash >= t.price) ||
-                         (current_entity.respond_to?(:trains) && current_entity.trains.empty?)
-            next nil unless can_afford
-          end
-
-          # Only show corporate trains if they belong to a company with the same owner
-          if is_corp
-            owned_by_same_player = active_p && owner_entity.owner == active_p
-            next nil unless owned_by_same_player
-          end
-
-          can_afford = true
-          if is_bank && current_entity.respond_to?(:cash) && current_entity.respond_to?(:trains)
-            can_afford = current_entity.cash >= t.price || current_entity.trains.empty?
-          end
-
-          is_adjustable_price = is_corp
-          train_border_color = can_afford ? '#16a34a' : '#888888'
-
-          owner_key = owner_entity.respond_to?(:id) ? owner_entity.id : 'depot'
-          menu_storage_key = "cmd_buy_train_menu_#{owner_key}_#{t.id}"
-          price_storage_key = "cmd_buy_train_price_#{owner_key}_#{t.id}"
-
-          train_click_handler = nil
-          if can_afford
-            train_click_handler = lambda {
-              if is_adjustable_price
-                Lib::Storage[menu_storage_key] = true
-                Lib::Storage[price_storage_key] = current_entity.cash
-                update
-              else
-                source_id_str = is_bank ? "bank_train_#{t.id}" : "train_wrapper_#{owner_entity.id}_#{t.id}"
-                dest_id_str = "trains_#{current_entity.id}"
-                source_selector = "##{`CSS.escape(#{source_id_str})`} .game-card"
-                dest_selector = "##{`CSS.escape(#{dest_id_str})`}"
-                Lib::CardAnimation.fly(source_selector, dest_selector) do
-                  process_action(Engine::Action::BuyTrain.new(
-                    current_entity,
-                    train: t,
-                    price: t.price
-                  ))
-                end
-              end
-            }
-          end
-
-          menu_dropdown = nil
-          if is_adjustable_price && Lib::Storage[menu_storage_key]
-            menu_title = "#{current_entity.name} buys #{t.name} from #{owner_entity.name} for how much?"
-
-            confirm_handler = lambda {
-              price_value = Lib::Storage[price_storage_key].to_i
-              price_value = 1 if price_value < 1
-
-              Lib::Storage[menu_storage_key] = nil
-              Lib::Storage[price_storage_key] = nil
-              source_id_str = is_bank ? "bank_train_#{t.id}" : "train_wrapper_#{owner_entity.id}_#{t.id}"
-              dest_id_str = "trains_#{current_entity.id}"
-              source_selector = "##{`CSS.escape(#{source_id_str})`} .game-card"
-              dest_selector = "##{`CSS.escape(#{dest_id_str})`}"
-              Lib::CardAnimation.fly(source_selector, dest_selector) do
-                process_action(Engine::Action::BuyTrain.new(
-                  current_entity,
-                  train: t,
-                  price: price_value
-                ))
-              end
-            }
-
-            cancel_handler = lambda {
-              Lib::Storage[menu_storage_key] = nil
-              Lib::Storage[price_storage_key] = nil
-              update
-            }
-
-            menu_dropdown = h(:div, {
-                                style: {
-                                  position: 'absolute',
-                                  top: '105%',
-                                  left: '50%',
-                                  transform: 'translateX(-50%)',
-                                  backgroundColor: '#ffffff',
-                                  border: '2px solid #333333',
-                                  borderRadius: '4px',
-                                  padding: '0.5rem',
-                                  zIndex: '9999',
-                                  boxShadow: '0px 4px 10px rgba(0,0,0,0.3)',
-                                  color: '#000000',
-                                },
-                              }, [
-              h(:div, { style: { fontSize: '0.75rem', fontWeight: 'bold', marginBottom: '0.4rem', whiteSpace: 'nowrap' } },
-                menu_title),
-              h(:input, {
-                  key: price_storage_key,
-                  style: {
-                    display: 'block',
-                    width: '100%',
-                    marginBottom: '0.4rem',
-                    boxSizing: 'border-box',
-                    padding: '3px 6px',
-                    fontSize: '0.85rem',
-                  },
-                  props: {
-                    value: Lib::Storage[price_storage_key] || '1',
-                  },
-                  attrs: {
-                    type: 'number',
-                    min: '1',
-                  },
-                  on: {
-                    input: lambda { |event|
-                      Lib::Storage[price_storage_key] = `#{event}.target.value`
-                      update
-                    },
-                  },
-                }),
-              h(:button, {
-                  style: {
-                    display: 'block',
-                    width: '100%',
-                    marginBottom: '0.2rem',
-                    cursor: 'pointer',
-                    fontSize: '0.75rem',
-                    fontWeight: 'bold',
-                    padding: '3px 6px',
-                    backgroundColor: '#007bff',
-                    border: '1px solid #0056b3',
-                    color: '#ffffff',
-                    borderRadius: '3px',
-                  },
-                  on: { click: confirm_handler },
-                }, 'Confirm'),
-              h(:button, {
-                  style: {
-                    display: 'block',
-                    width: '100%',
-                    cursor: 'pointer',
-                    fontSize: '0.75rem',
-                    padding: '3px 6px',
-                    backgroundColor: '#e0e0e0',
-                    border: '1px solid #999',
-                    borderRadius: '3px',
-                  },
-                  on: { click: cancel_handler },
-                }, 'Cancel'),
-            ])
-          end
-
-          card_text = count > 1 ? "#{t.name} (x#{count})" : t.name
-          card_element = h(:div,
-                           { attrs: { id: "cmd_buy_train_#{t.id}", class: 'game-card clickable' }, style: { border: "2px solid #{train_border_color}" } }, card_text)
-
-          source_name = is_bank ? 'Bank' : owner_entity.name
-          info_string = is_adjustable_price ? "from #{source_name}" : "from #{source_name} (#{@game.format_currency(t.price)})"
-
-          info_text = h(:span, { style: { marginLeft: '0.5rem', fontSize: '0.85rem', color: '#111' } }, info_string)
-
-          clickable_container = h(:div, {
-                                    style: { display: 'flex', alignItems: 'center', cursor: 'pointer' },
-                                    on: { click: train_click_handler },
-                                  }, [card_element, info_text])
-
-          h(:div, { style: { display: 'block', width: '100%', position: 'relative', margin: '4px 0' } }, [
-            clickable_container,
-            menu_dropdown,
-          ].compact)
-        end.compact
-
-        if train_boxes.empty?
-          return h(:div, { style: { fontSize: '0.75rem', color: '#666', fontStyle: 'italic', padding: '0.2rem' } },
-                   'No buyable trains available')
-        end
-
-        h(:div,
-          { style: { display: 'flex', flexDirection: 'column', width: '100%', padding: '0.2rem 0', boxSizing: 'border-box' } }, train_boxes)
-      end
 
       def render_phase_box(title, is_active, button_labels, available_actions, current_entity, custom_overlay, min_height = 'auto')
         effectively_active = is_active && !(@cmd_router_running && title == 'Run Routes')
@@ -1029,14 +848,16 @@ module View
               show_buy_companies = Lib::Storage["show_buy_companies_#{@game.id}"]
               components << h(:button, {
                                 style: {
-                                  width: '100%',
-                                  padding: '0.35rem',
-                                  margin: '0.2rem 0',
-                                  fontSize: '0.75rem',
-                                  backgroundColor: '#ffc107',
-                                  color: '#000000',
-                                  border: 'none',
-                                  borderRadius: '4px',
+                                 display: 'block',
+                                  width: '90%',
+                                  margin: '0.5rem auto',
+                                  padding: '0.5rem',
+                                  fontSize: '0.85rem',
+                                  backgroundColor: '#007bff',
+                                  color: 'white',
+                                  border: '1px solid #0056b3',
+                                  borderRadius: '6px',
+                                  boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
                                   cursor: 'pointer',
                                   fontWeight: 'bold',
                                   textAlign: 'center',

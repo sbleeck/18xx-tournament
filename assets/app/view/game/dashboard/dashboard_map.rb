@@ -263,7 +263,7 @@ props = {
         end
 
         def map_y
-          GAP + (@layout == :flat ? (FONT_SIZE / 2) : FONT_SIZE)
+          GAP + (FONT_SIZE) + (@layout == :flat ? (FONT_SIZE / 2.0) : FONT_SIZE)
         end
 
         def map_size

@@ -2,6 +2,12 @@
 
 # rubocop:disable Layout/LineLength
 
+
+
+# # how to restart docker
+# (base) bleeck@HF36F99QXN 18xx-tournament % /usr/local/bin/docker compose -f docker-compose.yml -f docker-compose.dev.yml run --rm rack bundle exec rake compile
+# /usr/local/bin/docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+
 require 'view/game/actionable'
 require 'view/game/dashboard/dashboard_command_column'
 require 'view/game/dashboard/dashboard_map'
@@ -83,8 +89,6 @@ module View
                         `document.getElementById('app') && Object.assign(document.getElementById('app').style, { overflow: 'hidden', padding: '0', margin: '0', maxWidth: '100vw', width: '100vw', height: '100vh', backgroundColor: '#ffffff' })`
                         `document.getElementById('game') && Object.assign(document.getElementById('game').style, { overflow: 'hidden', width: '100vw', height: '100vh', maxWidth: '100vw', maxHeight: '100vh' })`
 
-                        # Use Opal's interpolation to bridge the Ruby instance into JS
-                        @clock_ticker = `setInterval(function() { #{comp}.$tick_clock(); }, 1000)`
 
                         %x(window.init18xxResizers = function() {
                           var createResizer = function(resizerId, prevId, nextId, isVertical) {
@@ -242,6 +246,7 @@ module View
                         setTimeout(window.init18xxResizers, 200);)
                       },
               destroy: lambda {
+                        `if (#{@clock_ticker}) clearInterval(#{@clock_ticker})`
                          `document.body.style.backgroundColor = ''`
                          `document.getElementById('app') && Object.assign(document.getElementById('app').style, { overflow: '', padding: '', margin: '', maxWidth: '', width: '', height: '', backgroundColor: '' })`
                          `document.getElementById('game') && Object.assign(document.getElementById('game').style, { overflow: '', width: '', height: '', maxWidth: '', maxHeight: '' })`
@@ -501,7 +506,7 @@ module View
                     end
                   }
                 elsif actions.include?('buy_train')
-                  default_btn_text = 'Finished Buying'
+                  default_btn_text = 'Done Buying'
                 end
 
                 btns = [

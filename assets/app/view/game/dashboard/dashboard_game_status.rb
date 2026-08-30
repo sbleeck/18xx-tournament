@@ -269,7 +269,7 @@ module View
 
       def render_extra_cards
         children = []
-        train_handler = lambda do |train|
+       train_handler = lambda do |train, price = nil, variant = nil|
           owner_entity = train.owner
           if owner_entity.respond_to?(:owner) # Corporate train
             owner_key = owner_entity.respond_to?(:id) ? owner_entity.id : 'depot'
@@ -277,16 +277,25 @@ module View
             Lib::Storage["cmd_buy_train_price_#{owner_key}_#{train.id}"] = active_entity.cash
             update
           else # Bank/Depot train at fixed value
-            escaped_train_id = `CSS.escape('bank_train_' + #{train.id})`
+            price_to_pay = price || train.price
+            variant_name = variant ? variant.to_s : train.name.to_s
+            variant_param = (variant_name == train.name.to_s ? nil : variant_name)
+
+            clean_variant_id = variant_name.gsub('/', '_')
+            escaped_train_id = `CSS.escape('bank_train_' + #{train.id} + '_' + #{clean_variant_id})`
             escaped_dest_id = `CSS.escape('trains_' + #{active_entity.id})`
             source_selector = "##{escaped_train_id} .game-card"
+            source_fallback = "##{`CSS.escape('bank_train_' + #{train.id})`} .game-card"
             target_selector = "##{escaped_dest_id}"
 
-            Lib::CardAnimation.fly(source_selector, target_selector) do
+            active_source = `document.querySelector(#{source_selector}) ? #{source_selector} : #{source_fallback}`
+
+            Lib::CardAnimation.fly(active_source, target_selector) do
               process_action(Engine::Action::BuyTrain.new(
                 active_entity,
                 train: train,
-                price: train.price
+                price: price_to_pay,
+                variant: variant_param
               ))
             end
           end
@@ -629,19 +638,60 @@ module View
           player_shares = p.respond_to?(:shares_of) ? p.shares_of(corporation) : []
           bundles = []
 
-          p_actions = @game.round.respond_to?(:actions_for) ? (@game.round.actions_for(p) || []) : (step&.current_actions || [])
-          if p_actions.include?('sell_shares') && p == active_player
-            sorted_shares = player_shares.sort_by { |s| s.respond_to?(:president) && s.president ? 1 : 0 }
+     
 
-            (1..sorted_shares.size).each do |num|
-              chosen_shares = sorted_shares[0...num]
-              total_percent = 0
-              chosen_shares.each { |s| total_percent += (s.respond_to?(:percent) ? s.percent : 10) }
+          active_step_actions = if step.respond_to?(:actions)
+                                  begin
+                                    step.actions(p) || []
+                                  rescue StandardError
+                                    []
+                                  end
+                                else
+                                  []
+                                end
 
-              numeric_price = corporation.share_price ? corporation.share_price.price : 0
-              bundles << { shares: chosen_shares, percent: total_percent, share_price: numeric_price }
+          can_sell_now = (p == active_player) && active_step_actions.include?('sell_shares')
+
+          if @game.round.operating?
+            emergency_active = if step.respond_to?(:can_sell_shares?)
+                                 step.can_sell_shares?(p)
+                               elsif step.respond_to?(:must_sell?)
+                                 step.must_sell?(p)
+                               elsif step.respond_to?(:cash_crisis?)
+                                 step.cash_crisis?
+                               else
+                                 step.respond_to?(:emergency?) && step.emergency?
+                               end
+            can_sell_now = false unless emergency_active
+          end
+
+          if can_sell_now
+            if step.respond_to?(:bundles_for_corporation)
+              legal_bundles = step.bundles_for_corporation(p, corporation) || []
+              legal_bundles.each do |b|
+                next if step.respond_to?(:can_sell?) && !step.can_sell?(p, b)
+
+                numeric_price = corporation.share_price ? corporation.share_price.price : 0
+                bundles << { shares: b.shares, percent: b.percent, share_price: numeric_price, bundle: b }
+              end
+            elsif step.respond_to?(:can_sell?)
+              sorted_shares = player_shares.sort_by { |s| s.respond_to?(:president) && s.president ? 1 : 0 }
+              (1..sorted_shares.size).each do |num|
+                chosen_shares = sorted_shares[0...num]
+                b = begin
+                  Engine::ShareBundle.new(chosen_shares)
+                rescue StandardError
+                  nil
+                end
+                next if b && !step.can_sell?(p, b)
+
+                total_percent = chosen_shares.sum { |s| s.respond_to?(:percent) ? s.percent : 10 }
+                numeric_price = corporation.share_price ? corporation.share_price.price : 0
+                bundles << { shares: chosen_shares, percent: total_percent, share_price: numeric_price, bundle: b }
+              end
             end
           end
+
 
           can_sell = (p == active_player) && !bundles.empty?
 
@@ -1355,18 +1405,34 @@ module View
 
           not_own_company = active_ent && entity != active_ent
 
-          is_buyable = if step.respond_to?(:buyable_companies)
-                         step.buyable_companies(active_ent).include?(c)
-                       elsif step.respond_to?(:can_buy_company?)
-                         step.can_buy_company?(active_ent, c)
-                       elsif c.respond_to?(:owned_by?)
-                         !c.owned_by?(active_ent)
-                       else
-                         c.owner != active_ent
-                       end
+        buy_company_step = nil
+          is_buyable = false
+
+          if @game.round.respond_to?(:steps)
+            buy_company_step = @game.round.steps.find do |s|
+              (s.respond_to?(:buyable_companies) && s.buyable_companies(active_ent).include?(c)) ||
+                (s.respond_to?(:can_buy_company?) && s.can_buy_company?(active_ent, c))
+            end
+            is_buyable = true if buy_company_step
+          end
+
+          unless is_buyable
+            buy_company_step = step
+            is_buyable = if step.respond_to?(:buyable_companies)
+                           step.buyable_companies(active_ent).include?(c)
+                         elsif step.respond_to?(:can_buy_company?)
+                           step.can_buy_company?(active_ent, c)
+                         elsif c.respond_to?(:owned_by?)
+                           !c.owned_by?(active_ent)
+                         else
+                           c.owner != active_ent
+                         end
+          end
 
           # Restrict buyable list to only show privates owned by the operating corporation's president
-          is_buyable = false if active_ent.respond_to?(:corporation?) && active_ent.corporation? && (c.owner != active_ent.owner)
+          if active_ent.respond_to?(:corporation?) && active_ent.corporation?
+            is_buyable = false if !c.owner || c.owner != active_ent.owner
+          end
 
           matching_special_action = valid_special_actions.find do |_, _action_class|
             targets = if step.respond_to?(:available_targets)
@@ -1394,13 +1460,13 @@ module View
             card_classes << 'action-buy'
             card_classes << 'clickable'
 
-            min_price = if step.respond_to?(:min_price)
-                          step.min_price(c)
+           min_price = if buy_company_step.respond_to?(:min_price)
+                          buy_company_step.min_price(c)
                         else
                           (c.respond_to?(:min_price) ? c.min_price : 1)
                         end
-            max_price = if step.respond_to?(:max_price)
-                          step.max_price(active_ent, c)
+            max_price = if buy_company_step.respond_to?(:max_price)
+                          buy_company_step.max_price(active_ent, c)
                         else
                           (if c.respond_to?(:max_price)
                              c.max_price

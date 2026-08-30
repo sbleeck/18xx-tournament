@@ -152,44 +152,71 @@ module View
       def render_bank_trains
         return nil unless @game.respond_to?(:depot) && @game.depot
 
-        # Directly identify the single next upcoming train to bypass the core engine lookup layer entirely
-        next_train = @game.depot.upcoming.first
-        return nil unless next_train
-
-        step = @game.round.active_step
+     step = @game.round.active_step
         train_buyable_step = step&.current_actions&.include?('buy_train')
 
-        card_classes = ['game-card']
-        click_handler = nil
+        active_trains = if train_buyable_step && active_entity&.corporation? && step.respond_to?(:buyable_trains)
+                          buyable_depot = step.buyable_trains(active_entity).select do |t|
+                            (t.respond_to?(:from_depot?) && t.from_depot?) ||
+                              t.owner == @game.depot ||
+                              @game.depot.upcoming.include?(t)
+                          end
+                          buyable_depot.any? ? buyable_depot.uniq(&:name) : [@game.depot.upcoming.first].compact
+                        else
+                          [@game.depot.upcoming.first].compact
+                        end
 
-        if train_buyable_step && active_entity&.corporation?
-          can_afford = active_entity.cash >= next_train.price || active_entity.trains.empty?
+        return nil if active_trains.empty?
 
-          if can_afford
-            card_classes << 'action-buy'
-            card_classes << 'clickable'
-            click_handler = lambda {
-              if @train_handler
-                @train_handler.call(next_train)
-              else
-                process_action(Engine::Action::BuyTrain.new(
-                  active_entity,
-                  train: next_train,
-                  price: next_train.price
-                ))
-              end
-            }
+        train_cards = []
+
+        active_trains.each do |train|
+          variants = if train.respond_to?(:names_to_prices) && train.names_to_prices && !train.names_to_prices.empty?
+                       train.names_to_prices
+                     else
+                       { train.name => train.price }
+                     end
+
+          variants.each do |variant_name, price|
+            card_classes = ['game-card']
+            click_handler = nil
+
+            if train_buyable_step && active_entity&.corporation?
+              can_afford = active_entity.cash >= price || active_entity.trains.empty?
+
+              if can_afford
+                      card_classes << 'action-buy'
+                      card_classes << 'clickable'
+                      click_handler = lambda {
+                        variant_str = variant_name.to_s
+                        if @train_handler
+                          @train_handler.call(train, price, variant_str)
+                        else
+                          process_action(Engine::Action::BuyTrain.new(
+                            active_entity,
+                            train: train,
+                            price: price,
+                            variant: (variant_str == train.name.to_s ? nil : variant_str)
+                          ))
+                        end
+                      }
+                  end
+                end
+
+            card_props = { attrs: { class: card_classes.join(' ') } }
+            card_props[:on] = { click: click_handler } if click_handler
+
+            dom_id = "bank_train_#{train.id}_#{variant_name.to_s.gsub('/', '_')}"
+
+            train_cards << h(:div, { attrs: { id: dom_id }, style: { display: 'inline-block', margin: '2px', textAlign: 'center', verticalAlign: 'top' } }, [
+              h(:div, card_props, variant_name.to_s),
+              h(:div,
+                { style: { fontFamily: FONT_CASH, color: COLOR_CASH, fontSize: '0.75rem', fontWeight: 'bold', marginTop: '2px' } }, @game.format_currency(price)),
+            ])
           end
         end
 
-        card_props = { attrs: { class: card_classes.join(' ') } }
-        card_props[:on] = { click: click_handler } if click_handler
-
-        train_card = h(:div, { attrs: { id: "bank_train_#{next_train.id}" }, style: { display: 'inline-block', margin: '2px', textAlign: 'center', verticalAlign: 'top' } }, [
-          h(:div, card_props, next_train.name),
-          h(:div,
-            { style: { fontFamily: FONT_CASH, color: COLOR_CASH, fontSize: '0.75rem', fontWeight: 'bold', marginTop: '2px' } }, @game.format_currency(next_train.price)),
-        ])
+        return nil if train_cards.empty?
 
         h(:div, {
             style: {
@@ -201,7 +228,7 @@ module View
           }, [
           h(:div, { style: { fontSize: '0.8rem', fontWeight: 'bold', marginBottom: '0.3rem', fontFamily: FONT_STD } },
             'Bank Depot:'),
-          h(:div, { style: { display: 'flex', flexWrap: 'wrap', justifyContent: 'center' } }, [train_card]),
+h(:div, { style: { display: 'flex', flexWrap: 'wrap', justifyContent: 'center' } }, train_cards),
         ])
       end
 
@@ -251,9 +278,9 @@ module View
             if can_afford
               card_classes << 'action-buy'
               card_classes << 'clickable'
-              click_handler = lambda {
+           click_handler = lambda {
                 if @train_handler
-                  @train_handler.call(train)
+                  @train_handler.call(train, train.price, nil)
                 else
                   process_action(Engine::Action::BuyTrain.new(
                     active_entity,
