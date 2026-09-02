@@ -36,7 +36,7 @@ end
         @routes.select { |r| r.chains.any? }
       end
 
-      def render_action_row(label, children)
+     def render_action_row(label, children)
         items = (children.is_a?(Array) ? children : [children]).compact
         return nil if items.empty?
 
@@ -46,14 +46,14 @@ end
             flexDirection: 'row',
             alignItems: 'center',
             justifyContent: 'flex-start',
-            gap: '0.6rem',
+            gap: '0.5rem',
             width: '100%',
-            maxWidth: '520px',
+            maxWidth: '100%',
             margin: '0 auto',
           },
         }, [
-          h(:span, { style: { fontSize: '1.1rem', fontWeight: 'bold', color: '#333', minWidth: '7.5rem', textAlign: 'left', flexShrink: '0' } }, label),
-          h(:div, { style: { display: 'flex', flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: '0.3rem' } }, items),
+          h(:span, { style: { fontSize: '0.95rem', fontWeight: 'bold', color: '#333', minWidth: '6.5rem', textAlign: 'left', flexShrink: '0' } }, label),
+          h(:div, { style: { display: 'flex', flexDirection: 'row', flexWrap: 'nowrap', alignItems: 'center', gap: '0.35rem' } }, items),
         ])
       end
 
@@ -1286,8 +1286,12 @@ def render_issue_shares(step, entity)
                       0
                     end
 
-            pct_str = bundle.respond_to?(:percent) ? "#{bundle.percent}% " : ''
-            btn_text = "#{pct_str}#{num} share#{'s' if num > 1} (#{@game.format_currency(price)})"
+           pct_str = if bundle.respond_to?(:percent) && bundle.percent
+                        "#{bundle.percent}%"
+                      else
+                        "#{num}S"
+                      end
+            price_str = "(#{@game.format_currency(price)})"
 
             click_handler = lambda {
               actions = begin
@@ -1315,18 +1319,34 @@ def render_issue_shares(step, entity)
               end
             }
 
-            h(:button, {
+            card_props = {
+              attrs: { class: 'game-card clickable action-sell' },
               style: {
-                padding: '0.25rem 0.6rem',
-                fontSize: '0.9rem',
-                fontWeight: 'bold',
+                border: '2px solid #dc2626',
+                minWidth: '2.5rem',
+                height: '1.45rem',
+                padding: '0 4px',
+                margin: '0',
+                boxSizing: 'border-box',
                 cursor: 'pointer',
-                backgroundColor: '#f8f9fa',
-                border: '1px solid #999',
-                borderRadius: '4px',
+                fontSize: '0.82rem',
+                fontWeight: 'bold',
+              },
+            }
+
+            h(:div, {
+              style: {
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.2rem',
+                cursor: 'pointer',
+                margin: '1px 2px',
               },
               on: { click: click_handler },
-            }, btn_text)
+            }, [
+              h(:div, card_props, pct_str),
+              h(:span, { style: { fontSize: '0.82rem', color: '#444', fontWeight: 'bold', whiteSpace: 'nowrap' } }, price_str),
+            ])
           end
           rows << render_action_row('Issue:', issue_buttons)
         elsif (@game.round.actions_for(entity) || []).include?('issue_shares')
@@ -1347,7 +1367,15 @@ def render_issue_shares(step, entity)
 
         if redeemable_bundles.any?
           redeem_buttons = redeemable_bundles.map do |bundle|
-            btn_text = "#{bundle.num_shares} (#{@game.format_currency(bundle.price)})"
+           num = bundle.num_shares
+            price = bundle.price
+            pct_str = if bundle.respond_to?(:percent) && bundle.percent
+                        "#{bundle.percent}%"
+                      else
+                        "#{num}S"
+                      end
+            price_str = "(#{@game.format_currency(price)})"
+
             click_handler = lambda {
               actions = begin
                           @game.round.actions_for(entity)
@@ -1362,25 +1390,42 @@ def render_issue_shares(step, entity)
                 percent: bundle.percent
               ))
             }
-            h(:button, {
+
+            card_props = {
+              attrs: { class: 'game-card clickable action-buy' },
               style: {
-                padding: '0.25rem 0.6rem',
-                fontSize: '0.9rem',
-                fontWeight: 'bold',
+                border: '2px solid #28a745',
+                minWidth: '2.5rem',
+                height: '1.45rem',
+                padding: '0 4px',
+                margin: '0',
+                boxSizing: 'border-box',
                 cursor: 'pointer',
-                backgroundColor: '#f8f9fa',
-                border: '1px solid #999',
-                borderRadius: '4px',
+                fontSize: '0.82rem',
+                fontWeight: 'bold',
+              },
+            }
+
+            h(:div, {
+              style: {
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.2rem',
+                cursor: 'pointer',
+                margin: '1px 2px',
               },
               on: { click: click_handler },
-            }, btn_text)
+            }, [
+              h(:div, card_props, pct_str),
+              h(:span, { style: { fontSize: '0.82rem', color: '#444', fontWeight: 'bold', whiteSpace: 'nowrap' } }, price_str),
+            ])
           end
           rows << render_action_row('Redeem:', redeem_buttons)
         end
 
         return nil if rows.empty?
 
-        h(:div, { style: { display: 'flex', flexDirection: 'column', gap: '0.55rem', width: '100%' } }, rows.compact)
+        h(:div, { style: { display: 'flex', flexDirection: 'column', gap: '0.35rem', width: '100%' } }, rows.compact)
       end
 
       def render_ground_truth_actions(actions, step)
