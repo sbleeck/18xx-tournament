@@ -24,11 +24,13 @@ module View
       needs :last_entity, store: true, default: nil
       needs :cmd_router_running, store: true, default: false
 
-      def current_entity
-        @game.round.active_step&.current_entity
-      rescue NotImplementedError, StandardError
-        nil
-      end
+def current_entity
+  @game.round.active_step&.current_entity ||
+    (@game.round.respond_to?(:current_entity) ? @game.round.current_entity : nil) ||
+    @game.current_entity
+rescue NotImplementedError, StandardError
+  nil
+end
 
       def active_routes
         @routes.select { |r| r.chains.any? }
@@ -54,6 +56,206 @@ module View
           h(:div, { style: { display: 'flex', flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: '0.3rem' } }, items),
         ])
       end
+
+      def render_company_tooltip(title, subtitle, desc, val, rev, owner)
+        h(:div, {
+          attrs: { class: 'cmd-company-tooltip' },
+          style: {
+            display: 'none',
+            position: 'fixed',
+            top: '8rem',
+            left: '25%',
+            transform: 'translateX(-50%)',
+            width: '300px',
+            backgroundColor: '#ffffff',
+            border: '2px solid #333333',
+            borderRadius: '6px',
+            padding: '8px',
+            boxShadow: '0 8px 24px rgba(0,0,0,0.35)',
+            zIndex: '99999',
+            pointerEvents: 'none',
+            color: '#000000',
+            textAlign: 'left',
+            boxSizing: 'border-box',
+          },
+        }, [
+          h(:div, {
+            style: {
+              backgroundColor: '#ffff00',
+              border: '1px solid #000000',
+              fontWeight: 'bold',
+              fontSize: '0.8rem',
+              textAlign: 'center',
+              padding: '2px 4px',
+              marginBottom: '4px',
+              textTransform: 'uppercase',
+              borderRadius: '3px',
+            },
+          }, title),
+          h(:div, { style: { fontWeight: 'bold', fontSize: '0.9rem', textAlign: 'center', marginBottom: '4px' } }, subtitle),
+          h(:div, { style: { fontSize: '0.78rem', lineHeight: '1.25', marginBottom: '6px', color: '#222222' } }, desc),
+          h(:div, { style: { display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', fontWeight: 'bold', borderTop: '1px solid #ddd', paddingTop: '4px', marginBottom: '2px' } }, [
+            h(:span, "Value: #{val}"),
+            h(:span, "Revenue: #{rev}"),
+          ]),
+          h(:div, { style: { fontSize: '0.78rem', fontWeight: 'bold', textAlign: 'center', color: '#555555' } }, "Owner: #{owner}"),
+        ])
+      end
+
+
+def render_zone3_abilities(entity)
+        return nil unless entity
+
+        active_ability_companies = (@game.companies || []).select do |c|
+          next false if c.respond_to?(:closed?) && c.closed?
+          
+          is_owner = c.owner == entity || (entity.respond_to?(:owner) && c.owner && c.owner == entity.owner)
+          next false unless is_owner
+
+          c_actions = begin
+                        @game.round.actions_for(c)
+                      rescue StandardError
+                        []
+                      end || []
+          
+          next false if c_actions.empty?
+
+          if @game.respond_to?(:entity_can_use_company?)
+            next false unless @game.entity_can_use_company?(entity, c)
+          end
+
+          true
+        end
+
+        return nil if active_ability_companies.empty?
+
+        ability_boxes = active_ability_companies.map do |c|
+          owner_name = c.owner&.name || 'Bank'
+          card_text = (c.sym || c.name).to_s
+
+          desc_text = if c.respond_to?(:desc) && c.desc && !c.desc.empty?
+                        c.desc
+                      elsif c.respond_to?(:abilities) && c.abilities&.any?
+                        c.abilities.map { |a| a.respond_to?(:description) ? a.description : nil }.compact.join(' ')
+                      else
+                        'No special abilities.'
+                      end
+
+          value_str = @game.format_currency(c.value || 0)
+          revenue_str = @game.format_currency(c.revenue || 0)
+
+          tooltip_card = render_company_tooltip('Private Company', c.name, desc_text, value_str, revenue_str, owner_name)
+
+          click_handler = lambda {
+            c_actions = begin
+                          @game.round.actions_for(c)
+                        rescue StandardError
+                          []
+                        end || []
+
+            # 1. Direct bypass for Exchange abilities (e.g. Mohawk & Hudson)
+            if c_actions.include?('buy_shares') && (ability = @game.abilities(c, :exchange))
+              step = @game.round.active_step(c)
+              valid_shares = []
+              if step.respond_to?(:can_gain?)
+                @game.exchange_corporations(ability).each do |corp|
+                  ipo_share = corp.shares.find { |s| !s.president }
+                  valid_shares << ipo_share if ipo_share && ability.from.include?(:ipo) && step.can_gain?(c.owner, ipo_share, exchange: true)
+
+                  pool_share = @game.share_pool.shares_by_corporation[corp]&.first
+                  valid_shares << pool_share if pool_share && ability.from.include?(:market) && step.can_gain?(c.owner, pool_share, exchange: true)
+
+                  reserved = corp.reserved_shares&.first
+                  valid_shares << reserved if reserved && ability.from.include?(:reserved) && step.can_gain?(c.owner, reserved, exchange: true)
+                end
+              end
+              if valid_shares.any?
+                process_action(Engine::Action::BuyShares.new(c, shares: valid_shares.first))
+                next
+              end
+            end
+
+            # 2. Direct bypass for Sell/Close/Purchase Train abilities
+            if c_actions.include?('sell_company')
+              process_action(Engine::Action::SellCompany.new(entity, company: c, price: c.value))
+              next
+            end
+
+            if c_actions.include?('purchase_train')
+              process_action(Engine::Action::PurchaseTrain.new(c))
+              next
+            end
+
+            if c_actions.include?('manual_close_company')
+              process_action(Engine::Action::ManualCloseCompany.new(c))
+              next
+            end
+
+            # 3. Standard fallback for generic abilities
+            store(:selected_company, c)
+            active_a = (c.respond_to?(:all_abilities) ? c.all_abilities : []).dup.concat(c.abilities || []).find do |a|
+              !((a.respond_to?(:passive?) && a.passive?) || (a.respond_to?(:passive) && a.passive) || (a.respond_to?(:closed?) && a.closed?) || (a.respond_to?(:used?) && a.used?))
+            end
+
+            if active_a && !%i[tile_lay token teleport hex_bonus choose_ability assign_corporation].include?(active_a.type)
+              begin
+                process_action(Engine::Action::UseAbility.new(c, ability: active_a, company: c))
+              rescue StandardError
+                begin
+                  process_action(Engine::Action::UseAbility.new(entity, ability: active_a, company: c))
+                rescue StandardError => e
+                  `console.warn('UseAbility failed: ' + e)`
+                end
+              end
+            end
+          }
+
+          card_props = {
+            attrs: { class: 'game-card clickable action-buy' },
+            style: {
+              border: '2px solid #28a745',
+              minWidth: '3.5rem',
+              height: '1.45rem',
+              padding: '0 4px',
+              margin: '0',
+              boxSizing: 'border-box',
+              cursor: 'pointer',
+            },
+            on: { click: click_handler },
+          }
+
+          h(:div, {
+            attrs: { class: 'cmd-company-wrapper' },
+            style: { display: 'inline-block', position: 'relative' },
+          }, [
+            tooltip_card,
+            h(:div, card_props, card_text),
+          ])
+        end
+
+        h(:div, {
+          style: {
+            width: '100%',
+            display: 'flex',
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '0.4rem',
+            height: '1.8rem',
+          },
+        }, [
+          h(:span, { style: { fontSize: '0.95rem', fontWeight: 'bold', color: '#333', flexShrink: '0' } }, 'Abilities:'),
+          h(:div, { style: { display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.3rem', flexWrap: 'wrap' } }, ability_boxes),
+        ])
+      end
+
+
+
+
+
+
+
+
 
       def render
         step = @game.round.active_step
@@ -99,7 +301,17 @@ module View
           phase = :buy_train
         elsif actions.include?('discard_train')
           phase = :discard_train
+        elsif actions.include?('issue_shares')
+          phase = :issue_shares
         end
+
+        `console.log('DCC Turn State:', {
+          entity: #{entity&.id || 'nil'},
+          entity_class: #{entity&.class&.name || 'nil'},
+          step: #{step&.class&.name || 'nil'},
+          phase: #{phase.to_s},
+          actions: #{actions.to_n}
+        })`
 
         player_name = entity&.owner&.name || ''
 
@@ -162,6 +374,7 @@ module View
             dividend: 'DIVIDEND',
             buy_train: 'BUY TRAIN',
             discard_train: 'DISCARD TRAIN',
+            issue_shares: 'ISSUE SHARES',
           }
           phase_text = phase_labels[phase] || 'ACTION REQUIRED'
 
@@ -200,7 +413,7 @@ module View
             ])
           end
         elsif phase == :dividend
-         raw_options = if step.respond_to?(:dividend_options)
+          raw_options = if step.respond_to?(:dividend_options)
                           step.dividend_options(entity)
                         elsif step.respond_to?(:dividend_types)
                           step.dividend_types
@@ -238,6 +451,7 @@ module View
           when :build_track then advance_text = 'Skip Build'
           when :place_token then advance_text = 'Skip Token'
           when :buy_train then advance_text = 'Done Buying'
+          when :issue_shares then advance_text = 'Skip Issue'
           end
         elsif phase == :run_routes && actions.include?('run_routes') && !@cmd_router_running
           advance_disabled = false
@@ -291,11 +505,13 @@ module View
         end
 
         zone_3 = h(:div, { style: { flex: '0 0 22%', display: 'flex', flexDirection: 'column', padding: '0.4rem', boxSizing: 'border-box', overflowY: 'auto', position: 'relative' } }, [
-          h(:div, { style: { flex: '1 1 auto', overflowY: 'auto', marginBottom: '0.4rem' } }, [
-            (h(Abilities) if has_abilities),
+          h(:style, {}, '.cmd-company-wrapper:hover .cmd-company-tooltip { display: block !important; }'),
+
+          h(:div, { style: { flex: '0 0 auto', width: '100%', marginBottom: '0.4rem' } }, [
+            (render_zone3_abilities(entity) if has_abilities),
           ].compact),
 
-          h(:div, { attrs: { class: 'cmd-undo-redo-wrapper' }, style: { width: '100%', marginBottom: '0.4rem' } }, [
+      h(:div, { attrs: { class: 'cmd-undo-redo-wrapper' }, style: { width: '100%', marginBottom: '0.4rem' } }, [
             h(:style, {}, '
               .cmd-undo-redo-wrapper #history,
               .cmd-undo-redo-wrapper .history,
@@ -304,7 +520,11 @@ module View
                 display: none !important;
               }
               .cmd-undo-redo-wrapper,
-              .cmd-undo-redo-wrapper > div,
+              .cmd-undo-redo-wrapper * {
+                box-sizing: border-box !important;
+              }
+              .cmd-undo-redo-wrapper,
+              .cmd-undo-redo-wrapper div,
               .cmd-undo-redo-wrapper #history_and_undo,
               .cmd-undo-redo-wrapper .history_and_undo {
                 display: flex !important;
@@ -312,8 +532,9 @@ module View
                 flex-wrap: nowrap !important;
                 align-items: center !important;
                 justify-content: space-between !important;
-                gap: 0.4rem !important;
                 width: 100% !important;
+                min-width: 100% !important;
+                max-width: 100% !important;
                 margin: 0 !important;
                 padding: 0 !important;
                 border: none !important;
@@ -323,11 +544,16 @@ module View
               .cmd-undo-redo-wrapper button#undo,
               .cmd-undo-redo-wrapper button#redo {
                 display: inline-flex !important;
-                flex: 1 1 0 !important;
-                width: 50% !important;
+                flex: 0 0 3.5rem !important;
+                width: 3.5rem !important;
+                min-width: 3.5rem !important;
+                max-width: 3.5rem !important;
+                height: 1.45rem !important;
+                min-height: 1.45rem !important;
+                max-height: 1.45rem !important;
                 justify-content: center !important;
                 align-items: center !important;
-                padding: 0.35rem 0.5rem !important;
+                padding: 0 4px !important;
                 font-size: 0.85rem !important;
                 font-weight: bold !important;
                 background-color: #f8f9fa !important;
@@ -335,35 +561,47 @@ module View
                 border: 1px solid #ced4da !important;
                 border-radius: 4px !important;
                 cursor: pointer !important;
-                box-sizing: border-box !important;
                 margin: 0 !important;
-                height: auto !important;
-                min-height: unset !important;
+                line-height: 1 !important;
+                box-shadow: 0 1px 2px rgba(0,0,0,0.05) !important;
+              }
+              .cmd-undo-redo-wrapper button#undo:hover:not(:disabled),
+              .cmd-undo-redo-wrapper button#redo:hover:not(:disabled) {
+                background-color: #e9ecef !important;
+                border-color: #adb5bd !important;
               }
               .cmd-undo-redo-wrapper button#undo:disabled,
               .cmd-undo-redo-wrapper button#redo:disabled {
-                background-color: #e9ecef !important;
-                color: #6c757d !important;
+                background-color: #f1f3f5 !important;
+                color: #adb5bd !important;
                 cursor: not-allowed !important;
                 opacity: 0.6 !important;
+                box-shadow: none !important;
               }
             '),
             h(HistoryAndUndo, last_action_id: last_action_id),
           ]),
 
-          h(:div, { style: { width: '100%', marginTop: 'auto' } }, [
+          h(:div, { style: { width: '100%', marginTop: 'auto', display: 'flex', justifyContent: 'center' } }, [
             h(:button, {
               style: {
                 width: '100%',
-                padding: '0.75rem',
-                fontSize: '1.2rem',
+                height: '1.45rem',
+                minHeight: '1.45rem',
+                maxHeight: '1.45rem',
+                padding: '0',
+                fontSize: '0.85rem',
                 fontWeight: 'bold',
                 backgroundColor: advance_color,
                 color: advance_text_color,
                 border: 'none',
-                borderRadius: '6px',
+                borderRadius: '4px',
                 cursor: advance_disabled ? 'not-allowed' : 'pointer',
-                boxShadow: advance_disabled ? 'none' : '0 4px 6px rgba(0,0,0,0.1)',
+                boxShadow: advance_disabled ? 'none' : '0 1px 3px rgba(0,0,0,0.1)',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                lineHeight: '1',
               },
               attrs: { disabled: advance_disabled },
               on: { click: advance_action },
@@ -433,10 +671,10 @@ module View
         end
         buy_company_step ||= step
 
-        all_companies = if buy_company_step.respond_to?(:buyable_companies) && !buy_company_step.buyable_companies(entity).empty?
-                          buy_company_step.buyable_companies(entity)
-                        elsif @game.respond_to?(:companies)
-                          @game.companies
+        all_companies = if buy_company_step.respond_to?(:buyable_companies)
+                          buy_company_step.buyable_companies(entity) || []
+                        elsif buy_company_step.respond_to?(:can_buy_company?) && @game.respond_to?(:companies)
+                          @game.companies.select { |c| buy_company_step.can_buy_company?(entity, c) }
                         else
                           []
                         end
@@ -601,48 +839,7 @@ module View
           value_str = @game.format_currency(c.value || 0)
           revenue_str = @game.format_currency(c.revenue || 0)
 
-          tooltip_card = h(:div, {
-            attrs: { class: 'cmd-company-tooltip' },
-            style: {
-              display: 'none',
-              position: 'fixed',
-              top: '8rem',
-              left: '25%',
-              transform: 'translateX(-50%)',
-              width: '300px',
-              backgroundColor: '#ffffff',
-              border: '2px solid #333333',
-              borderRadius: '6px',
-              padding: '8px',
-              boxShadow: '0 8px 24px rgba(0,0,0,0.35)',
-              zIndex: '99999',
-              pointerEvents: 'none',
-              color: '#000000',
-              textAlign: 'left',
-              boxSizing: 'border-box',
-            },
-          }, [
-            h(:div, {
-              style: {
-                backgroundColor: '#ffff00',
-                border: '1px solid #000000',
-                fontWeight: 'bold',
-                fontSize: '0.8rem',
-                textAlign: 'center',
-                padding: '2px 4px',
-                marginBottom: '4px',
-                textTransform: 'uppercase',
-                borderRadius: '3px',
-              },
-            }, 'Private Company'),
-            h(:div, { style: { fontWeight: 'bold', fontSize: '0.9rem', textAlign: 'center', marginBottom: '4px' } }, c.name),
-            h(:div, { style: { fontSize: '0.78rem', lineHeight: '1.25', marginBottom: '6px', color: '#222222' } }, desc_text),
-            h(:div, { style: { display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', fontWeight: 'bold', borderTop: '1px solid #ddd', paddingTop: '4px', marginBottom: '2px' } }, [
-              h(:span, "Value: #{value_str}"),
-              h(:span, "Revenue: #{revenue_str}"),
-            ]),
-            h(:div, { style: { fontSize: '0.78rem', fontWeight: 'bold', textAlign: 'center', color: '#555555' } }, "Owner: #{owner_name}"),
-          ])
+          tooltip_card = render_company_tooltip('Private Company', c.name, desc_text, value_str, revenue_str, owner_name)
 
           h(:div, {
             attrs: { class: 'cmd-company-wrapper' },
@@ -661,6 +858,140 @@ module View
           *company_boxes,
         ])
       end
+
+      def render_discard_trains(step, entity)
+          return nil unless entity && step
+
+          train_boxes = []
+          discardable = if step.respond_to?(:discardable_trains)
+                          step.discardable_trains(entity)
+                        elsif entity.respond_to?(:trains)
+                          entity.trains
+                        else
+                          []
+                        end
+
+          (discardable || []).each do |train|
+            click_handler = lambda {
+              process_action(Engine::Action::DiscardTrain.new(
+                entity,
+                train: train
+              ))
+            }
+
+            card_props = {
+              attrs: { class: 'game-card clickable action-sell' },
+              style: {
+                border: '2px solid #dc2626',
+                minWidth: '3.5rem',
+                height: '1.45rem',
+                padding: '0 4px',
+                margin: '2px',
+                boxSizing: 'border-box',
+                cursor: 'pointer',
+              },
+              on: { click: click_handler },
+            }
+train_boxes << h(:div, card_props, train.name)
+          end
+
+          return nil if train_boxes.empty?
+          render_action_row('Discard:', train_boxes)
+        end
+
+        def render_surrender_trains(actions, step, entity)
+          return nil unless entity && step
+
+          train_boxes = []
+          trains = if step.respond_to?(:scrappable_trains)
+                     step.scrappable_trains(entity)
+                   elsif step.respond_to?(:surrenderable_trains)
+                     step.surrenderable_trains(entity)
+                   elsif step.respond_to?(:trains)
+                     step.trains(entity)
+                   elsif entity.respond_to?(:trains)
+                     entity.trains
+                   else
+                     []
+                   end
+
+          action_class = if actions.include?('surrender_train')
+                           Engine::Action::SurrenderTrain
+                         elsif actions.include?('surrender')
+                           Engine::Action::Surrender
+                         else
+                           Engine::Action::ScrapTrain
+                         end
+
+          (trains || []).each do |train|
+            click_handler = lambda {
+              process_action(action_class.new(
+                entity,
+                train: train
+              ))
+            }
+
+            card_props = {
+              attrs: { class: 'game-card clickable action-sell' },
+              style: {
+                border: '2px solid #dc2626',
+                minWidth: '3.5rem',
+                height: '1.45rem',
+                padding: '0 4px',
+                margin: '2px',
+                boxSizing: 'border-box',
+                cursor: 'pointer',
+              },
+              on: { click: click_handler },
+            }
+
+            btn_text = if step.respond_to?(:button_text)
+                         step.button_text(train)
+                       elsif step.respond_to?(:surrender_button_text)
+                         step.surrender_button_text(train)
+                       elsif step.respond_to?(:scrap_button_text)
+                         step.scrap_button_text(train)
+                       end
+
+            cost_str = ''
+            if btn_text
+              if (m = btn_text.match(/\(([^)]+)\)/))
+                cost_str = " (#{m[1]})"
+              elsif (m = btn_text.match(/([+-]?\d+[\w]*)/))
+                cost_str = " (#{m[1]})"
+              end
+            end
+
+            if cost_str.empty?
+              cost = nil
+              if step.respond_to?(:surrender_cost)
+                cost = step.surrender_cost(train)
+              elsif step.respond_to?(:cost)
+                cost = step.cost(train)
+              elsif step.respond_to?(:scrap_cost)
+                cost = step.scrap_cost(train)
+              elsif @game.respond_to?(:surrender_cost)
+                cost = @game.surrender_cost(train)
+              elsif @game.respond_to?(:scrap_cost)
+                cost = @game.scrap_cost(train)
+              end
+
+              if cost && !cost.zero?
+                formatted_cost = @game.format_currency(cost)
+                cost_str = " (#{formatted_cost})"
+              end
+            end
+
+            train_boxes << h(:div, { style: { display: 'inline-flex', alignItems: 'center', gap: '0.25rem' } }, [
+              h(:div, card_props, train.name),
+              (cost_str.empty? ? nil : h(:span, { style: { fontSize: '0.85rem', color: '#555', whiteSpace: 'nowrap' } }, cost_str)),
+            ].compact)
+          end
+
+          return nil if train_boxes.empty?
+          render_action_row('Surrender:', train_boxes)
+        end
+
 
       def render_buyable_trains(step, entity)
         return nil unless entity && step
@@ -890,32 +1221,100 @@ module View
         render_action_row('Buy Train:', train_boxes)
       end
 
-      def render_issue_shares(step, entity)
+def render_issue_shares(step, entity)
+        entity ||= current_entity
         return nil unless entity && step
+
+        issuable_bundles = begin
+          if step.respond_to?(:issuable_shares)
+            begin
+              step.issuable_shares(entity)
+            rescue ArgumentError
+              step.issuable_shares
+            end
+          elsif step.respond_to?(:issuable_bundles)
+            begin
+              step.issuable_bundles(entity)
+            rescue ArgumentError
+              step.issuable_bundles
+            end
+          elsif @game.respond_to?(:issuable_shares)
+            @game.issuable_shares(entity)
+          elsif step.respond_to?(:bundles_for_corporation)
+            begin
+              step.bundles_for_corporation(entity, entity)
+            rescue ArgumentError
+              step.bundles_for_corporation(entity)
+            end
+          elsif step.respond_to?(:bundles)
+            step.bundles(entity)
+          else
+            []
+          end
+        rescue StandardError => e
+          `console.warn('DCC issuable_bundles error: ' + e)`
+          []
+        end || []
+
+        `console.log('DCC render_issue_shares:', {
+          entity: #{entity.id},
+          step: #{step.class.name},
+          bundle_count: #{issuable_bundles.size},
+          bundles: #{issuable_bundles.to_n}
+        })`
 
         rows = []
 
-        issuable_bundles = if step.respond_to?(:issuable_shares)
-                             step.issuable_shares(entity) || []
-                           elsif step.respond_to?(:bundles_for_corporation)
-                             step.bundles_for_corporation(entity, entity) || []
-                           elsif step.respond_to?(:bundles)
-                             step.bundles(entity) || []
-                           else
-                             []
-                           end
-
         if issuable_bundles.any?
-          issue_buttons = issuable_bundles.map do |bundle|
-            btn_text = "#{bundle.num_shares} (#{@game.format_currency(bundle.price)})"
+          issue_buttons = issuable_bundles.map do |raw_bundle|
+            bundle = raw_bundle.respond_to?(:to_bundle) && !raw_bundle.respond_to?(:num_shares) ? raw_bundle.to_bundle : raw_bundle
+            num = if bundle.respond_to?(:num_shares)
+                    bundle.num_shares
+                  elsif bundle.respond_to?(:shares)
+                    bundle.shares.size
+                  else
+                    1
+                  end
+
+            price = if bundle.respond_to?(:price)
+                      bundle.price
+                    elsif bundle.respond_to?(:share_price) && bundle.share_price
+                      bundle.share_price.price * num
+                    elsif entity.respond_to?(:share_price) && entity.share_price
+                      entity.share_price.price * num
+                    else
+                      0
+                    end
+
+            pct_str = bundle.respond_to?(:percent) ? "#{bundle.percent}% " : ''
+            btn_text = "#{pct_str}#{num} share#{'s' if num > 1} (#{@game.format_currency(price)})"
+
             click_handler = lambda {
-              process_action(Engine::Action::SellShares.new(
-                entity,
-                shares: bundle.shares,
-                share_price: bundle.share_price,
-                percent: bundle.percent
-              ))
+              actions = begin
+                          @game.round.actions_for(entity)
+                        rescue StandardError
+                          []
+                        end || []
+              if actions.include?('issue_shares')
+                process_action(Engine::Action::IssueShares.new(
+                  entity,
+                  bundle: bundle
+                ))
+              elsif actions.include?('corporate_sell_shares')
+                process_action(Engine::Action::CorporateSellShares.new(
+                  entity,
+                  bundle: bundle
+                ))
+              else
+                process_action(Engine::Action::SellShares.new(
+                  entity,
+                  shares: bundle.respond_to?(:shares) ? bundle.shares : [bundle],
+                  share_price: bundle.respond_to?(:share_price) ? bundle.share_price : entity.share_price,
+                  percent: bundle.respond_to?(:percent) ? bundle.percent : 10
+                ))
+              end
             }
+
             h(:button, {
               style: {
                 padding: '0.25rem 0.6rem',
@@ -930,10 +1329,16 @@ module View
             }, btn_text)
           end
           rows << render_action_row('Issue:', issue_buttons)
+        elsif (@game.round.actions_for(entity) || []).include?('issue_shares')
+          `console.warn('DCC: issue_shares is in actions, but 0 bundles were found.')`
+          rows << render_action_row('Issue:', [
+            h(:span, { style: { color: '#888', fontStyle: 'italic', fontSize: '0.85rem' } }, 'No issuable shares available')
+          ])
         end
-
         redeemable_bundles = if step.respond_to?(:redeemable_shares)
                                step.redeemable_shares(entity) || []
+                             elsif step.respond_to?(:redeemable_bundles)
+                               step.redeemable_bundles(entity) || []
                              elsif step.respond_to?(:buyable_shares)
                                step.buyable_shares(entity) || []
                              else
@@ -944,10 +1349,16 @@ module View
           redeem_buttons = redeemable_bundles.map do |bundle|
             btn_text = "#{bundle.num_shares} (#{@game.format_currency(bundle.price)})"
             click_handler = lambda {
-              process_action(Engine::Action::BuyShares.new(
+              actions = begin
+                          @game.round.actions_for(entity)
+                        rescue StandardError
+                          []
+                        end || []
+              action_class = actions.include?('corporate_buy_shares') ? Engine::Action::CorporateBuyShares : Engine::Action::BuyShares
+              process_action(action_class.new(
                 entity,
                 shares: bundle.shares,
-                share_price: bundle.share_price,
+                share_price: bundle.share_price || (bundle.price / bundle.num_shares),
                 percent: bundle.percent
               ))
             }
@@ -976,7 +1387,10 @@ module View
         return h(:div) if @game.finished
 
         return h(UpgradeOrDiscardTrains) if actions.include?('discard_train') && actions.include?('swap_train')
-        return h(DiscardTrains) if actions.include?('discard_train')
+
+        if actions.include?('par') && step&.respond_to?(:corporation_pending_par) && step&.corporation_pending_par
+          return h(CorporationPendingPar, corporation: step.corporation_pending_par)
+        end
 
         if actions.include?('par') && step&.respond_to?(:corporation_pending_par) && step&.corporation_pending_par
           return h(CorporationPendingPar, corporation: step.corporation_pending_par)
@@ -1008,10 +1422,14 @@ module View
             components << h(Choose) if actions.include?('choose')
             components << h(BuyToken, entity: step&.current_entity) if actions.include?('buy_token')
 
+    if actions.include?('issue_shares')
+              components << render_issue_shares(step, step&.current_entity || current_entity)
+            end
+
             if actions.include?('buy_train') || actions.include?('sell_train')
-              components << render_issue_shares(step, step&.current_entity) if actions.include?('sell_shares') || actions.include?('buy_shares')
+              components << render_issue_shares(step, step&.current_entity || current_entity) if actions.include?('sell_shares') || actions.include?('buy_shares')
             elsif actions.include?('buy_power')
-              components << render_issue_shares(step, step&.current_entity) if actions.include?('sell_shares')
+              components << render_issue_shares(step, step&.current_entity || current_entity) if actions.include?('sell_shares')
               components << h(BuyPower)
             elsif actions.include?('borrow_train')
               components << h(BorrowTrain)
@@ -1025,9 +1443,8 @@ module View
               elsif @game.corporations_can_ipo?
                 components << h(CorporateBuySellShares)
               else
-                components << render_issue_shares(step, step&.current_entity)
+                components << render_issue_shares(step, step&.current_entity || current_entity)
               end
-            elsif actions.include?('corporate_buy_shares')
               components << h(CorporateBuyShares)
             elsif actions.include?('corporate_sell_shares')
               components << h(CorporateSellShares)
@@ -1037,7 +1454,10 @@ module View
               components << h(BuyCorporation)
             end
 
-            components << h(ScrapTrains) if actions.include?('scrap_train')
+
+            if actions.include?('scrap_train') || actions.include?('surrender_train') || actions.include?('surrender')
+              components << render_surrender_trains(actions, step, step&.current_entity)
+            end
             components << h(Loans, corporation: step&.current_entity) if !loans_rendered && (%w[take_loan payoff_loan] & actions).any?
             components << h(ViewMergeOptions, corporation: step&.current_entity) if actions.include?('view_merge_options')
 
@@ -1072,9 +1492,14 @@ module View
               end
             end
 
-            components << render_buyable_companies(step, step&.current_entity)
-            if actions.include?('buy_train')
+            if actions.include?('buy_company')
+              components << render_buyable_companies(step, step&.current_entity)
+            end
+                        if actions.include?('buy_train')
               components << render_buyable_trains(step, step&.current_entity)
+            end
+            if actions.include?('discard_train')
+              components << render_discard_trains(step, step&.current_entity)
             end
 
             components << h(AcquireCompanies) if actions.include?('acquire_company')

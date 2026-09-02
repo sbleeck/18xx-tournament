@@ -124,7 +124,13 @@ module View
           .column-zone-corporate { background-color: var(--bg-corporate-zone) !important; }
           tr.active-turn-focus td.column-zone-market, tr.active-turn-focus td.column-zone-corporate { background-color: var(--bg-active-row) !important; }
                       th.column-zone-corporate { background-color: #e9d5ff !important; color: #4c1d95 !important; }
-        CSS
+        .status-corp-wrapper:hover .status-corp-tooltip {
+display: block !important;
+}
+        
+                      CSS
+
+                      
 
         h(:div, [
            h('div#spreadsheet', {
@@ -578,13 +584,16 @@ module View
 
         tr_props[:attrs][:class] = row_classes.join(' ') unless row_classes.empty?
         name_props = {
+          attrs: { class: 'status-corp-wrapper' },
           style: {
-            backgroundColor: corporation.color,
-            color: corporation.text_color,
-            fontFamily: FONT_STD,
-            fontWeight: 'bold',
+          backgroundColor: corporation.color,
+          color: corporation.text_color,
+          fontFamily: FONT_STD,
+          fontWeight: 'bold',
+          position: 'relative',
+          cursor: 'help',
           },
-        }
+        }           
 
         # Map active corporate property cells
         treasury = []
@@ -957,6 +966,13 @@ module View
                        else
                          @game.stock_market.par_prices.sort_by(&:price)
                        end
+                       # Exclude par prices that have already filled all available slots (e.g. 1837 2-corp limit)
+                        if @game.respond_to?(:par_chart)
+                          par_prices = par_prices.reject do |sp|
+                          slots = @game.par_chart[sp]
+                          slots && slots.none?(&:nil?)
+                          end
+                        end
 
           unless par_prices.empty?
             ipo_click_handler = lambda {
@@ -1226,10 +1242,114 @@ module View
         row_content.concat(corporation_row_content)
 
         h(:tr, tr_props, [
-          h(:th, name_props, corporation.name),
-          *row_content,
+        h(:th, name_props, [
+        render_corp_tooltip(corporation),
+        corporation.name,
+        ]),
+        *row_content,
         ])
       end
+
+      def render_corp_tooltip(corporation)
+owner_name = corporation.owner ? corporation.owner.name : 'Unowned / Bank'
+corp_type = if corporation.minor?
+'Minor Corporation'
+elsif corporation.respond_to?(:type) && corporation.type == :national
+'National Railway'
+else
+'Major Corporation'
+end
+
+is_unopened = !corporation.floated?
+status_label = if is_unopened
+corporation.ipoed ? 'Unfloated (Parred)' : 'Unopened'
+else
+'Operating'
+end
+    market_price_str = corporation.share_price ? @game.format_currency(corporation.share_price.price) : 'Not on Market'
+    par_price_str = corporation.par_price ? @game.format_currency(corporation.par_price.price) : 'Not Parred'
+    cash_str = is_unopened ? '0' : @game.format_currency(corporation.cash || 0)
+
+    details = []
+    details << "Status: #{status_label}"
+    details << "President / Owner: #{owner_name}"
+    details << "Treasury: #{cash_str}"
+    details << "Market Price: #{market_price_str} | Par: #{par_price_str}"
+
+    if corporation.respond_to?(:float_percent) && corporation.float_percent
+      shares_needed = corporation.respond_to?(:percent_to_float) ? "#{corporation.percent_to_float}% remaining" : ''
+      details << "Float Rule: #{corporation.float_percent}% #{'(' + shares_needed + ')' if is_unopened && !shares_needed.empty?}"
+    end
+
+    if corporation.respond_to?(:tokens) && corporation.tokens.any?
+      token_costs = corporation.tokens.map { |t| t.price ? @game.format_currency(t.price) : 'Free' }.join(', ')
+      details << "Tokens: #{corporation.tokens.size} (#{token_costs})"
+    end
+
+    if corporation.respond_to?(:coordinates) && corporation.coordinates
+      home_hex = Array(corporation.coordinates).join(', ')
+      details << "Home Hex: #{home_hex}"
+    end
+
+
+
+    abilities_text = []
+    if corporation.respond_to?(:abilities) && corporation.abilities&.any?
+      corporation.abilities.each do |a|
+        desc = a.respond_to?(:description) ? a.description : nil
+        abilities_text << desc if desc && !desc.empty?
+      end
+    end
+
+    h(:div, {
+      attrs: { class: 'status-corp-tooltip' },
+      style: {
+        display: 'none',
+        position: 'fixed',
+        top: '50%',
+        left: '50%',
+        transform: 'translate(-50%, -50%)',
+        width: '320px',
+        backgroundColor: '#ffffff',
+        border: '2px solid #333333',
+        borderRadius: '6px',
+        padding: '10px',
+        boxShadow: '0 8px 24px rgba(0,0,0,0.35)',
+        zIndex: '99999',
+        pointerEvents: 'none',
+        color: '#000000',
+        textAlign: 'left',
+        boxSizing: 'border-box',
+        whiteSpace: 'normal',
+        fontWeight: 'normal',
+      },
+    }, [
+      h(:div, {
+        style: {
+          backgroundColor: corporation.color || '#4c1d95',
+          color: corporation.text_color || '#ffffff',
+          fontWeight: 'bold',
+          fontSize: '0.85rem',
+          textAlign: 'center',
+          padding: '3px 6px',
+          marginBottom: '6px',
+          textTransform: 'uppercase',
+          borderRadius: '3px',
+          border: '1px solid #333',
+        },
+      }, corp_type),
+      h(:div, { style: { fontWeight: 'bold', fontSize: '1rem', textAlign: 'center', marginBottom: '6px', color: '#111' } }, "#{corporation.name} (#{corporation.id})"),
+      h(:div, { style: { borderTop: '1px solid #ddd', paddingTop: '6px', marginBottom: '6px' } },
+        details.map { |d| h(:div, { style: { fontSize: '0.78rem', marginBottom: '3px', color: '#222' } }, "• #{d}") }),
+      (if abilities_text.any?
+         h(:div, { style: { borderTop: '1px solid #ddd', paddingTop: '4px', marginTop: '4px' } }, [
+           h(:div, { style: { fontSize: '0.78rem', fontWeight: 'bold', color: '#b91c1c', marginBottom: '2px' } }, 'Special Abilities / Details:'),
+           *abilities_text.map { |ab| h(:div, { style: { fontSize: '0.75rem', color: '#333', lineHeight: '1.2' } }, ab) },
+         ])
+       end),
+    ].compact)
+  end
+
 
       def render_unplaced_tokens(corporation)
         return h(:span, '') unless corporation.respond_to?(:tokens)
@@ -1830,16 +1950,21 @@ module View
               on: {},
             }
 
-            if can_afford
-              cell_props[:on][:click] = lambda {
-                Lib::Storage['par_menu_corp'] = nil
-                process_action(Engine::Action::Par.new(
-                  active_player,
-                  corporation: corporation,
-                  share_price: par_node
-                ))
-              }
-            end
+           if can_afford
+            cell_props[:on][:click] = lambda {
+            Lib::Storage['par_menu_corp'] = nil
+            slot = if @game.respond_to?(:par_chart) && @game.par_chart[par_node]
+                     @game.par_chart[par_node].index(nil)
+                   end
+
+            process_action(Engine::Action::Par.new(
+              active_player,
+              corporation: corporation,
+              share_price: par_node,
+              slot: slot
+            ))
+          }
+        end
 
             cells << h(:td, cell_props, @game.format_currency(cost))
           end
