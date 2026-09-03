@@ -324,6 +324,14 @@ module View
           phase = :discard_train
         elsif actions.include?('issue_shares')
           phase = :issue_shares
+        elsif actions.include?('bid')
+          phase = :bid
+        elsif actions.include?('merge') || actions.include?('convert')
+          phase = :merge
+        elsif actions.include?('take_loan') || actions.include?('payoff_loan')
+          phase = :loan
+        elsif actions.include?('corporate_buy_shares') || actions.include?('buy_shares')
+          phase = :buy_shares
         end
 
         player_name = entity&.owner&.name || ''
@@ -386,6 +394,10 @@ module View
             buy_train: 'BUY TRAIN',
             discard_train: 'DISCARD TRAIN',
             issue_shares: 'ISSUE SHARES',
+            bid: 'AUCTION',
+            merge: 'MERGER',
+            loan: 'LOAN',
+            buy_shares: 'BUY SHARES',
           }
           phase_text = phase_labels[phase] || 'ACTION REQUIRED'
 
@@ -460,6 +472,9 @@ module View
           when :place_token then advance_text = 'Skip Token'
           when :buy_train then advance_text = 'Done Buying'
           when :issue_shares then advance_text = 'Skip Issue'
+          when :merge then advance_text = 'Done / Pass'
+          when :loan then advance_text = 'Done / Pass'
+          when :buy_shares then advance_text = 'Done / Pass'
           end
         elsif phase == :run_routes && actions.include?('run_routes') && !@cmd_router_running
           advance_disabled = false
@@ -656,6 +671,263 @@ module View
           zone_1,
           zone_2,
           zone_3,
+        ])
+      end
+
+      def render_merger_step(step, entity, actions)
+        return nil unless entity && step
+
+        components = []
+        top_buttons = []
+
+        if actions.include?('convert')
+          top_buttons << h(:button, {
+            style: { padding: '0.3rem 0.6rem', fontSize: '0.9rem', fontWeight: 'bold', backgroundColor: '#2563eb', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' },
+            on: { click: -> { process_action(Engine::Action::Convert.new(entity)) } }
+          }, 'Convert')
+        end
+
+        show_merge = Lib::Storage['show_merge_candidates'] || !actions.include?('convert')
+
+        if actions.include?('merge')
+          top_buttons << h(:button, {
+            style: { padding: '0.3rem 0.6rem', fontSize: '0.9rem', fontWeight: 'bold', backgroundColor: show_merge ? '#16a34a' : '#2563eb', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' },
+            on: { click: -> { Lib::Storage['show_merge_candidates'] = true; update } }
+          }, 'Merge')
+        end
+
+        if actions.include?('take_loan')
+           loan_amount = @game.respond_to?(:loan_value) ? @game.loan_value(entity) : (@game.loans.first&.amount || 0)
+           btn_text = loan_amount > 0 ? "Take Loan (#{@game.format_currency(loan_amount)})" : "Take Loan"
+           top_buttons << h(:button, {
+             style: { padding: '0.3rem 0.6rem', fontSize: '0.9rem', fontWeight: 'bold', backgroundColor: '#dc2626', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' },
+             on: { click: -> { process_action(Engine::Action::TakeLoan.new(entity, loan: @game.loans.first)) } }
+           }, btn_text)
+        end
+
+        if actions.include?('payoff_loan')
+           top_buttons << h(:button, {
+             style: { padding: '0.3rem 0.6rem', fontSize: '0.9rem', fontWeight: 'bold', backgroundColor: '#2563eb', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' },
+             on: { click: -> { process_action(Engine::Action::PayoffLoan.new(entity, loan: entity.loans.first)) } }
+           }, 'Payoff Loan')
+        end
+
+        components << render_action_row('Action:', top_buttons) if top_buttons.any?
+
+        if actions.include?('merge') && show_merge
+          mergeables = if step.respond_to?(:mergeable_candidates)
+                         step.mergeable_candidates(entity)
+                       elsif step.respond_to?(:mergeable)
+                         step.mergeable(entity)
+                       elsif step.respond_to?(:mergeable_entities)
+                         step.mergeable_entities(entity)
+                       else
+                         []
+                       end
+
+          if mergeables.any?
+            merge_boxes = mergeables.map do |target|
+              click_handler = lambda {
+                kwargs = {}
+                if target.respond_to?(:minor?) && target.minor?
+                  kwargs[:minor] = target
+                else
+                  kwargs[:corporation] = target
+                end
+                process_action(Engine::Action::Merge.new(entity, **kwargs))
+              }
+              render_railcard(target, target.name, nil, '#28a745', click_handler)
+            end
+            components << h(:div, { style: { fontSize: '0.85rem', fontWeight: 'bold', color: '#333', marginTop: '0.2rem', marginBottom: '0.2rem' } }, "Corporations that can merge with #{entity.name}:")
+            components << h(:div, { style: { display: 'flex', flexDirection: 'row', flexWrap: 'wrap', gap: '0.3rem' } }, merge_boxes)
+          end
+        end
+
+        if actions.include?('buy_shares') || actions.include?('corporate_buy_shares')
+          buyable = if step.respond_to?(:buyable_shares)
+                      step.buyable_shares(entity)
+                    elsif step.respond_to?(:buyable_bundles)
+                      step.buyable_bundles(entity)
+                    elsif @game.respond_to?(:redeemable_shares)
+                      @game.redeemable_shares(entity)
+                    else
+                      []
+                    end
+
+          if buyable.any?
+            buy_boxes = buyable.map do |raw_bundle|
+              bundle = raw_bundle.respond_to?(:to_bundle) && !raw_bundle.respond_to?(:num_shares) ? raw_bundle.to_bundle : raw_bundle
+              num_shares = bundle.respond_to?(:num_shares) ? bundle.num_shares : (bundle.respond_to?(:shares) ? bundle.shares.size : 1)
+              pct = bundle.respond_to?(:percent) ? bundle.percent : (num_shares * 10)
+              price = bundle.respond_to?(:price) ? bundle.price : (bundle.respond_to?(:share_price) ? bundle.share_price.price * num_shares : 0)
+
+              click_handler = lambda {
+                action_class = actions.include?('corporate_buy_shares') ? Engine::Action::CorporateBuyShares : Engine::Action::BuyShares
+                process_action(action_class.new(entity, shares: bundle.respond_to?(:shares) ? bundle.shares : [bundle], share_price: bundle.respond_to?(:share_price) ? bundle.share_price : nil, percent: pct))
+              }
+              corp = bundle.respond_to?(:corporation) ? bundle.corporation : entity
+              render_railcard(corp, "Buy #{pct}%", "(#{@game.format_currency(price)})", '#28a745', click_handler)
+            end
+            components << render_action_row('Buy Treasury Share:', buy_boxes)
+          else
+            components << render_action_row('Buy Treasury Share:', [h(:span, { style: { fontStyle: 'italic', color: '#666', fontSize: '0.85rem' } }, 'No shares available')])
+          end
+        end
+
+        h(:div, { style: { display: 'flex', flexDirection: 'column', gap: '0.4rem', width: '100%' } }, components)
+      end
+
+      def render_bid(step, entity, actions)
+        target = if step.respond_to?(:auctioning) && step.auctioning
+                   step.auctioning
+                 elsif Lib::Storage['selected_bid_corp']
+                   target_id = Lib::Storage['selected_bid_corp']
+                   @game.corporations.find { |c| c.id == target_id } ||
+                     (@game.respond_to?(:minors) ? @game.minors.find { |m| m.id == target_id } : nil)
+                 elsif step.respond_to?(:companies) && step.companies&.one?
+                   step.companies.first
+                 end
+
+        return render_action_row('Auction:', h(:span, { style: { fontStyle: 'italic', color: '#666', fontSize: '0.85rem' } }, 'Select an available company to bid')) unless target
+
+        current_bidder = step.respond_to?(:current_entity) && step.current_entity ? step.current_entity : entity
+        bidder_name = current_bidder&.name || 'Unknown'
+
+        high_bid_obj = if step.respond_to?(:highest_bid)
+                         step.highest_bid(target)
+                       elsif step.respond_to?(:high_bid)
+                         step.high_bid(target)
+                       end
+
+        high_bidder = if step.respond_to?(:high_bidder)
+                        step.high_bidder(target)
+                      elsif high_bid_obj.respond_to?(:entity)
+                        high_bid_obj.entity
+                      end
+
+        high_bid_amount = if high_bid_obj.respond_to?(:price)
+                            high_bid_obj.price
+                          elsif high_bid_obj.is_a?(Numeric)
+                            high_bid_obj
+                          end
+
+        high_bid_str = if high_bid_amount && high_bid_amount.positive?
+                         bidder_tag = high_bidder ? " (#{high_bidder.name})" : ''
+                         "#{@game.format_currency(high_bid_amount)}#{bidder_tag}"
+                       else
+                         'None'
+                       end
+
+        min_bid = if step.respond_to?(:min_bid)
+                    begin
+                      step.min_bid(target)
+                    rescue ArgumentError
+                      step.min_bid
+                    end
+                  elsif target.respond_to?(:min_bid)
+                    target.min_bid
+                  elsif target.respond_to?(:value)
+                    target.value
+                  else
+                    100
+                  end
+
+        min_increment = if step.respond_to?(:min_increment)
+                          step.min_increment
+                        elsif @game.respond_to?(:min_bid_increment)
+                          @game.min_bid_increment
+                        else
+                          5
+                        end
+
+        max_bid = if step.respond_to?(:max_bid)
+                    begin
+                      step.max_bid(current_bidder, target)
+                    rescue ArgumentError
+                      step.max_bid(current_bidder)
+                    end
+                  elsif current_bidder.respond_to?(:cash)
+                    current_bidder.cash
+                  else
+                    999_999
+                  end
+
+        storage_key = "cmd_bid_price_#{target.id}"
+        stored_val = Lib::Storage[storage_key]&.to_i
+        current_bid = (stored_val && stored_val >= min_bid) ? stored_val : min_bid
+
+        target_badge = render_railcard(target, target.name, nil, '#2563eb', nil)
+
+        cancel_btn = nil
+        if Lib::Storage['selected_bid_corp'] && !(step.respond_to?(:auctioning) && step.auctioning)
+          cancel_btn = h(:button, {
+            style: { padding: '0 4px', height: '1.45rem', fontSize: '0.75rem', backgroundColor: '#e0e0e0', border: '1px solid #999', borderRadius: '3px', cursor: 'pointer' },
+            on: { click: lambda { Lib::Storage['selected_bid_corp'] = nil; update } },
+          }, 'Cancel')
+        end
+
+        row1_items = [
+          target_badge,
+          h(:span, { style: { fontSize: '0.82rem', color: '#333' } }, [h(:b, 'High: '), high_bid_str]),
+          h(:span, { style: { fontSize: '0.82rem', color: '#1d4ed8' } }, [h(:b, 'Turn: '), bidder_name]),
+          cancel_btn,
+        ].compact
+
+        can_afford = current_bid <= max_bid
+
+        confirm_bid = lambda {
+          Lib::Storage[storage_key] = nil
+          Lib::Storage['selected_bid_corp'] = nil
+
+          bid_args = { price: current_bid }
+          if target.respond_to?(:corporation?) && target.corporation?
+            bid_args[:corporation] = target
+          elsif target.respond_to?(:company?) && target.company?
+            bid_args[:company] = target
+          elsif target.is_a?(Engine::Minor)
+            bid_args[:minor] = target
+          else
+            bid_args[:entity] = target
+          end
+
+          process_action(Engine::Action::Bid.new(current_bidder, **bid_args))
+        }
+
+        row2_items = [
+          h(:button, {
+            style: { width: '1.6rem', height: '1.45rem', fontSize: '1rem', fontWeight: 'bold', cursor: 'pointer', backgroundColor: '#e0e0e0', border: '1px solid #999', borderRadius: '3px' },
+            on: { click: lambda { Lib::Storage[storage_key] = [current_bid - min_increment, min_bid].max; update } },
+          }, '-'),
+          h(:input, {
+            style: { width: '4.5rem', height: '1.45rem', fontSize: '0.85rem', textAlign: 'center', boxSizing: 'border-box', border: '1px solid #999', borderRadius: '3px' },
+            attrs: { type: 'number', min: min_bid.to_s, max: max_bid.to_s, step: min_increment.to_s },
+            props: { value: current_bid.to_s },
+            on: { input: lambda { |e| Lib::Storage[storage_key] = `#{e}.target.value`.to_i; update } },
+          }),
+          h(:button, {
+            style: { width: '1.6rem', height: '1.45rem', fontSize: '1rem', fontWeight: 'bold', cursor: 'pointer', backgroundColor: '#e0e0e0', border: '1px solid #999', borderRadius: '3px' },
+            on: { click: lambda { Lib::Storage[storage_key] = [current_bid + min_increment, max_bid].min; update } },
+          }, '+'),
+          h(:button, {
+            style: {
+              height: '1.45rem',
+              padding: '0 8px',
+              fontSize: '0.82rem',
+              fontWeight: 'bold',
+              backgroundColor: can_afford ? '#28a745' : '#ccc',
+              color: '#fff',
+              border: 'none',
+              borderRadius: '3px',
+              cursor: can_afford ? 'pointer' : 'not-allowed',
+            },
+            attrs: { disabled: !can_afford },
+            on: { click: confirm_bid },
+          }, "Bid #{@game.format_currency(current_bid)}"),
+        ]
+
+        h(:div, { style: { display: 'flex', flexDirection: 'column', gap: '0.3rem', width: '100%' } }, [
+          render_action_row('Auction:', row1_items),
+          render_action_row('Your Bid:', row2_items),
         ])
       end
 
@@ -1278,14 +1550,20 @@ module View
 
         case @game.round
         when Engine::Round::Stock
-          h(::View::Game::DashboardStock, game: @game)
+          if actions.include?('bid') && ((step&.respond_to?(:auctioning) && step.auctioning) || Lib::Storage['selected_bid_corp'])
+            render_bid(step, step&.current_entity || current_entity, actions)
+          else
+            h(::View::Game::DashboardStock, game: @game)
+          end
         when Engine::Round::Operating
-          if actions.include?('merge')
-            h(Round::Merger, game: @game)
+          if actions.include?('merge') || actions.include?('convert') || actions.include?('take_loan') || actions.include?('payoff_loan')
+            components = []
+            components << render_merger_step(step, step&.current_entity || current_entity, actions)
+            h(:div, { style: { display: 'flex', flexDirection: 'column', gap: '0.15rem', width: '100%', alignItems: 'flex-start' } }, components.compact)
           elsif actions.include?('buy_shares') && step&.current_entity&.player?
             h(::View::Game::DashboardStock, game: @game)
           elsif actions.include?('bid')
-            h(Round::Auction, game: @game, user: nil)
+            render_bid(step, step&.current_entity || current_entity, actions)
           else
             components = []
 
@@ -1391,10 +1669,14 @@ module View
         when Engine::Round::Choices
           h(Round::Choices, game: @game)
         when Engine::Round::Auction, Engine::Round::Draft
-          h(Round::Auction, game: @game, user: nil)
+          render_bid(step, step&.current_entity || current_entity, actions)
         when Engine::Round::Merger
           if !(%w[buy_train scrap_train reassign_trains] & actions).empty? && @game.train_actions_always_use_operating_round_view?
             h(Round::Operating, game: @game)
+          elsif (%w[merge convert buy_shares corporate_buy_shares take_loan payoff_loan] & actions).any?
+            components = []
+            components << render_merger_step(step, step&.current_entity || current_entity, actions)
+            h(:div, { style: { display: 'flex', flexDirection: 'column', gap: '0.15rem', width: '100%', alignItems: 'flex-start' } }, components.compact)
           else
             h(Round::Merger, game: @game)
           end
