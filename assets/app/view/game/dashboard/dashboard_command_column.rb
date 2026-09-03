@@ -24,19 +24,19 @@ module View
       needs :last_entity, store: true, default: nil
       needs :cmd_router_running, store: true, default: false
 
-def current_entity
-  @game.round.active_step&.current_entity ||
-    (@game.round.respond_to?(:current_entity) ? @game.round.current_entity : nil) ||
-    @game.current_entity
-rescue NotImplementedError, StandardError
-  nil
-end
+      def current_entity
+        @game.round.active_step&.current_entity ||
+          (@game.round.respond_to?(:current_entity) ? @game.round.current_entity : nil) ||
+          @game.current_entity
+      rescue NotImplementedError, StandardError
+        nil
+      end
 
       def active_routes
         @routes.select { |r| r.chains.any? }
       end
 
-     def render_action_row(label, children)
+      def render_action_row(label, children)
         items = (children.is_a?(Array) ? children : [children]).compact
         return nil if items.empty?
 
@@ -46,14 +46,14 @@ end
             flexDirection: 'row',
             alignItems: 'center',
             justifyContent: 'flex-start',
-            gap: '0.5rem',
+            gap: '0.4rem',
             width: '100%',
             maxWidth: '100%',
             margin: '0 auto',
           },
         }, [
-          h(:span, { style: { fontSize: '0.95rem', fontWeight: 'bold', color: '#333', minWidth: '6.5rem', textAlign: 'left', flexShrink: '0' } }, label),
-          h(:div, { style: { display: 'flex', flexDirection: 'row', flexWrap: 'nowrap', alignItems: 'center', gap: '0.35rem' } }, items),
+          h(:span, { style: { fontSize: '0.92rem', fontWeight: 'bold', color: '#333', minWidth: '6.5rem', textAlign: 'left', flexShrink: '0' } }, label),
+          h(:div, { style: { display: 'flex', flexDirection: 'row', flexWrap: 'nowrap', alignItems: 'center', gap: '0.3rem' } }, items),
         ])
       end
 
@@ -102,13 +102,80 @@ end
         ])
       end
 
+      def build_company_tooltip(c)
+        owner_name = c.owner&.name || 'Bank'
+        desc_text = if c.respond_to?(:desc) && c.desc && !c.desc.empty?
+                      c.desc
+                    elsif c.respond_to?(:abilities) && c.abilities&.any?
+                      c.abilities.map { |a| a.respond_to?(:description) ? a.description : nil }.compact.join(' ')
+                    else
+                      'No special abilities.'
+                    end
 
-def render_zone3_abilities(entity)
+        value_str = @game.format_currency(c.value || 0)
+        revenue_str = @game.format_currency(c.revenue || 0)
+
+        render_company_tooltip('Private Company', c.name, desc_text, value_str, revenue_str, owner_name)
+      end
+
+      def render_railcard(entity, text, subtext, color, click_handler, tooltip = nil, dropdown = nil, disabled = false)
+        card_props = {
+          attrs: { class: "game-card #{disabled ? '' : 'clickable'}" },
+          style: {
+            border: "2px solid #{color}",
+            minWidth: '3.2rem',
+            height: '1.45rem',
+            padding: '0 4px',
+            margin: '0',
+            boxSizing: 'border-box',
+            cursor: disabled ? 'not-allowed' : 'pointer',
+            opacity: disabled ? '0.6' : '1',
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '0.25rem',
+          },
+          on: disabled || !click_handler ? {} : { click: click_handler },
+        }
+
+        logo = nil
+        if entity
+          logo_src = begin
+                       setting_for(:simple_logos, @game) ? entity.simple_logo : entity.logo
+                     rescue StandardError
+                       nil
+                     end
+
+          if logo_src
+            logo = h(:img, { attrs: { src: logo_src }, style: { width: '1rem', height: '1rem', objectFit: 'contain' } })
+          elsif entity.respond_to?(:corporation?) && entity.corporation? && entity.respond_to?(:id) && entity.id.to_s.size <= 4
+            bg_color = entity.respond_to?(:color) && entity.color ? entity.color : '#333'
+            text_color = entity.respond_to?(:text_color) && entity.text_color ? entity.text_color : '#fff'
+            logo = h(:div, { style: { width: '1rem', height: '1rem', fontSize: '0.6rem', backgroundColor: bg_color, color: text_color, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '2px', flexShrink: '0' } }, entity.id)
+          end
+        end
+
+        inner = []
+        inner << logo if logo
+        inner << h(:span, { style: { fontWeight: 'bold', fontSize: '0.82rem' } }, text) if text
+        inner << h(:span, { style: { fontSize: '0.75rem', color: '#444', whiteSpace: 'nowrap' } }, subtext) if subtext
+
+        h(:div, {
+          attrs: { class: tooltip ? 'cmd-company-wrapper' : '' },
+          style: { display: 'inline-block', position: 'relative' },
+        }, [
+          tooltip,
+          h(:div, card_props, inner),
+          dropdown,
+        ].compact)
+      end
+
+      def render_zone3_abilities(entity)
         return nil unless entity
 
         active_ability_companies = (@game.companies || []).select do |c|
           next false if c.respond_to?(:closed?) && c.closed?
-          
+
           is_owner = c.owner == entity || (entity.respond_to?(:owner) && c.owner && c.owner == entity.owner)
           next false unless is_owner
 
@@ -117,7 +184,7 @@ def render_zone3_abilities(entity)
                       rescue StandardError
                         []
                       end || []
-          
+
           next false if c_actions.empty?
 
           if @game.respond_to?(:entity_can_use_company?)
@@ -130,21 +197,7 @@ def render_zone3_abilities(entity)
         return nil if active_ability_companies.empty?
 
         ability_boxes = active_ability_companies.map do |c|
-          owner_name = c.owner&.name || 'Bank'
           card_text = (c.sym || c.name).to_s
-
-          desc_text = if c.respond_to?(:desc) && c.desc && !c.desc.empty?
-                        c.desc
-                      elsif c.respond_to?(:abilities) && c.abilities&.any?
-                        c.abilities.map { |a| a.respond_to?(:description) ? a.description : nil }.compact.join(' ')
-                      else
-                        'No special abilities.'
-                      end
-
-          value_str = @game.format_currency(c.value || 0)
-          revenue_str = @game.format_currency(c.revenue || 0)
-
-          tooltip_card = render_company_tooltip('Private Company', c.name, desc_text, value_str, revenue_str, owner_name)
 
           click_handler = lambda {
             c_actions = begin
@@ -153,7 +206,6 @@ def render_zone3_abilities(entity)
                           []
                         end || []
 
-            # 1. Direct bypass for Exchange abilities (e.g. Mohawk & Hudson)
             if c_actions.include?('buy_shares') && (ability = @game.abilities(c, :exchange))
               step = @game.round.active_step(c)
               valid_shares = []
@@ -175,7 +227,6 @@ def render_zone3_abilities(entity)
               end
             end
 
-            # 2. Direct bypass for Sell/Close/Purchase Train abilities
             if c_actions.include?('sell_company')
               process_action(Engine::Action::SellCompany.new(entity, company: c, price: c.value))
               next
@@ -191,7 +242,6 @@ def render_zone3_abilities(entity)
               next
             end
 
-            # 3. Standard fallback for generic abilities
             store(:selected_company, c)
             active_a = (c.respond_to?(:all_abilities) ? c.all_abilities : []).dup.concat(c.abilities || []).find do |a|
               !((a.respond_to?(:passive?) && a.passive?) || (a.respond_to?(:passive) && a.passive) || (a.respond_to?(:closed?) && a.closed?) || (a.respond_to?(:used?) && a.used?))
@@ -203,34 +253,13 @@ def render_zone3_abilities(entity)
               rescue StandardError
                 begin
                   process_action(Engine::Action::UseAbility.new(entity, ability: active_a, company: c))
-                rescue StandardError => e
-                  `console.warn('UseAbility failed: ' + e)`
+                rescue StandardError
                 end
               end
             end
           }
 
-          card_props = {
-            attrs: { class: 'game-card clickable action-buy' },
-            style: {
-              border: '2px solid #28a745',
-              minWidth: '3.5rem',
-              height: '1.45rem',
-              padding: '0 4px',
-              margin: '0',
-              boxSizing: 'border-box',
-              cursor: 'pointer',
-            },
-            on: { click: click_handler },
-          }
-
-          h(:div, {
-            attrs: { class: 'cmd-company-wrapper' },
-            style: { display: 'inline-block', position: 'relative' },
-          }, [
-            tooltip_card,
-            h(:div, card_props, card_text),
-          ])
+          render_railcard(c, card_text, nil, '#28a745', click_handler, build_company_tooltip(c))
         end
 
         h(:div, {
@@ -244,18 +273,10 @@ def render_zone3_abilities(entity)
             height: '1.8rem',
           },
         }, [
-          h(:span, { style: { fontSize: '0.95rem', fontWeight: 'bold', color: '#333', flexShrink: '0' } }, 'Abilities:'),
+          h(:span, { style: { fontSize: '0.92rem', fontWeight: 'bold', color: '#333', flexShrink: '0' } }, 'Abilities:'),
           h(:div, { style: { display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.3rem', flexWrap: 'wrap' } }, ability_boxes),
         ])
       end
-
-
-
-
-
-
-
-
 
       def render
         step = @game.round.active_step
@@ -305,14 +326,6 @@ def render_zone3_abilities(entity)
           phase = :issue_shares
         end
 
-        `console.log('DCC Turn State:', {
-          entity: #{entity&.id || 'nil'},
-          entity_class: #{entity&.class&.name || 'nil'},
-          step: #{step&.class&.name || 'nil'},
-          phase: #{phase.to_s},
-          actions: #{actions.to_n}
-        })`
-
         player_name = entity&.owner&.name || ''
 
         if entity.respond_to?(:color)
@@ -328,8 +341,7 @@ def render_zone3_abilities(entity)
         if active_routes.any? && !@cmd_router_running
           active_routes.each do |r|
             base_revenue += r.revenue if r.chains.any?
-          rescue Engine::GameError
-          rescue StandardError
+          rescue Engine::GameError, StandardError
           end
         end
         if phase == :dividend && base_revenue.zero? && entity.respond_to?(:operating_history)
@@ -359,7 +371,6 @@ def render_zone3_abilities(entity)
           ].compact)
         end
 
-        # --- ZONE 1: IDENTITY & TURN STATE ---
         if @game.round.stock?
           zone_1 = h(:div, { style: { flex: '0 0 20%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '0.5rem', borderRight: '1px solid #ccc', boxSizing: 'border-box' } }, [
             h(:div, { style: { fontSize: '1.8rem', fontWeight: 'bold', color: '#000000', textAlign: 'center', wordBreak: 'break-word' } }, player_name),
@@ -399,7 +410,6 @@ def render_zone3_abilities(entity)
           ])
         end
 
-        # --- ZONE 2: EXPANDED DYNAMIC ACTION CANVAS ---
         zone_2_content = []
 
         if phase == :run_routes
@@ -431,10 +441,8 @@ def render_zone3_abilities(entity)
         end
 
         zone_2_content << render_ground_truth_actions(actions, step)
+        zone_2 = h(:div, { style: { flex: '1 1 56%', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', justifyContent: 'center', gap: '0.15rem', padding: '0.25rem 0.5rem', borderRight: '1px solid #ccc', boxSizing: 'border-box', overflowY: 'auto' } }, zone_2_content.compact)
 
-        zone_2 = h(:div, { style: { flex: '1 1 56%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '0.55rem', padding: '0.4rem', borderRight: '1px solid #ccc', boxSizing: 'border-box', overflowY: 'auto' } }, zone_2_content.compact)
-
-        # --- ZONE 3: ACTIVE POWERS & ADVANCE ---
         advance_text = 'Pass'
         advance_color = '#e0e0e0'
         advance_text_color = '#a0a0a0'
@@ -507,82 +515,11 @@ def render_zone3_abilities(entity)
         zone_3 = h(:div, { style: { flex: '0 0 22%', display: 'flex', flexDirection: 'column', padding: '0.4rem', boxSizing: 'border-box', overflowY: 'auto', position: 'relative' } }, [
           h(:style, {}, '.cmd-company-wrapper:hover .cmd-company-tooltip { display: block !important; }'),
 
-          h(:div, { style: { flex: '0 0 auto', width: '100%', marginBottom: '0.4rem' } }, [
+          h(:div, { style: { flex: '0 0 auto', width: '100%', marginBottom: '0.3rem' } }, [
             (render_zone3_abilities(entity) if has_abilities),
           ].compact),
 
-      h(:div, { attrs: { class: 'cmd-undo-redo-wrapper' }, style: { width: '100%', marginBottom: '0.4rem' } }, [
-            h(:style, {}, '
-              .cmd-undo-redo-wrapper #history,
-              .cmd-undo-redo-wrapper .history,
-              .cmd-undo-redo-wrapper input,
-              .cmd-undo-redo-wrapper button:not(#undo):not(#redo) {
-                display: none !important;
-              }
-              .cmd-undo-redo-wrapper,
-              .cmd-undo-redo-wrapper * {
-                box-sizing: border-box !important;
-              }
-              .cmd-undo-redo-wrapper,
-              .cmd-undo-redo-wrapper div,
-              .cmd-undo-redo-wrapper #history_and_undo,
-              .cmd-undo-redo-wrapper .history_and_undo {
-                display: flex !important;
-                flex-direction: row !important;
-                flex-wrap: nowrap !important;
-                align-items: center !important;
-                justify-content: space-between !important;
-                width: 100% !important;
-                min-width: 100% !important;
-                max-width: 100% !important;
-                margin: 0 !important;
-                padding: 0 !important;
-                border: none !important;
-                background: transparent !important;
-                box-shadow: none !important;
-              }
-              .cmd-undo-redo-wrapper button#undo,
-              .cmd-undo-redo-wrapper button#redo {
-                display: inline-flex !important;
-                flex: 0 0 3.5rem !important;
-                width: 3.5rem !important;
-                min-width: 3.5rem !important;
-                max-width: 3.5rem !important;
-                height: 1.45rem !important;
-                min-height: 1.45rem !important;
-                max-height: 1.45rem !important;
-                justify-content: center !important;
-                align-items: center !important;
-                padding: 0 4px !important;
-                font-size: 0.85rem !important;
-                font-weight: bold !important;
-                background-color: #f8f9fa !important;
-                color: #212529 !important;
-                border: 1px solid #ced4da !important;
-                border-radius: 4px !important;
-                cursor: pointer !important;
-                margin: 0 !important;
-                line-height: 1 !important;
-                box-shadow: 0 1px 2px rgba(0,0,0,0.05) !important;
-              }
-              .cmd-undo-redo-wrapper button#undo:hover:not(:disabled),
-              .cmd-undo-redo-wrapper button#redo:hover:not(:disabled) {
-                background-color: #e9ecef !important;
-                border-color: #adb5bd !important;
-              }
-              .cmd-undo-redo-wrapper button#undo:disabled,
-              .cmd-undo-redo-wrapper button#redo:disabled {
-                background-color: #f1f3f5 !important;
-                color: #adb5bd !important;
-                cursor: not-allowed !important;
-                opacity: 0.6 !important;
-                box-shadow: none !important;
-              }
-            '),
-            h(HistoryAndUndo, last_action_id: last_action_id),
-          ]),
-
-          h(:div, { style: { width: '100%', marginTop: 'auto', display: 'flex', justifyContent: 'center' } }, [
+          h(:div, { style: { width: '100%', marginTop: 'auto', display: 'flex', flexDirection: 'column', gap: '0.35rem', alignItems: 'center' } }, [
             h(:button, {
               style: {
                 width: '100%',
@@ -606,10 +543,81 @@ def render_zone3_abilities(entity)
               attrs: { disabled: advance_disabled },
               on: { click: advance_action },
             }, advance_text),
+
+            h(:div, { attrs: { class: 'cmd-undo-redo-wrapper' }, style: { width: '100%' } }, [
+              h(:style, {}, '
+                .cmd-undo-redo-wrapper #history,
+                .cmd-undo-redo-wrapper .history,
+                .cmd-undo-redo-wrapper input,
+                .cmd-undo-redo-wrapper button:not(#undo):not(#redo) {
+                  display: none !important;
+                }
+                .cmd-undo-redo-wrapper,
+                .cmd-undo-redo-wrapper * {
+                  box-sizing: border-box !important;
+                }
+                .cmd-undo-redo-wrapper,
+                .cmd-undo-redo-wrapper div,
+                .cmd-undo-redo-wrapper #history_and_undo,
+                .cmd-undo-redo-wrapper .history_and_undo {
+                  display: flex !important;
+                  flex-direction: row !important;
+                  flex-wrap: nowrap !important;
+                  align-items: center !important;
+                  justify-content: flex-start !important;
+                  gap: 0.6rem !important;
+                  width: 100% !important;
+                  min-width: 100% !important;
+                  max-width: 100% !important;
+                  margin: 0 !important;
+                  padding: 0 !important;
+                  border: none !important;
+                  background: transparent !important;
+                  box-shadow: none !important;
+                }
+                .cmd-undo-redo-wrapper button#undo,
+                .cmd-undo-redo-wrapper button#redo {
+                  display: inline-flex !important;
+                  flex: 0 0 3.5rem !important;
+                  width: 3.5rem !important;
+                  min-width: 3.5rem !important;
+                  max-width: 3.5rem !important;
+                  height: 1.45rem !important;
+                  min-height: 1.45rem !important;
+                  max-height: 1.45rem !important;
+                  justify-content: center !important;
+                  align-items: center !important;
+                  padding: 0 4px !important;
+                  font-size: 0.85rem !important;
+                  font-weight: bold !important;
+                  background-color: #f8f9fa !important;
+                  color: #212529 !important;
+                  border: 1px solid #ced4da !important;
+                  border-radius: 4px !important;
+                  cursor: pointer !important;
+                  margin: 0 !important;
+                  line-height: 1 !important;
+                  box-shadow: 0 1px 2px rgba(0,0,0,0.05) !important;
+                }
+                .cmd-undo-redo-wrapper button#undo:hover:not(:disabled),
+                .cmd-undo-redo-wrapper button#redo:hover:not(:disabled) {
+                  background-color: #e9ecef !important;
+                  border-color: #adb5bd !important;
+                }
+                .cmd-undo-redo-wrapper button#undo:disabled,
+                .cmd-undo-redo-wrapper button#redo:disabled {
+                  background-color: #f1f3f5 !important;
+                  color: #adb5bd !important;
+                  cursor: not-allowed !important;
+                  opacity: 0.6 !important;
+                  box-shadow: none !important;
+                }
+              '),
+              h(HistoryAndUndo, last_action_id: last_action_id),
+            ]),
           ]),
         ])
 
-        # Automated route generator gate
         current_action_id = @game.raw_actions.size
         if phase == :run_routes && @last_routed_action_id != current_action_id
           store(:last_routed_action_id, current_action_id, skip: true)
@@ -639,7 +647,6 @@ def render_zone3_abilities(entity)
               )
             rescue StandardError
               store(:cmd_router_running, false)
-              `console.warn('AutoRouter skipped layout matching: ' + e)`
             end
             `}, 100);`
           }.call
@@ -814,184 +821,114 @@ def render_zone3_abilities(entity)
           end
 
           card_text = (c.sym || c.name).to_s
-
-          card_props = {
-            attrs: { class: 'game-card clickable action-buy' },
-            style: {
-              border: '2px solid #28a745',
-              minWidth: '3.5rem',
-              height: '1.45rem',
-              padding: '0 4px',
-              margin: '2px',
-              boxSizing: 'border-box',
-            },
-            on: { click: company_click_handler },
-          }
-
-          desc_text = if c.respond_to?(:desc) && c.desc && !c.desc.empty?
-                        c.desc
-                      elsif c.respond_to?(:abilities) && c.abilities&.any?
-                        c.abilities.map { |a| a.respond_to?(:description) ? a.description : nil }.compact.join(' ')
-                      else
-                        'No special abilities.'
-                      end
-
-          value_str = @game.format_currency(c.value || 0)
-          revenue_str = @game.format_currency(c.revenue || 0)
-
-          tooltip_card = render_company_tooltip('Private Company', c.name, desc_text, value_str, revenue_str, owner_name)
-
-          h(:div, {
-            attrs: { class: 'cmd-company-wrapper' },
-            style: { display: 'inline-block', position: 'relative' },
-          }, [
-            tooltip_card,
-            h(:div, card_props, card_text),
-            menu_dropdown,
-          ].compact)
+          render_railcard(c, card_text, nil, '#28a745', company_click_handler, build_company_tooltip(c), menu_dropdown)
         end.compact
 
         return nil if company_boxes.empty?
 
-        render_action_row('Buy Privates:', [
-          h(:style, {}, '.cmd-company-wrapper:hover .cmd-company-tooltip { display: block !important; }'),
-          *company_boxes,
-        ])
+        render_action_row('Buy Privates:', company_boxes)
       end
 
       def render_discard_trains(step, entity)
-          return nil unless entity && step
+        return nil unless entity && step
 
-          train_boxes = []
-          discardable = if step.respond_to?(:discardable_trains)
-                          step.discardable_trains(entity)
-                        elsif entity.respond_to?(:trains)
-                          entity.trains
-                        else
-                          []
-                        end
+        train_boxes = []
+        discardable = if step.respond_to?(:discardable_trains)
+                        step.discardable_trains(entity)
+                      elsif entity.respond_to?(:trains)
+                        entity.trains
+                      else
+                        []
+                      end
 
-          (discardable || []).each do |train|
-            click_handler = lambda {
-              process_action(Engine::Action::DiscardTrain.new(
-                entity,
-                train: train
-              ))
-            }
-
-            card_props = {
-              attrs: { class: 'game-card clickable action-sell' },
-              style: {
-                border: '2px solid #dc2626',
-                minWidth: '3.5rem',
-                height: '1.45rem',
-                padding: '0 4px',
-                margin: '2px',
-                boxSizing: 'border-box',
-                cursor: 'pointer',
-              },
-              on: { click: click_handler },
-            }
-train_boxes << h(:div, card_props, train.name)
-          end
-
-          return nil if train_boxes.empty?
-          render_action_row('Discard:', train_boxes)
+        (discardable || []).each do |train|
+          click_handler = lambda {
+            process_action(Engine::Action::DiscardTrain.new(
+              entity,
+              train: train
+            ))
+          }
+          train_boxes << render_railcard(entity, train.name, nil, '#dc2626', click_handler)
         end
 
-        def render_surrender_trains(actions, step, entity)
-          return nil unless entity && step
+        return nil if train_boxes.empty?
+        render_action_row('Discard:', train_boxes)
+      end
 
-          train_boxes = []
-          trains = if step.respond_to?(:scrappable_trains)
-                     step.scrappable_trains(entity)
-                   elsif step.respond_to?(:surrenderable_trains)
-                     step.surrenderable_trains(entity)
-                   elsif step.respond_to?(:trains)
-                     step.trains(entity)
-                   elsif entity.respond_to?(:trains)
-                     entity.trains
-                   else
-                     []
-                   end
+      def render_surrender_trains(actions, step, entity)
+        return nil unless entity && step
 
-          action_class = if actions.include?('surrender_train')
-                           Engine::Action::SurrenderTrain
-                         elsif actions.include?('surrender')
-                           Engine::Action::Surrender
-                         else
-                           Engine::Action::ScrapTrain
-                         end
+        train_boxes = []
+        trains = if step.respond_to?(:scrappable_trains)
+                   step.scrappable_trains(entity)
+                 elsif step.respond_to?(:surrenderable_trains)
+                   step.surrenderable_trains(entity)
+                 elsif step.respond_to?(:trains)
+                   step.trains(entity)
+                 elsif entity.respond_to?(:trains)
+                   entity.trains
+                 else
+                   []
+                 end
 
-          (trains || []).each do |train|
-            click_handler = lambda {
-              process_action(action_class.new(
-                entity,
-                train: train
-              ))
-            }
-
-            card_props = {
-              attrs: { class: 'game-card clickable action-sell' },
-              style: {
-                border: '2px solid #dc2626',
-                minWidth: '3.5rem',
-                height: '1.45rem',
-                padding: '0 4px',
-                margin: '2px',
-                boxSizing: 'border-box',
-                cursor: 'pointer',
-              },
-              on: { click: click_handler },
-            }
-
-            btn_text = if step.respond_to?(:button_text)
-                         step.button_text(train)
-                       elsif step.respond_to?(:surrender_button_text)
-                         step.surrender_button_text(train)
-                       elsif step.respond_to?(:scrap_button_text)
-                         step.scrap_button_text(train)
+        action_class = if actions.include?('surrender_train')
+                         Engine::Action::SurrenderTrain
+                       elsif actions.include?('surrender')
+                         Engine::Action::Surrender
+                       else
+                         Engine::Action::ScrapTrain
                        end
 
-            cost_str = ''
-            if btn_text
-              if (m = btn_text.match(/\(([^)]+)\)/))
-                cost_str = " (#{m[1]})"
-              elsif (m = btn_text.match(/([+-]?\d+[\w]*)/))
-                cost_str = " (#{m[1]})"
-              end
+        (trains || []).each do |train|
+          click_handler = lambda {
+            process_action(action_class.new(
+              entity,
+              train: train
+            ))
+          }
+
+          btn_text = if step.respond_to?(:button_text)
+                       step.button_text(train)
+                     elsif step.respond_to?(:surrender_button_text)
+                       step.surrender_button_text(train)
+                     elsif step.respond_to?(:scrap_button_text)
+                       step.scrap_button_text(train)
+                     end
+
+          cost_str = ''
+          if btn_text
+            if (m = btn_text.match(/\(([^)]+)\)/))
+              cost_str = "(#{m[1]})"
+            elsif (m = btn_text.match(/([+-]?\d+[\w]*)/))
+              cost_str = "(#{m[1]})"
             end
-
-            if cost_str.empty?
-              cost = nil
-              if step.respond_to?(:surrender_cost)
-                cost = step.surrender_cost(train)
-              elsif step.respond_to?(:cost)
-                cost = step.cost(train)
-              elsif step.respond_to?(:scrap_cost)
-                cost = step.scrap_cost(train)
-              elsif @game.respond_to?(:surrender_cost)
-                cost = @game.surrender_cost(train)
-              elsif @game.respond_to?(:scrap_cost)
-                cost = @game.scrap_cost(train)
-              end
-
-              if cost && !cost.zero?
-                formatted_cost = @game.format_currency(cost)
-                cost_str = " (#{formatted_cost})"
-              end
-            end
-
-            train_boxes << h(:div, { style: { display: 'inline-flex', alignItems: 'center', gap: '0.25rem' } }, [
-              h(:div, card_props, train.name),
-              (cost_str.empty? ? nil : h(:span, { style: { fontSize: '0.85rem', color: '#555', whiteSpace: 'nowrap' } }, cost_str)),
-            ].compact)
           end
 
-          return nil if train_boxes.empty?
-          render_action_row('Surrender:', train_boxes)
+          if cost_str.empty?
+            cost = nil
+            if step.respond_to?(:surrender_cost)
+              cost = step.surrender_cost(train)
+            elsif step.respond_to?(:cost)
+              cost = step.cost(train)
+            elsif step.respond_to?(:scrap_cost)
+              cost = step.scrap_cost(train)
+            elsif @game.respond_to?(:surrender_cost)
+              cost = @game.surrender_cost(train)
+            elsif @game.respond_to?(:scrap_cost)
+              cost = @game.scrap_cost(train)
+            end
+
+            if cost && !cost.zero?
+              cost_str = "(#{@game.format_currency(cost)})"
+            end
+          end
+
+          train_boxes << render_railcard(entity, train.name, cost_str.empty? ? nil : cost_str.strip, '#dc2626', click_handler)
         end
 
+        return nil if train_boxes.empty?
+        render_action_row('Surrender:', train_boxes)
+      end
 
       def render_buyable_trains(step, entity)
         return nil unless entity && step
@@ -1004,7 +941,6 @@ train_boxes << h(:div, card_props, train.name)
 
         train_boxes = []
 
-        # 1. Depot / Bank Trains
         depot = @game.depot
         if depot
           buyable_depot = if step.respond_to?(:buyable_trains)
@@ -1043,31 +979,11 @@ train_boxes << h(:div, card_props, train.name)
                   variant: variant_param
                 ))
               }
-
-              card_props = {
-                attrs: { class: "game-card #{'clickable action-buy' if can_afford}" },
-                style: {
-                  border: '2px solid #28a745',
-                  minWidth: '3.5rem',
-                  height: '1.45rem',
-                  padding: '0 4px',
-                  margin: '2px',
-                  boxSizing: 'border-box',
-                  cursor: can_afford ? 'pointer' : 'not-allowed',
-                  opacity: can_afford ? '1' : '0.6',
-                },
-                on: can_afford ? { click: click_handler } : {},
-              }
-
-              train_boxes << h(:div, { style: { display: 'inline-flex', alignItems: 'center', gap: '0.25rem', position: 'relative' } }, [
-                h(:div, card_props, variant_str),
-                h(:span, { style: { fontSize: '0.85rem', color: '#555', whiteSpace: 'nowrap' } }, "(from Bank for #{@game.format_currency(price)})"),
-              ])
+              train_boxes << render_railcard(nil, variant_str, "(Bank: #{@game.format_currency(price)})", '#28a745', click_handler, nil, nil, !can_afford)
             end
           end
         end
 
-        # 2. Other Corporate Trains (owned by same player or valid by step)
         other_corps = (@game.corporations + (@game.respond_to?(:minors) ? (@game.minors || []) : [])).reject { |c| c == entity }
         other_corps = other_corps.select { |c| c.owner && c.owner == operating_player } if operating_player
 
@@ -1195,24 +1111,7 @@ train_boxes << h(:div, card_props, train.name)
               ])
             end
 
-            card_props = {
-              attrs: { class: 'game-card clickable action-buy' },
-              style: {
-                border: '2px solid #28a745',
-                minWidth: '3.5rem',
-                height: '1.45rem',
-                padding: '0 4px',
-                margin: '2px',
-                boxSizing: 'border-box',
-              },
-              on: { click: train_click_handler },
-            }
-
-            train_boxes << h(:div, { style: { display: 'inline-flex', alignItems: 'center', gap: '0.25rem', position: 'relative' } }, [
-              h(:div, card_props, t.name),
-              h(:span, { style: { fontSize: '0.85rem', color: '#555', whiteSpace: 'nowrap' } }, "(from #{c.id || c.name})"),
-              menu_dropdown,
-            ].compact)
+            train_boxes << render_railcard(c, t.name, "(#{c.id || c.name})", '#28a745', train_click_handler, nil, menu_dropdown)
           end
         end
 
@@ -1221,7 +1120,7 @@ train_boxes << h(:div, card_props, train.name)
         render_action_row('Buy Train:', train_boxes)
       end
 
-def render_issue_shares(step, entity)
+      def render_issue_shares(step, entity)
         entity ||= current_entity
         return nil unless entity && step
 
@@ -1251,17 +1150,9 @@ def render_issue_shares(step, entity)
           else
             []
           end
-        rescue StandardError => e
-          `console.warn('DCC issuable_bundles error: ' + e)`
+        rescue StandardError
           []
         end || []
-
-        `console.log('DCC render_issue_shares:', {
-          entity: #{entity.id},
-          step: #{step.class.name},
-          bundle_count: #{issuable_bundles.size},
-          bundles: #{issuable_bundles.to_n}
-        })`
 
         rows = []
 
@@ -1286,7 +1177,7 @@ def render_issue_shares(step, entity)
                       0
                     end
 
-           pct_str = if bundle.respond_to?(:percent) && bundle.percent
+            pct_str = if bundle.respond_to?(:percent) && bundle.percent
                         "#{bundle.percent}%"
                       else
                         "#{num}S"
@@ -1319,42 +1210,16 @@ def render_issue_shares(step, entity)
               end
             }
 
-            card_props = {
-              attrs: { class: 'game-card clickable action-sell' },
-              style: {
-                border: '2px solid #dc2626',
-                minWidth: '2.5rem',
-                height: '1.45rem',
-                padding: '0 4px',
-                margin: '0',
-                boxSizing: 'border-box',
-                cursor: 'pointer',
-                fontSize: '0.82rem',
-                fontWeight: 'bold',
-              },
-            }
-
-            h(:div, {
-              style: {
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '0.2rem',
-                cursor: 'pointer',
-                margin: '1px 2px',
-              },
-              on: { click: click_handler },
-            }, [
-              h(:div, card_props, pct_str),
-              h(:span, { style: { fontSize: '0.82rem', color: '#444', fontWeight: 'bold', whiteSpace: 'nowrap' } }, price_str),
-            ])
+            corp = bundle.respond_to?(:corporation) ? bundle.corporation : entity
+            render_railcard(corp, pct_str, price_str, '#dc2626', click_handler)
           end
           rows << render_action_row('Issue:', issue_buttons)
         elsif (@game.round.actions_for(entity) || []).include?('issue_shares')
-          `console.warn('DCC: issue_shares is in actions, but 0 bundles were found.')`
           rows << render_action_row('Issue:', [
             h(:span, { style: { color: '#888', fontStyle: 'italic', fontSize: '0.85rem' } }, 'No issuable shares available')
           ])
         end
+
         redeemable_bundles = if step.respond_to?(:redeemable_shares)
                                step.redeemable_shares(entity) || []
                              elsif step.respond_to?(:redeemable_bundles)
@@ -1367,7 +1232,7 @@ def render_issue_shares(step, entity)
 
         if redeemable_bundles.any?
           redeem_buttons = redeemable_bundles.map do |bundle|
-           num = bundle.num_shares
+            num = bundle.num_shares
             price = bundle.price
             pct_str = if bundle.respond_to?(:percent) && bundle.percent
                         "#{bundle.percent}%"
@@ -1391,51 +1256,21 @@ def render_issue_shares(step, entity)
               ))
             }
 
-            card_props = {
-              attrs: { class: 'game-card clickable action-buy' },
-              style: {
-                border: '2px solid #28a745',
-                minWidth: '2.5rem',
-                height: '1.45rem',
-                padding: '0 4px',
-                margin: '0',
-                boxSizing: 'border-box',
-                cursor: 'pointer',
-                fontSize: '0.82rem',
-                fontWeight: 'bold',
-              },
-            }
-
-            h(:div, {
-              style: {
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '0.2rem',
-                cursor: 'pointer',
-                margin: '1px 2px',
-              },
-              on: { click: click_handler },
-            }, [
-              h(:div, card_props, pct_str),
-              h(:span, { style: { fontSize: '0.82rem', color: '#444', fontWeight: 'bold', whiteSpace: 'nowrap' } }, price_str),
-            ])
+            corp = bundle.respond_to?(:corporation) ? bundle.corporation : entity
+            render_railcard(corp, pct_str, price_str, '#28a745', click_handler)
           end
           rows << render_action_row('Redeem:', redeem_buttons)
         end
 
         return nil if rows.empty?
 
-        h(:div, { style: { display: 'flex', flexDirection: 'column', gap: '0.35rem', width: '100%' } }, rows.compact)
+        h(:div, { style: { display: 'flex', flexDirection: 'column', gap: '0.25rem', width: '100%' } }, rows.compact)
       end
 
       def render_ground_truth_actions(actions, step)
         return h(:div) if @game.finished
 
         return h(UpgradeOrDiscardTrains) if actions.include?('discard_train') && actions.include?('swap_train')
-
-        if actions.include?('par') && step&.respond_to?(:corporation_pending_par) && step&.corporation_pending_par
-          return h(CorporationPendingPar, corporation: step.corporation_pending_par)
-        end
 
         if actions.include?('par') && step&.respond_to?(:corporation_pending_par) && step&.corporation_pending_par
           return h(CorporationPendingPar, corporation: step.corporation_pending_par)
@@ -1467,7 +1302,7 @@ def render_issue_shares(step, entity)
             components << h(Choose) if actions.include?('choose')
             components << h(BuyToken, entity: step&.current_entity) if actions.include?('buy_token')
 
-    if actions.include?('issue_shares')
+            if actions.include?('issue_shares')
               components << render_issue_shares(step, step&.current_entity || current_entity)
             end
 
@@ -1483,14 +1318,15 @@ def render_issue_shares(step, entity)
               loans_rendered = true if (%w[take_loan payoff_loan] & actions).any?
             elsif actions.include?('buy_shares') || actions.include?('sell_shares') || actions.include?('par')
               if step&.respond_to?(:price_protection) && (price_protection = step.price_protection)
-                components << h(Corporation, corporation: price_protection.corporation)
-                components << h(BuySellShares, corporation: price_protection.corporation)
+              components << h(Corporation, corporation: price_protection.corporation)
+              components << h(BuySellShares, corporation: price_protection.corporation)
               elsif @game.corporations_can_ipo?
-                components << h(CorporateBuySellShares)
-              else
-                components << render_issue_shares(step, step&.current_entity || current_entity)
+              components << h(CorporateBuySellShares)
+              elsif !actions.include?('issue_shares')
+              components << render_issue_shares(step, step&.current_entity || current_entity)
               end
-              components << h(CorporateBuyShares)
+              components << h(CorporateBuyShares) if actions.include?('buy_shares') && !actions.include?('run_routes')
+
             elsif actions.include?('corporate_sell_shares')
               components << h(CorporateSellShares)
             elsif actions.include?('swap_train')
@@ -1498,7 +1334,6 @@ def render_issue_shares(step, entity)
             elsif actions.include?('buy_corporation')
               components << h(BuyCorporation)
             end
-
 
             if actions.include?('scrap_train') || actions.include?('surrender_train') || actions.include?('surrender')
               components << render_surrender_trains(actions, step, step&.current_entity)
@@ -1540,7 +1375,7 @@ def render_issue_shares(step, entity)
             if actions.include?('buy_company')
               components << render_buyable_companies(step, step&.current_entity)
             end
-                        if actions.include?('buy_train')
+            if actions.include?('buy_train')
               components << render_buyable_trains(step, step&.current_entity)
             end
             if actions.include?('discard_train')
@@ -1551,7 +1386,7 @@ def render_issue_shares(step, entity)
             components << h(CorporateSellCompanies) if actions.include?('corporate_sell_company')
             components << h(CorporateBuyCompanies) if actions.include?('corporate_buy_company')
 
-            h(:div, { style: { display: 'flex', flexDirection: 'column', gap: '0.55rem', width: '100%', alignItems: 'center' } }, components.compact)
+            h(:div, { style: { display: 'flex', flexDirection: 'column', gap: '0.15rem', width: '100%', alignItems: 'flex-start' } }, components.compact)
           end
         when Engine::Round::Choices
           h(Round::Choices, game: @game)
