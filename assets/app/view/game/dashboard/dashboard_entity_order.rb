@@ -31,27 +31,43 @@ module View
                         @game.round_description(round_class_name)
                       end
 
+        is_or = (current_round.respond_to?(:operating?) && current_round.operating?) ||
+                header_text.to_s.downcase.include?('operating')
+        bg_color = is_or ? (current_phase_color || '#e0e0e0') : '#e0e0e0'
+        text_color = auto_font_color(bg_color)
+
         header_el = h(:div, {
                         style: {
-                          fontSize: '1.2rem',
-                          padding: '2px 6px',
+                          fontSize: '1.1rem',
+                          padding: '0 0.85rem',
                           borderRadius: '4px',
-                          backgroundColor: '#e0e0e0',
+                          backgroundColor: bg_color,
                           fontWeight: 'bold',
-                          color: '#111111',
+                          color: text_color,
                           fontFamily: '"Helvetica Neue", Helvetica, Arial, sans-serif',
                           letterSpacing: '0.5px',
-                          marginRight: '1.2rem',
-                          display: 'inline-block',
-                          verticalAlign: 'middle',
-                          lineHeight: '1.2',
+                          marginRight: '0.9rem',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          alignSelf: 'stretch',
+                          height: '100%',
+                          minHeight: '2.5rem',
+                          lineHeight: '1',
+                          boxSizing: 'border-box',
+                          flexShrink: '0',
                         },
                       }, header_text)
 
         row_children = [header_el]
-        is_stock_round = current_round.respond_to?(:stock?) && current_round.stock?
+        round_name = current_round.class.name.to_s
+        is_text_only_round = (current_round.respond_to?(:stock?) && current_round.stock?) ||
+                             (current_round.respond_to?(:draft?) && current_round.draft?) ||
+                             round_name.include?('Stock') ||
+                             round_name.include?('Draft') ||
+                             round_name.include?('Auction')
 
-        if !is_stock_round && @round
+        if !is_text_only_round && @round
           if @round.respond_to?(:context_entities)
             context_entities = @round.context_entities.dup
             active_context_entity = @round.active_context_entity
@@ -74,7 +90,8 @@ module View
           list_entities = context_entities || entities
           acting_entity = context_entities ? active_context_entity : current_operating
 
-          row_children.concat(build_marker_list(list_entities, acting_entity))
+          is_player_list = list_entities.first.respond_to?(:player?) && list_entities.first.player?
+          row_children.concat(build_marker_list(list_entities, acting_entity)) unless is_player_list
         end
 
         h(:div, {
@@ -84,12 +101,62 @@ module View
               alignItems: 'center',
               flexWrap: 'wrap',
               gap: '0.3rem',
-              padding: '0.5rem',
+              padding: '0.2rem 0.5rem',
+              height: '100%',
+              minHeight: '2.5rem',
+              boxSizing: 'border-box',
             },
           }, row_children)
       end
 
       private
+
+      def current_phase_color
+        return nil unless @game&.phase
+
+        phase = @game.phase
+        color_sym = if phase.respond_to?(:color) && phase.color
+                      phase.color.to_s.downcase.to_sym
+                    elsif phase.respond_to?(:tiles) && phase.tiles&.any?
+                      phase.tiles.last.to_s.downcase.to_sym
+                    elsif phase.respond_to?(:name)
+                      name = phase.name.to_s.downcase
+                      if name.include?('yellow') || name == '2'
+                        :yellow
+                      elsif name.include?('green') || %w[3 3.5 4].include?(name)
+                        :green
+                      elsif name.include?('brown') || %w[5 6].include?(name)
+                        :brown
+                      elsif name.include?('gray') || name.include?('grey') || %w[7 8 d e].include?(name)
+                        :gray
+                      end
+                    end
+
+        return nil unless color_sym
+
+        begin
+          color_for(color_sym, @game) || color_for(color_sym)
+        rescue StandardError
+          nil
+        end
+      end
+
+      def auto_font_color(bg_color)
+        begin
+          c = contrast_on(bg_color)
+          return c if c
+        rescue StandardError
+        end
+
+        hex = bg_color.to_s.sub('#', '')
+        return '#ffffff' unless hex.length == 6
+
+        r = hex[0..1].to_i(16)
+        g = hex[2..3].to_i(16)
+        b = hex[4..5].to_i(16)
+        luminance = (0.299 * r) + (0.587 * g) + (0.114 * b)
+        luminance > 160 ? '#000000' : '#ffffff'
+      end
 
       def build_marker_list(entities, acting_entity)
         elements = []

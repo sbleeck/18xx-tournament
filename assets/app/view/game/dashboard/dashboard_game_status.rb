@@ -44,6 +44,7 @@ module View
 
       FONT_STD = '"Helvetica Neue", Helvetica, Arial, sans-serif'
       FONT_MONEY = '"Courier New", Courier, monospace'
+      COLOR_MONEY = '#4c1d95'
       FONT_CASH = '"Arial Black", Gadget, sans-serif'
       COLOR_CASH = '#4b0082' # Dark Purple (Indigo)
       COLOR_BANK = '#f5cda8'
@@ -954,7 +955,41 @@ display: block !important;
         ipo_click_handler = nil
         valid_ipo_shares = []
 
-        can_par = active_player && corporation.corporation? && @game.respond_to?(:can_par?) && @game.can_par?(corporation, active_player)
+       player_actions = if active_player && @game.round.respond_to?(:actions_for)
+                           begin
+                             @game.round.actions_for(active_player)
+                           rescue StandardError
+                             []
+                           end
+                         elsif step.respond_to?(:actions)
+                           begin
+                             step.actions(active_player) || []
+                           rescue StandardError
+                             []
+                           end
+                         elsif step.respond_to?(:current_actions)
+                           step.current_actions || []
+                         else
+                           []
+                         end || []
+
+        can_par = active_player && player_actions.include?('par') && corporation.corporation? &&
+                  @game.respond_to?(:can_par?) && @game.can_par?(corporation, active_player)
+
+        can_bid = active_player && player_actions.include?('bid') && (
+          if step.respond_to?(:can_bid?)
+            begin
+              step.can_bid?(active_player, corporation)
+            rescue ArgumentError
+              step.can_bid?(corporation)
+            end
+          elsif @game.respond_to?(:can_par?)
+            @game.can_par?(corporation, active_player)
+          else
+corporation.respond_to?(:ipoed) ? !corporation.ipoed : true
+          end
+        )
+
         par_prices = []
         if can_par
           par_prices = if step.respond_to?(:get_par_prices_with_help)
@@ -980,6 +1015,13 @@ display: block !important;
               update
             }
           end
+        elsif can_bid
+          ipo_click_handler = lambda {
+            store(:selected_corporation, corporation)
+            store(:selected_company, corporation)
+            Lib::Storage['selected_bid_corp'] = corporation.id
+            update
+          } 
         elsif step.respond_to?(:can_buy?) && active_player
           ipo_shares = corporation.respond_to?(:ipo_shares) ? corporation.ipo_shares : []
           valid_ipo_shares = ipo_shares.select do |s|
@@ -1260,15 +1302,21 @@ else
 'Major Corporation'
 end
 
-is_unopened = !corporation.floated?
-status_label = if is_unopened
-corporation.ipoed ? 'Unfloated (Parred)' : 'Unopened'
-else
-'Operating'
-end
-    market_price_str = corporation.share_price ? @game.format_currency(corporation.share_price.price) : 'Not on Market'
-    par_price_str = corporation.par_price ? @game.format_currency(corporation.par_price.price) : 'Not Parred'
-    cash_str = is_unopened ? '0' : @game.format_currency(corporation.cash || 0)
+
+is_minor = corporation.respond_to?(:minor?) && corporation.minor?
+        is_unopened = !is_minor && corporation.respond_to?(:floated?) && !corporation.floated?
+        status_label = if is_minor
+                         corporation.owner ? 'Operating' : 'Available'
+                       elsif is_unopened
+                         (corporation.respond_to?(:ipoed) && corporation.ipoed) ? 'Unfloated (Parred)' : 'Unopened'
+                       else
+                         'Operating'
+                       end
+        market_price_str = corporation.share_price ? @game.format_currency(corporation.share_price.price) : 'Not on Market'
+        par_price_str = corporation.respond_to?(:par_price) && corporation.par_price ? @game.format_currency(corporation.par_price.price) : 'Not Parred'
+
+
+cash_str = is_unopened ? '0' : @game.format_currency(corporation.cash || 0)
 
     details = []
     details << "Status: #{status_label}"
