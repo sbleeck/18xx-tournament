@@ -25,6 +25,7 @@ require 'view/game/dashboard/dashboard_upcoming_trains'
 require 'view/game/dashboard/dashboard_card_animation'
 require 'view/game/dashboard/dashboard_money_animation'
 require 'view/game/dashboard/dashboard_card_animation'
+require 'view/game/dashboard/railcard_helper'
 
 FLOATED = 2
 UNFLOATED = 1
@@ -36,7 +37,7 @@ module View
       include Lib::Settings
       include Actionable
       include View::ShareCalculation
-
+      include View::Game::Dashboard::RailcardHelper
       needs :game, store: true
       needs :game_data, store: true
 
@@ -130,8 +131,6 @@ module View
           
                       CSS
 
-                      
-
         h(:div, [
            h('div#spreadsheet', {
                style: {
@@ -205,19 +204,7 @@ module View
           rows << loans_cells
         end
 
-        # # 4. Time Row
-        # time_cells = [h('th.left', 'Time')]
-        # display_players.each_with_index do |p, idx|
-        #   bg_color = p == active_player ? COLOR_ACTIVE : COLOR_INACTIVE
-        #   is_last = idx == @game.players.size - 1
-        #   time_val, formatted_time = player_time_details(p)
-        #   text_color = time_val.negative? ? '#ff0000' : '#000000'
-        #   time_cells << h("td.padded_number#{'.thick-right' if is_last}",
-        #                   { style: { backgroundColor: bg_color, color: text_color } }, formatted_time)
-        # end
-        # rows << time_cells
-
-    # 5. Companies Row (Renamed to Privates)
+        # 5. Companies Row (Renamed to Privates)
         comp_cells = [h('th.left', 'Privates')]
         display_players.each_with_index do |p, idx|
           bg_color = p == active_player ? COLOR_ACTIVE : COLOR_INACTIVE
@@ -265,7 +252,6 @@ module View
             h('tbody#player_details', [
               render_player_cash,
               render_player_loans,
-              # render_player_time,
               render_player_companies,
               render_player_certs,
             ]),
@@ -584,7 +570,6 @@ module View
 
         tr_props[:attrs][:class] = row_classes.join(' ') unless row_classes.empty?
 
-        
         name_props = {
           attrs: { class: 'status-corp-wrapper' },
           style: {
@@ -650,7 +635,7 @@ module View
           player_shares = p.respond_to?(:shares_of) ? p.shares_of(corporation) : []
           bundles = []
 
-     active_step_actions = if step.respond_to?(:actions)
+          active_step_actions = if step.respond_to?(:actions)
                                   begin
                                     step.actions(p) || []
                                   rescue StandardError
@@ -709,7 +694,6 @@ module View
               end
             end
           end
-
 
           can_sell = (p == active_player) && !bundles.empty?
 
@@ -781,7 +765,6 @@ module View
               players_row_content << h(:td,
                                        { attrs: { id: "player_shares_#{p.id}_#{corporation.id}" }, style: { backgroundColor: bg_color } }, '')
             else
-
               percent = p.percent_of(corporation) || (n_shares * 10)
               is_president = corporation.respond_to?(:president?) && corporation.president?(p)
               text = if n_shares.zero?
@@ -795,19 +778,10 @@ module View
               card_classes << 'action-buy' if can_buy_from_player
               card_classes << 'clickable' if click_handler
 
-              card_props = { attrs: { class: card_classes.join(' ') } }
-              card_props[:on] = { click: click_handler } if click_handler
-
-              card = h(:div, card_props, text)
-              if n_shares.zero?
-                card = h(:span, { style: { visibility: 'hidden', display: 'inline-block' } },
-                         [card])
-              end
-
-              td_children = [card]
+              dropdowns = []
 
               if just_sold
-                td_children << h(:span, {
+                dropdowns << h(:span, {
                                    attrs: { class: 'token-bond' },
                                    style: {
                                      position: 'absolute',
@@ -839,7 +813,7 @@ module View
                   Lib::Storage['sell_menu_corp'] = nil
                   update
                 }
-                td_children << render_choice_menu('How many shares to sell?', options, cancel_handler)
+                dropdowns << render_choice_menu('How many shares to sell?', options, cancel_handler)
               end
 
               if Lib::Storage['buy_player_menu_player'] == p.id && Lib::Storage['buy_player_menu_corp'] == corporation.id && can_buy_from_player
@@ -860,11 +834,17 @@ module View
                   Lib::Storage['buy_player_menu_corp'] = nil
                   update
                 }
-                td_children << render_choice_menu('Nationalize share bundle?', options, cancel_handler)
+                dropdowns << render_choice_menu('Nationalize share bundle?', options, cancel_handler)
+              end
+
+              card = render_railcard(text, card_classes, click_handler, nil, dropdowns)
+              
+              if n_shares.zero?
+                card = h(:span, { style: { visibility: 'hidden', display: 'inline-block' } }, [card])
               end
 
               players_row_content << h(:td, { attrs: { id: "player_shares_#{p.id}_#{corporation.id}" }, style: { backgroundColor: bg_color, textAlign: 'center', position: 'relative' } },
-                                       td_children)
+                                       [card])
             end
           end
         end
@@ -908,10 +888,7 @@ module View
             card_classes << 'clickable'
           end
 
-          card_props = { attrs: { class: card_classes.join(' ') } }
-          card_props[:on] = { click: pool_click_handler } if pool_click_handler
-
-          pool_cell_children << h(:div, card_props, pool_share_text)
+          dropdowns = []
           if Lib::Storage['buy_pool_menu_corp'] == corporation.id && !valid_pool_shares.empty?
             options = valid_pool_shares.map do |share|
               {
@@ -927,8 +904,10 @@ module View
               Lib::Storage['buy_pool_menu_corp'] = nil
               update
             }
-            pool_cell_children << render_choice_menu('Buy from Pool:', options, cancel_handler)
+            dropdowns << render_choice_menu('Buy from Pool:', options, cancel_handler)
           end
+          
+          pool_cell_children << render_railcard(pool_share_text, card_classes, pool_click_handler, nil, dropdowns)
         end
 
         # --- Pool Market Price Content ---
@@ -987,7 +966,7 @@ module View
           elsif @game.respond_to?(:can_par?)
             @game.can_par?(corporation, active_player)
           else
-corporation.respond_to?(:ipoed) ? !corporation.ipoed : true
+            corporation.respond_to?(:ipoed) ? !corporation.ipoed : true
           end
         )
 
@@ -1043,20 +1022,94 @@ corporation.respond_to?(:ipoed) ? !corporation.ipoed : true
                                 end
           end
         end
+can_issue = is_active_row && step&.current_actions&.include?('issue_shares')
+        issuable_bundles = []
+
+        if can_issue
+          issuable_bundles = begin
+            if step.respond_to?(:issuable_shares)
+              step.issuable_shares(corporation)
+            elsif step.respond_to?(:issuable_bundles)
+              step.issuable_bundles(corporation)
+            elsif @game.respond_to?(:issuable_shares)
+              @game.issuable_shares(corporation)
+            elsif step.respond_to?(:bundles_for_corporation)
+              step.bundles_for_corporation(corporation, corporation)
+            else
+              []
+            end
+          rescue StandardError
+            []
+          end || []
+
+          if issuable_bundles.any?
+            ipo_click_handler = if issuable_bundles.size > 1
+                                  lambda {
+                                    Lib::Storage['issue_menu_corp'] = corporation.id
+                                    update
+                                  }
+                                else
+                                  lambda { |_event|
+                                    process_action(Engine::Action::IssueShares.new(
+                                      corporation,
+                                      bundle: issuable_bundles.first
+                                    ))
+                                  }
+                                end
+          end
+        end
 
         ipo_cell_children = []
         unless ipo_share_text.empty?
-
           card_classes = ['game-card']
-          if ipo_click_handler
+          if ipo_click_handler || can_issue
             card_classes << 'action-buy'
+          end
+
+          if ipo_click_handler
             card_classes << 'clickable'
           end
 
-          card_props = { attrs: { class: card_classes.join(' ') } }
-          card_props[:on] = { click: ipo_click_handler } if ipo_click_handler
-
-          ipo_cell_children << h(:div, card_props, ipo_share_text)
+          dropdowns = []
+          if Lib::Storage['issue_menu_corp'] == corporation.id && issuable_bundles.any?
+            options = issuable_bundles.map do |bnd|
+              num = bnd.respond_to?(:num_shares) ? bnd.num_shares : (bnd.respond_to?(:shares) ? bnd.shares.size : 1)
+              pct = bnd.respond_to?(:percent) ? "#{bnd.percent}%" : "#{num}S"
+              price = bnd.respond_to?(:price) ? bnd.price : (corporation.share_price&.price || 0) * num
+              {
+                label: "Issue #{pct} (#{@game.format_currency(price)})",
+                action: lambda { |_event|
+                  Lib::Storage['issue_menu_corp'] = nil
+                  process_action(Engine::Action::IssueShares.new(corporation, bundle: bnd))
+                },
+              }
+            end
+            cancel_handler = lambda {
+              Lib::Storage['issue_menu_corp'] = nil
+              update
+            }
+            dropdowns << render_choice_menu('Issue Shares to Market:', options, cancel_handler)
+          end
+          
+          if Lib::Storage['issue_menu_corp'] == corporation.id && issuable_bundles.any?
+            options = issuable_bundles.map do |bnd|
+              num = bnd.respond_to?(:num_shares) ? bnd.num_shares : (bnd.respond_to?(:shares) ? bnd.shares.size : 1)
+              pct = bnd.respond_to?(:percent) ? "#{bnd.percent}%" : "#{num}S"
+              price = bnd.respond_to?(:price) ? bnd.price : (corporation.share_price&.price || 0) * num
+              {
+                label: "Issue #{pct} (#{@game.format_currency(price)})",
+                action: lambda { |_event|
+                  Lib::Storage['issue_menu_corp'] = nil
+                  process_action(Engine::Action::IssueShares.new(corporation, bundle: bnd))
+                },
+              }
+            end
+            cancel_handler = lambda {
+              Lib::Storage['issue_menu_corp'] = nil
+              update
+            }
+            dropdowns << render_choice_menu('Issue Shares to Market:', options, cancel_handler)
+          end
 
           if Lib::Storage['buy_ipo_menu_corp'] == corporation.id && !valid_ipo_shares.empty?
             options = valid_ipo_shares.map do |share|
@@ -1073,15 +1126,17 @@ corporation.respond_to?(:ipoed) ? !corporation.ipoed : true
               Lib::Storage['buy_ipo_menu_corp'] = nil
               update
             }
-            ipo_cell_children << render_choice_menu('Buy from IPO:', options, cancel_handler)
+            dropdowns << render_choice_menu('Buy from IPO:', options, cancel_handler)
           end
           if Lib::Storage['par_menu_corp'] == corporation.id && can_par && !par_prices.empty?
             cancel_handler = lambda {
               Lib::Storage['par_menu_corp'] = nil
               update
             }
-            ipo_cell_children << render_par_matrix_menu(corporation, par_prices, cancel_handler)
+            dropdowns << render_par_matrix_menu(corporation, par_prices, cancel_handler)
           end
+          
+          ipo_cell_children << render_railcard(ipo_share_text, card_classes, ipo_click_handler, nil, dropdowns)
         end
 
         # --- IPO Par Price Content ---
@@ -1227,13 +1282,8 @@ corporation.respond_to?(:ipoed) ? !corporation.ipoed : true
             }
           end
 
-          card_props = { attrs: { class: card_classes.join(' ') } }
-          card_props[:on] = { click: train_click_handler } if train_click_handler
-
-          h(:div, { attrs: { id: "train_wrapper_#{corporation.id}_#{t.id}" }, style: { display: 'inline-block', position: 'relative' } }, [
-              h(:div, card_props, t.obsolete ? "(#{t.name})" : t.name),
-              menu_dropdown,
-            ].compact)
+          wrapper_id = "train_wrapper_#{corporation.id}_#{t.id}"
+          render_railcard(t.obsolete ? "(#{t.name})" : t.name, card_classes, train_click_handler, nil, menu_dropdown, wrapper_id)
         end
 
         limit = begin
@@ -1662,10 +1712,6 @@ cash_str = is_unopened ? '0' : @game.format_currency(corporation.cash || 0)
 
           end
 
-          card_props = { attrs: { class: card_classes.join(' ') } }
-          card_props[:on] = { click: company_click_handler } if company_click_handler
-
-
           desc_text = if c.respond_to?(:desc) && c.desc && !c.desc.empty?
                         c.desc
                       elsif c.respond_to?(:abilities) && c.abilities&.any?
@@ -1722,14 +1768,10 @@ cash_str = is_unopened ? '0' : @game.format_currency(corporation.cash || 0)
             h(:div, { style: { fontSize: '0.78rem', fontWeight: 'bold', textAlign: 'center', color: '#555555' } }, "Owner: #{owner_name}"),
           ])
 
-          h(:div, {
-            attrs: { id: "company_wrapper_#{entity.id}_#{c.id}", class: 'status-company-wrapper' },
-            style: { display: 'inline-block', position: 'relative' },
-          }, [
-            tooltip_card,
-            h(:div, card_props, c.sym),
-            menu_dropdown,
-          ].compact)
+          wrapper_id = "company_wrapper_#{entity.id}_#{c.id}"
+          wrapper_classes = ['status-company-wrapper']
+          
+          render_railcard(c.sym, card_classes, company_click_handler, tooltip_card, menu_dropdown, wrapper_id, wrapper_classes)
         end
 
         h(:td, props, [
@@ -1740,8 +1782,6 @@ cash_str = is_unopened ? '0' : @game.format_currency(corporation.cash || 0)
           '),
           *company_cards,
         ])
-
-
       end
 
       def render_player_companies
@@ -1770,22 +1810,6 @@ cash_str = is_unopened ? '0' : @game.format_currency(corporation.cash || 0)
           end,
         ])
       end
-
-      # def render_player_time
-      #   h(:tr, tr_default_props, [
-      #     h('th.left', 'Time'),
-      #     *display_players.map.with_index do |p, idx|
-      #       is_active_col = (p == active_player)
-      #       bg_color = is_active_col ? COLOR_ACTIVE : COLOR_INACTIVE
-      #       is_last = idx == @game.players.size - 1
-      #       time_val, formatted_time = player_time_details(p)
-      #       text_color = time_val.negative? ? '#ff0000' : '#000000'
-      #       h("td.padded_number#{'.thick-right' if is_last}", { style: { backgroundColor: bg_color, color: text_color } },
-      #         formatted_time)
-      #     end,
-      #     h(:td, { attrs: { colspan: 30 }, style: { border: 'none' } }, ''),
-      #   ])
-      # end
 
       def render_player_certs
         cert_limit = @game.cert_limit

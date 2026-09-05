@@ -10,13 +10,14 @@ require 'view/game/dashboard/results_overlay'
 require 'view/game/dashboard/dashboard_stock'
 require 'view/game/dashboard/dashboard_card_animation'
 require 'view/game/history_and_undo'
+require 'view/game/dashboard/railcard_helper'
 
 module View
   module Game
     class DashboardCommandColumn < Snabberb::Component
       include Actionable
       include Lib::Settings
-
+include View::Game::Dashboard::RailcardHelper
       FONT_MONEY = '"Courier New", Courier, monospace'
       COLOR_MONEY = '#4c1d95'
 
@@ -124,85 +125,7 @@ module View
         render_company_tooltip('Private Company', c.name, desc_text, value_str, revenue_str, owner_name)
       end
 
-      def render_railcard(entity, text, subtext, color, click_handler, tooltip = nil, dropdown = nil, disabled = false)
-        card_props = {
-          attrs: { class: "game-card #{disabled ? '' : 'clickable'}" },
-          style: {
-            border: "2px solid #{color}",
-            minWidth: '3.2rem',
-            height: '1.45rem',
-            padding: '0 4px',
-            margin: '0',
-            boxSizing: 'border-box',
-            cursor: disabled ? 'not-allowed' : 'pointer',
-            opacity: disabled ? '0.6' : '1',
-            display: 'inline-flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: '0.25rem',
-          },
-          on: disabled || !click_handler ? {} : { click: click_handler },
-        }
-
-        logo = nil
-        if entity
-          logo_src = begin
-                       setting_for(:simple_logos, @game) ? entity.simple_logo : entity.logo
-                     rescue StandardError
-                       nil
-                     end
-
-          if logo_src
-            logo = h(:img, { attrs: { src: logo_src }, style: { width: '1rem', height: '1rem', objectFit: 'contain' } })
-          elsif entity.respond_to?(:corporation?) && entity.corporation? && entity.respond_to?(:id) && entity.id.to_s.size <= 4
-            bg_color = entity.respond_to?(:color) && entity.color ? entity.color : '#333'
-            text_color = entity.respond_to?(:text_color) && entity.text_color ? entity.text_color : '#fff'
-            logo = h(:div, { style: { width: '1rem', height: '1rem', fontSize: '0.6rem', backgroundColor: bg_color, color: text_color, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '2px', flexShrink: '0' } }, entity.id)
-          end
-        end
-
-        inner = []
-        inner << logo if logo
-        inner << h(:span, { style: { fontWeight: 'bold', fontSize: '0.82rem' } }, text) if text
-        if subtext
-          is_sub_money = subtext =~ /[\$£€¥\d]/
-inner << h(:span, {
-            style: {
-              fontSize: '0.75rem',
-              color: is_sub_money ? COLOR_MONEY : '#444',
-              fontWeight: is_sub_money ? 'bold' : 'normal',
-              whiteSpace: 'nowrap',
-              fontFamily: is_sub_money ? FONT_MONEY : 'inherit',
-            },
-          }, subtext)
-                end
-
-       wrapper_events = {}
-        if tooltip && entity.respond_to?(:abilities)
-          wrapper_events[:mouseenter] = lambda {
-            if Lib::Storage['hovered_company_id'] != entity.id.to_s
-              Lib::Storage['hovered_company_id'] = entity.id.to_s
-              update
-            end
-          }
-          wrapper_events[:mouseleave] = lambda {
-            if Lib::Storage['hovered_company_id']
-              Lib::Storage['hovered_company_id'] = nil
-              update
-            end
-          }
-        end
-
-        h(:div, {
-          attrs: { class: tooltip ? 'cmd-company-wrapper' : '' },
-          style: { display: 'inline-block', position: 'relative' },
-          on: wrapper_events,
-        }, [
-          tooltip,
-          h(:div, card_props, inner),
-          dropdown,
-        ].compact)
-      end
+# render_railcard extracted to View::Game::Dashboard::RailcardHelper  
 
       def render_zone3_abilities(entity)
         return nil unless entity
