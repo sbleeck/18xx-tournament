@@ -1072,25 +1072,7 @@ can_issue = is_active_row && step&.current_actions&.include?('issue_shares')
 
           dropdowns = []
 
-          if Lib::Storage['issue_menu_corp'] == corporation.id && issuable_bundles.any?
-            options = issuable_bundles.map do |bnd|
-              num = bnd.respond_to?(:num_shares) ? bnd.num_shares : (bnd.respond_to?(:shares) ? bnd.shares.size : 1)
-              pct = bnd.respond_to?(:percent) ? "#{bnd.percent}%" : "#{num}S"
-              price = bnd.respond_to?(:price) ? bnd.price : (corporation.share_price&.price || 0) * num
-              {
-                label: "Issue #{pct} (#{@game.format_currency(price)})",
-                action: lambda { |_event|
-                  Lib::Storage['issue_menu_corp'] = nil
-                  process_action(Engine::Action::IssueShares.new(corporation, bundle: bnd))
-                },
-              }
-            end
-            cancel_handler = lambda {
-              Lib::Storage['issue_menu_corp'] = nil
-              update
-            }
-            dropdowns << render_choice_menu('Issue Shares to Market:', options, cancel_handler)
-          end
+        
 
           if Lib::Storage['buy_ipo_menu_corp'] == corporation.id && !valid_ipo_shares.empty?
             options = valid_ipo_shares.map do |share|
