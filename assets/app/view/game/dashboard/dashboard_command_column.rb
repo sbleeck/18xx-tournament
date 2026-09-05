@@ -177,9 +177,26 @@ inner << h(:span, {
           }, subtext)
                 end
 
+       wrapper_events = {}
+        if tooltip && entity.respond_to?(:abilities)
+          wrapper_events[:mouseenter] = lambda {
+            if Lib::Storage['hovered_company_id'] != entity.id.to_s
+              Lib::Storage['hovered_company_id'] = entity.id.to_s
+              update
+            end
+          }
+          wrapper_events[:mouseleave] = lambda {
+            if Lib::Storage['hovered_company_id']
+              Lib::Storage['hovered_company_id'] = nil
+              update
+            end
+          }
+        end
+
         h(:div, {
           attrs: { class: tooltip ? 'cmd-company-wrapper' : '' },
           style: { display: 'inline-block', position: 'relative' },
+          on: wrapper_events,
         }, [
           tooltip,
           h(:div, card_props, inner),

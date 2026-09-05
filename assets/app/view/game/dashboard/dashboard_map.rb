@@ -113,6 +113,76 @@ module View
 
         track_action_active = actions.include?('lay_tile')
         token_action_active = actions.include?('place_token') || actions.include?('hex_token')
+hovered_c_id = Lib::Storage['hovered_company_id']
+        hovered_target_hexes = []
+        if hovered_c_id
+          all_companies = @game.respond_to?(:companies) ? (@game.companies || []) : []
+          hovered_company = all_companies.find { |c| c.id.to_s == hovered_c_id || (c.respond_to?(:sym) && c.sym.to_s == hovered_c_id) } ||
+                            (@game.respond_to?(:minors) ? @game.minors.find { |m| m.id.to_s == hovered_c_id || (m.respond_to?(:sym) && m.sym.to_s == hovered_c_id) } : nil) ||
+                            @game.corporations.find { |corp| corp.id.to_s == hovered_c_id || (corp.respond_to?(:sym) && corp.sym.to_s == hovered_c_id) }
+
+          if hovered_company
+            # 1. Base coordinates defined directly on the company / minor
+            if hovered_company.respond_to?(:coordinates) && hovered_company.coordinates
+              Array(hovered_company.coordinates).each { |coord| hovered_target_hexes << coord.to_s }
+            end
+            if hovered_company.respond_to?(:city) && hovered_company.city&.respond_to?(:hex)
+              hovered_target_hexes << hovered_company.city.hex.id.to_s
+            end
+
+            # 2. Coordinates across all abilities (tile_lay, token, reservation, blocks_hexes, teleport, hex_bonus)
+            abilities = []
+            abilities.concat(hovered_company.all_abilities) if hovered_company.respond_to?(:all_abilities) && hovered_company.all_abilities
+            abilities.concat(hovered_company.abilities) if hovered_company.respond_to?(:abilities) && hovered_company.abilities
+
+            # Check original game class entity definition as fallback
+            if @game.class.const_defined?(:COMPANIES)
+              raw_def = @game.class::COMPANIES.find { |c_def| c_def[:sym].to_s == hovered_c_id || c_def[:name].to_s == hovered_c_id }
+              if raw_def && raw_def[:abilities]
+                raw_def[:abilities].each do |raw_ab|
+                  Array(raw_ab[:hexes]).each { |coord| hovered_target_hexes << coord.to_s } if raw_ab[:hexes]
+                  hovered_target_hexes << raw_ab[:hex].to_s if raw_ab[:hex]
+                end
+              end
+            end
+
+            abilities.each do |ab|
+              if ab.respond_to?(:hexes) && ab.hexes
+                Array(ab.hexes).each { |coord| hovered_target_hexes << coord.to_s }
+              end
+
+              if ab.respond_to?(:hex) && ab.hex
+                hex_val = ab.hex.respond_to?(:id) ? ab.hex.id : ab.hex
+                hovered_target_hexes << hex_val.to_s
+              end
+
+              if ab.respond_to?(:coordinates) && ab.coordinates
+                Array(ab.coordinates).each { |coord| hovered_target_hexes << coord.to_s }
+              end
+
+              target_corp = nil
+              if ab.respond_to?(:corporation) && ab.corporation
+                target_corp = @game.corporation_by_id(ab.corporation) || ab.corporation
+              elsif ab.respond_to?(:minor) && ab.minor
+                target_corp = (@game.respond_to?(:minor_by_id) ? @game.minor_by_id(ab.minor) : nil) || ab.minor
+              end
+
+              if target_corp && target_corp.respond_to?(:coordinates) && target_corp.coordinates
+                Array(target_corp.coordinates).each { |coord| hovered_target_hexes << coord.to_s }
+              end
+            end
+
+            # 3. Bulletproof fallback: parse coordinates directly from desc text (e.g. "Blocks H18 while owned by a player")
+            if hovered_company.respond_to?(:desc) && hovered_company.desc
+              matched_hexes = hovered_company.desc.scan(/\b[A-Za-z]\d{1,2}\b/)
+              matched_hexes.each do |h_id|
+                # Ensure it corresponds to a real hex on the active game map
+                hovered_target_hexes << h_id.upcase if @game.hex_by_id(h_id) || @game.hex_by_id(h_id.upcase)
+              end
+            end
+          end
+        end
+        hovered_target_hexes.uniq!
 
         # Verify if we are strictly in the active revenue phase
         revenue_phase_active = actions.include?('run_routes') || actions.include?('dividend') || actions.include?('payout')
@@ -166,7 +236,9 @@ module View
           )
 
           border_color = nil
-          if clickable
+          if hovered_target_hexes.include?(hex.id.to_s)
+            border_color = '#9333ea' # Vivid purple highlight for private company affected hexes
+          elsif clickable
             if track_action_active
               border_color = '#dc3545' # Red for active track building
             elsif token_action_active
