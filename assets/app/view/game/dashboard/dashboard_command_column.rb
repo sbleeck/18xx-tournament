@@ -436,8 +436,20 @@ h(:div, { style: { fontSize: '1.2rem', fontWeight: 'bold', color: COLOR_MONEY, f
         end
 
         zone_3 = h(:div, { style: { flex: '0 0 22%', display: 'flex', flexDirection: 'column', padding: '0.4rem', boxSizing: 'border-box', overflowY: 'auto', position: 'relative' } }, [
-          h(:style, {}, '.cmd-company-wrapper:hover .cmd-company-tooltip { display: block !important; }'),
 
+        h(:style, {}, '
+            .cmd-company-wrapper:hover .cmd-company-tooltip,
+            .cmd-company-wrapper:hover .status-company-tooltip,
+            .status-company-wrapper:hover .status-company-tooltip,
+            .status-company-wrapper:hover .cmd-company-tooltip {
+              display: block !important;
+            }
+            .cmd-company-wrapper:hover,
+            .status-company-wrapper:hover {
+              z-index: 99999 !important;
+            }
+          '),
+          
           h(:div, { style: { flex: '0 0 auto', width: '100%', marginBottom: '0.3rem' } }, [
             (render_zone3_abilities(entity) if has_abilities),
           ].compact),
