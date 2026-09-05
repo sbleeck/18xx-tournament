@@ -62,68 +62,8 @@ include View::Game::Dashboard::RailcardHelper
         ])
       end
 
-      def render_company_tooltip(title, subtitle, desc, val, rev, owner)
-        h(:div, {
-          attrs: { class: 'cmd-company-tooltip' },
-          style: {
-            display: 'none',
-            position: 'fixed',
-            top: '8rem',
-            left: '25%',
-            transform: 'translateX(-50%)',
-            width: '300px',
-            backgroundColor: '#ffffff',
-            border: '2px solid #333333',
-            borderRadius: '6px',
-            padding: '8px',
-            boxShadow: '0 8px 24px rgba(0,0,0,0.35)',
-            zIndex: '99999',
-            pointerEvents: 'none',
-            color: '#000000',
-            textAlign: 'left',
-            boxSizing: 'border-box',
-            whiteSpace: 'normal',
-            wordBreak: 'break-word',
-          },
-        }, [
-          h(:div, {
-            style: {
-              backgroundColor: '#ffff00',
-              border: '1px solid #000000',
-              fontWeight: 'bold',
-              fontSize: '0.8rem',
-              textAlign: 'center',
-              padding: '2px 4px',
-              marginBottom: '4px',
-              textTransform: 'uppercase',
-              borderRadius: '3px',
-            },
-          }, title),
-          h(:div, { style: { fontWeight: 'bold', fontSize: '0.9rem', textAlign: 'center', marginBottom: '4px' } }, subtitle),
-          h(:div, { style: { fontSize: '0.78rem', lineHeight: '1.25', marginBottom: '6px', color: '#222222', whiteSpace: 'normal', wordBreak: 'break-word' } }, desc),
-          h(:div, { style: { display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', fontWeight: 'bold', borderTop: '1px solid #ddd', paddingTop: '4px', marginBottom: '2px' } }, [
-       h(:span, ['Value: ', h(:span, { style: { fontFamily: FONT_MONEY, fontWeight: 'bold', color: COLOR_MONEY } }, val)]),
-            h(:span, ['Revenue: ', h(:span, { style: { fontFamily: FONT_MONEY, fontWeight: 'bold', color: COLOR_MONEY } }, rev)]),
-                ]),
-          h(:div, { style: { fontSize: '0.78rem', fontWeight: 'bold', textAlign: 'center', color: '#555555' } }, "Owner: #{owner}"),
-        ])
-      end
 
-      def build_company_tooltip(c)
-        owner_name = c.owner&.name || 'Bank'
-        desc_text = if c.respond_to?(:desc) && c.desc && !c.desc.empty?
-                      c.desc
-                    elsif c.respond_to?(:abilities) && c.abilities&.any?
-                      c.abilities.map { |a| a.respond_to?(:description) ? a.description : nil }.compact.join(' ')
-                    else
-                      'No special abilities.'
-                    end
 
-        value_str = @game.format_currency(c.value || 0)
-        revenue_str = @game.format_currency(c.revenue || 0)
-
-        render_company_tooltip('Private Company', c.name, desc_text, value_str, revenue_str, owner_name)
-      end
 
 # render_railcard extracted to View::Game::Dashboard::RailcardHelper  
 

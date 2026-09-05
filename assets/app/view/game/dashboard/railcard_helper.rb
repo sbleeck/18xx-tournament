@@ -6,48 +6,75 @@ module View
   module Game
     module Dashboard
       module RailcardHelper
-        def render_railcard(*args)
-          is_status_call = `Array.isArray(#{args[1]})`
+        FONT_MONEY = '"Courier New", Courier, monospace'
+        COLOR_MONEY = '#4c1d95'
 
-          if is_status_call
-            # DashboardGameStatus convention:
-            # (text, classes, click_handler, tooltip, dropdowns, wrapper_id, wrapper_classes)
-            text = args[0]
-            card_classes = args[1]
-            click_handler = args[2]
-            tooltip = args[3]
-            dropdown = args[4]
-            wrapper_id = args[5]
-            wrapper_classes = args[6]
-            disabled = false
-            color_border = nil
-          else
-            # DashboardCommandColumn convention:
-            # (entity, text, subtext, color, click_handler, tooltip, dropdown, disabled)
-            _entity = args[0]
-            text = args[1]
-            subtext = args[2]
-            color = args[3]
-            click_handler = args[4]
-            tooltip = args[5]
-            dropdown = args[6]
-            disabled = args[7] || false
+        def render_company_tooltip(title, subtitle, desc, val, rev, owner)
+          h(:div, {
+            attrs: { class: 'status-company-tooltip cmd-company-tooltip' },
+            style: {
+              display: 'none',
+              position: 'fixed',
+              top: '50%',
+              left: '50%',
+              transform: 'translate(-50%, -50%)',
+              width: '300px',
+              backgroundColor: '#ffffff',
+              border: '2px solid #333333',
+              borderRadius: '6px',
+              padding: '8px',
+              boxShadow: '0 8px 24px rgba(0,0,0,0.35)',
+              zIndex: '99999',
+              pointerEvents: 'none',
+              color: '#000000',
+              textAlign: 'left',
+              boxSizing: 'border-box',
+              whiteSpace: 'normal',
+              wordBreak: 'break-word',
+            },
+          }, [
+            h(:div, {
+              style: {
+                backgroundColor: '#ffff00',
+                border: '1px solid #000000',
+                fontWeight: 'bold',
+                fontSize: '0.8rem',
+                textAlign: 'center',
+                padding: '2px 4px',
+                marginBottom: '4px',
+                textTransform: 'uppercase',
+                borderRadius: '3px',
+              },
+            }, title),
+            h(:div, { style: { fontWeight: 'bold', fontSize: '0.9rem', textAlign: 'center', marginBottom: '4px' } }, subtitle),
+            h(:div, { style: { fontSize: '0.78rem', lineHeight: '1.25', marginBottom: '6px', color: '#222222', whiteSpace: 'normal', wordBreak: 'break-word' } }, desc),
+            h(:div, { style: { display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', fontWeight: 'bold', borderTop: '1px solid #ddd', paddingTop: '4px', marginBottom: '2px' } }, [
+              h(:span, ['Value: ', h(:span, { style: { fontFamily: FONT_MONEY, fontWeight: 'bold', color: COLOR_MONEY } }, val)]),
+              h(:span, ['Revenue: ', h(:span, { style: { fontFamily: FONT_MONEY, fontWeight: 'bold', color: COLOR_MONEY } }, rev)]),
+            ]),
+            h(:div, { style: { fontSize: '0.78rem', fontWeight: 'bold', textAlign: 'center', color: '#555555' } }, "Owner: #{owner}"),
+          ])
+        end
 
-            card_classes = ['game-card']
-            card_classes << 'action-buy' if color == '#28a745' || color == '#16a34a'
-            card_classes << 'action-sell' if color == '#dc2626'
-            card_classes << 'clickable' if click_handler && !disabled
+        def build_company_tooltip(c)
+          owner_name = c.owner&.name || 'Bank'
+          desc_text = if c.respond_to?(:desc) && c.desc && !c.desc.empty?
+                        c.desc
+                      elsif c.respond_to?(:abilities) && c.abilities&.any?
+                        c.abilities.map { |a| a.respond_to?(:description) ? a.description : nil }.compact.join(' ')
+                      else
+                        'No special abilities.'
+                      end
 
-            color_border = color
-            text = "#{text} #{subtext}".strip if subtext
-            wrapper_id = nil
-            wrapper_classes = tooltip ? ['cmd-company-wrapper'] : nil
-          end
+          value_str = @game.format_currency(c.value || 0)
+          revenue_str = @game.format_currency(c.revenue || 0)
 
-          # Native JavaScript Opal-aware truthiness and presence inspector
+          render_company_tooltip('Private Company', c.name, desc_text, value_str, revenue_str, owner_name)
+        end
+
+        def render_railcard(text, card_classes = ['game-card'], click_handler = nil, tooltip = nil, dropdown = nil, wrapper_id = nil, wrapper_classes = nil)
           is_buy = false
           is_sell = false
-          is_disabled = false
           is_clickable = false
           border_color = '#888888'
           bg_color = '#fdfbf7'
@@ -66,8 +93,7 @@ module View
             return val !== undefined && val !== null && val !== false && val !== Opal.nil;
           }
 
-          is_disabled = (disabled === true);
-          is_clickable = isPresent(click_handler) && !is_disabled;
+          is_clickable = isPresent(click_handler);
 
           var classes = [];
           if (Array.isArray(card_classes)) {
@@ -86,16 +112,12 @@ module View
           } else if (is_sell) {
             border_color = '#dc2626';
             bg_color = '#fef2f2';
-          } else if (isPresent(color_border)) {
-            border_color = color_border;
           }
 
-          // Tooltip validation
           if (isPresent(tooltip)) {
             has_tooltip = true;
           }
 
-          // Dropdown / menu items validation
           if (Array.isArray(dropdown)) {
             for (var i = 0; i < dropdown.length; i++) {
               if (isPresent(dropdown[i])) {
@@ -108,13 +130,11 @@ module View
             has_dropdown = true;
           }
 
-          // Wrapper ID validation
           if (isPresent(wrapper_id) && String(wrapper_id).length > 0) {
             has_wrapper_id = true;
             clean_wrapper_id = String(wrapper_id);
           }
 
-          // Wrapper classes validation
           if (Array.isArray(wrapper_classes)) {
             var valid_classes = [];
             for (var j = 0; j < wrapper_classes.length; j++) {
@@ -147,8 +167,7 @@ module View
             color: '#000000',
             backgroundColor: bg_color,
             border: "2px solid #{border_color}",
-            cursor: is_disabled ? 'not-allowed' : (is_clickable ? 'pointer' : 'default'),
-            opacity: is_disabled ? '0.6' : '1',
+            cursor: is_clickable ? 'pointer' : 'default',
             whiteSpace: 'nowrap',
           }
 
@@ -180,7 +199,7 @@ module View
             h(:div, {
               attrs: w_attrs,
               style: { display: 'inline-block', position: 'relative' },
-            }, children)
+            }, children.compact)
           else
             card
           end

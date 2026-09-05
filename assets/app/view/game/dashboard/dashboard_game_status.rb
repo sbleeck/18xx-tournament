@@ -569,18 +569,17 @@ module View
         row_classes << 'last-minor-row' if is_last_minor
 
         tr_props[:attrs][:class] = row_classes.join(' ') unless row_classes.empty?
-
-        name_props = {
+name_props = {
           attrs: { class: 'status-corp-wrapper' },
           style: {
-          backgroundColor: corporation.color,
-          color: corporation.text_color,
-          fontFamily: FONT_STD,
-          fontWeight: 'bold',
-          position: 'relative',
-          cursor: 'help',
+            backgroundColor: corporation.color,
+            color: corporation.text_color,
+            fontFamily: FONT_STD,
+            fontWeight: 'bold',
+            position: 'relative',
+            cursor: 'help',
           },
-        }           
+        }
 
         # Map active corporate property cells
         treasury = []
@@ -1298,26 +1297,25 @@ can_issue = is_active_row && step&.current_actions&.include?('issue_shares')
         row_content.concat(corporation_row_content)
 
         h(:tr, tr_props, [
-        h(:th, name_props, [
-        render_corp_tooltip(corporation),
-        corporation.name,
-        ]),
-        *row_content,
+          h(:th, name_props, [render_corp_tooltip(corporation), corporation.name].compact),
+          *row_content,
         ])
       end
 
+
+
       def render_corp_tooltip(corporation)
-owner_name = corporation.owner ? corporation.owner.name : 'Unowned / Bank'
-corp_type = if corporation.minor?
-'Minor Corporation'
-elsif corporation.respond_to?(:type) && corporation.type == :national
-'National Railway'
-else
-'Major Corporation'
-end
+        owner_name = corporation.owner ? corporation.owner.name : 'Unowned / Bank'
+        corp_type = if corporation.minor?
+        'Minor Corporation'
+        elsif corporation.respond_to?(:type) && corporation.type == :national
+        'National Railway'
+        else
+        'Major Corporation'
+        end
 
 
-is_minor = corporation.respond_to?(:minor?) && corporation.minor?
+        is_minor = corporation.respond_to?(:minor?) && corporation.minor?
         is_unopened = !is_minor && corporation.respond_to?(:floated?) && !corporation.floated?
         status_label = if is_minor
                          corporation.owner ? 'Operating' : 'Available'
@@ -1675,65 +1673,10 @@ cash_str = is_unopened ? '0' : @game.format_currency(corporation.cash || 0)
 
           end
 
-          desc_text = if c.respond_to?(:desc) && c.desc && !c.desc.empty?
-                        c.desc
-                      elsif c.respond_to?(:abilities) && c.abilities&.any?
-                        c.abilities.map { |a| a.respond_to?(:description) ? a.description : nil }.compact.join(' ')
-                      else
-                        'No special abilities.'
-                      end
-
-          value_str = @game.format_currency(c.value || 0)
-          revenue_str = @game.format_currency(c.revenue || 0)
-          owner_name = c.owner&.name || 'Bank'
-
-          tooltip_card = h(:div, {
-            attrs: { class: 'status-company-tooltip' },
-            style: {
-              display: 'none',
-              position: 'fixed',
-              top: '50%',
-              left: '50%',
-              transform: 'translate(-50%, -50%)',
-              width: '300px',
-              backgroundColor: '#ffffff',
-              border: '2px solid #333333',
-              borderRadius: '6px',
-              padding: '8px',
-              boxShadow: '0 8px 24px rgba(0,0,0,0.35)',
-              zIndex: '99999',
-              pointerEvents: 'none',
-              color: '#000000',
-              textAlign: 'left',
-              boxSizing: 'border-box',
-              whiteSpace: 'normal',
-            },
-          }, [
-            h(:div, {
-              style: {
-                backgroundColor: '#ffff00',
-                border: '1px solid #000000',
-                fontWeight: 'bold',
-                fontSize: '0.8rem',
-                textAlign: 'center',
-                padding: '2px 4px',
-                marginBottom: '4px',
-                textTransform: 'uppercase',
-                borderRadius: '3px',
-              },
-            }, 'Private Company'),
-            h(:div, { style: { fontWeight: 'bold', fontSize: '0.9rem', textAlign: 'center', marginBottom: '4px' } }, c.name),
-            h(:div, { style: { fontSize: '0.78rem', lineHeight: '1.25', marginBottom: '6px', color: '#222222' } }, desc_text),
-            h(:div, { style: { display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', fontWeight: 'bold', borderTop: '1px solid #ddd', paddingTop: '4px', marginBottom: '2px' } }, [
-              h(:span, "Value: #{value_str}"),
-              h(:span, "Revenue: #{revenue_str}"),
-            ]),
-            h(:div, { style: { fontSize: '0.78rem', fontWeight: 'bold', textAlign: 'center', color: '#555555' } }, "Owner: #{owner_name}"),
-          ])
-
+            tooltip_card = build_company_tooltip(c)
           wrapper_id = "company_wrapper_#{entity.id}_#{c.id}"
           wrapper_classes = ['status-company-wrapper']
-          
+
           render_railcard(c.sym, card_classes, company_click_handler, tooltip_card, menu_dropdown, wrapper_id, wrapper_classes)
         end
 
