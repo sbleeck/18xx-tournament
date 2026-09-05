@@ -17,7 +17,8 @@ module View
     class DashboardCommandColumn < Snabberb::Component
       include Actionable
       include Lib::Settings
-include View::Game::Dashboard::RailcardHelper
+      include View::Game::Dashboard::RailcardHelper
+
       FONT_MONEY = '"Courier New", Courier, monospace'
       COLOR_MONEY = '#4c1d95'
 
@@ -38,6 +39,29 @@ include View::Game::Dashboard::RailcardHelper
 
       def active_routes
         @routes.select { |r| r.chains.any? }
+      end
+
+      def company?(entity)
+        return false unless entity
+
+        entity.is_a?(Engine::Company) ||
+          (entity.respond_to?(:company?) && entity.company?) ||
+          (!entity.respond_to?(:corporation?) && !entity.respond_to?(:minor?) && (entity.respond_to?(:value) || entity.respond_to?(:desc)))
+      end
+
+      def tooltip_style
+        h(:style, {}, '
+          .cmd-company-wrapper:hover .cmd-company-tooltip,
+          .cmd-company-wrapper:hover .status-company-tooltip,
+          .status-company-wrapper:hover .status-company-tooltip,
+          .status-company-wrapper:hover .cmd-company-tooltip {
+            display: block !important;
+          }
+          .cmd-company-wrapper:hover,
+          .status-company-wrapper:hover {
+            z-index: 99999 !important;
+          }
+        ')
       end
 
       def render_action_row(label, children)
@@ -61,11 +85,6 @@ include View::Game::Dashboard::RailcardHelper
           h(:div, { style: { display: 'flex', flexDirection: 'row', flexWrap: 'nowrap', alignItems: 'center', gap: '0.3rem', overflowX: 'auto', maxWidth: '100%' } }, items),
         ])
       end
-
-
-
-
-# render_railcard extracted to View::Game::Dashboard::RailcardHelper  
 
       def render_zone3_abilities(entity)
         return nil unless entity
@@ -156,7 +175,15 @@ include View::Game::Dashboard::RailcardHelper
             end
           }
 
-          render_railcard(card_text, ['game-card', 'action-buy', 'clickable'], click_handler, build_company_tooltip(c))
+          render_railcard(
+            card_text,
+            ['game-card', 'action-buy', 'clickable'],
+            click_handler,
+            build_company_tooltip(c),
+            nil,
+            "cmd_company_#{c.id}",
+            ['cmd-company-wrapper', 'status-company-wrapper']
+          )
         end
 
         h(:div, {
@@ -221,15 +248,14 @@ include View::Game::Dashboard::RailcardHelper
           phase = :discard_train
         elsif actions.include?('issue_shares')
           phase = :issue_shares
-     elsif actions.include?('par') && (
+        elsif actions.include?('par') && (
           (step&.respond_to?(:corporation_pending_par) && step.corporation_pending_par) ||
           (step&.respond_to?(:corporation) && step.corporation) ||
           (step&.respond_to?(:par_corporation) && step.par_corporation) ||
           (step&.respond_to?(:corporations) && step.corporations&.one?) ||
           (step&.current_entity || current_entity)&.corporation?
         )
-        phase = :par
-
+          phase = :par
         elsif actions.include?('corporate_buy_shares') || actions.include?('buy_shares')
           phase = :buy_shares
         elsif actions.include?('bid')
@@ -337,7 +363,7 @@ include View::Game::Dashboard::RailcardHelper
           else
             zone_2_content << render_action_row('Revenue:', [
               h(:button, { style: { width: '1.8rem', height: '1.8rem', fontSize: '1.1rem', fontWeight: 'bold', cursor: 'pointer', backgroundColor: '#e0e0e0', border: '1px solid #999', borderRadius: '4px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '0', lineHeight: '1' }, on: { click: -> { Lib::Storage[storage_key] = [current_revenue - 10, 0].max; update } } }, '-'),
-h(:div, { style: { fontSize: '1.2rem', fontWeight: 'bold', color: COLOR_MONEY, fontFamily: FONT_MONEY, minWidth: '4.5rem', textAlign: 'center', height: '1.8rem', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', lineHeight: '1' } }, formatted_revenue),
+              h(:div, { style: { fontSize: '1.2rem', fontWeight: 'bold', color: COLOR_MONEY, fontFamily: FONT_MONEY, minWidth: '4.5rem', textAlign: 'center', height: '1.8rem', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', lineHeight: '1' } }, formatted_revenue),
               h(:button, { style: { width: '1.8rem', height: '1.8rem', fontSize: '1.1rem', fontWeight: 'bold', cursor: 'pointer', backgroundColor: '#e0e0e0', border: '1px solid #999', borderRadius: '4px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '0', lineHeight: '1' }, on: { click: -> { Lib::Storage[storage_key] = current_revenue + 10; update } } }, '+'),
             ])
           end
@@ -435,9 +461,8 @@ h(:div, { style: { fontSize: '1.2rem', fontWeight: 'bold', color: COLOR_MONEY, f
           end
         end
 
-        zone_3 = h(:div, { style: { flex: '0 0 22%', display: 'flex', flexDirection: 'column', padding: '0.4rem', boxSizing: 'border-box', overflowY: 'auto', position: 'relative' } }, [
-
-        h(:style, {}, '
+       zone_3 = h(:div, { style: { flex: '0 0 22%', display: 'flex', flexDirection: 'column', padding: '0.4rem', boxSizing: 'border-box', overflowY: 'auto', position: 'relative' } }, [
+          h(:style, {}, '
             .cmd-company-wrapper:hover .cmd-company-tooltip,
             .cmd-company-wrapper:hover .status-company-tooltip,
             .status-company-wrapper:hover .status-company-tooltip,
@@ -449,7 +474,7 @@ h(:div, { style: { fontSize: '1.2rem', fontWeight: 'bold', color: COLOR_MONEY, f
               z-index: 99999 !important;
             }
           '),
-          
+
           h(:div, { style: { flex: '0 0 auto', width: '100%', marginBottom: '0.3rem' } }, [
             (render_zone3_abilities(entity) if has_abilities),
           ].compact),
@@ -587,7 +612,7 @@ h(:div, { style: { fontSize: '1.2rem', fontWeight: 'bold', color: COLOR_MONEY, f
           }.call
         end
 
-        h(:div, { style: { display: 'flex', flexDirection: 'row', width: '100%', height: '100%', boxSizing: 'border-box', backgroundColor: '#fff' } }, [
+h(:div, { style: { display: 'flex', flexDirection: 'row', width: '100%', height: '100%', boxSizing: 'border-box', backgroundColor: '#fff' } }, [
           zone_1,
           zone_2,
           zone_3,
@@ -656,7 +681,7 @@ h(:div, { style: { fontSize: '1.2rem', fontWeight: 'bold', color: COLOR_MONEY, f
                 end
                 process_action(Engine::Action::Merge.new(entity, **kwargs))
               }
-render_railcard(target.name, ['game-card', 'action-buy', 'clickable'], click_handler)
+              render_railcard(target.name, ['game-card', 'action-buy', 'clickable'], click_handler)
             end
             components << h(:div, { style: { fontSize: '0.85rem', fontWeight: 'bold', color: '#333', marginTop: '0.2rem', marginBottom: '0.2rem' } }, "Corporations that can merge with #{entity.name}:")
             components << h(:div, { style: { display: 'flex', flexDirection: 'row', flexWrap: 'wrap', gap: '0.3rem' } }, merge_boxes)
@@ -686,7 +711,7 @@ render_railcard(target.name, ['game-card', 'action-buy', 'clickable'], click_han
                 process_action(action_class.new(entity, shares: bundle.respond_to?(:shares) ? bundle.shares : [bundle], share_price: bundle.respond_to?(:share_price) ? bundle.share_price : nil, percent: pct))
               }
               corp = bundle.respond_to?(:corporation) ? bundle.corporation : entity
-render_railcard("Buy #{pct}% (#{@game.format_currency(price)})", ['game-card', 'action-buy', 'clickable'], click_handler)
+              render_railcard("Buy #{pct}% (#{@game.format_currency(price)})", ['game-card', 'action-buy', 'clickable'], click_handler)
             end
             components << render_action_row('Buy Treasury Share:', buy_boxes)
           else
@@ -776,12 +801,22 @@ render_railcard("Buy #{pct}% (#{@game.format_currency(price)})", ['game-card', '
         storage_key = "cmd_bid_price_#{target.id}"
         stored_val = Lib::Storage[storage_key]&.to_i
         current_bid = (stored_val && stored_val >= min_bid) ? stored_val : min_bid
-card_text = target.respond_to?(:sym) && target.sym ? target.sym : target.name
+
+        card_text = target.respond_to?(:sym) && target.sym ? target.sym : target.name
         subtext = (target.respond_to?(:value) && target.value) ? @game.format_currency(target.value) : nil
-        tooltip = target.respond_to?(:company?) && target.company? ? build_company_tooltip(target) : nil
+        tooltip = company?(target) ? build_company_tooltip(target) : nil
         badge_label = subtext ? "#{card_text} #{subtext}" : card_text
-        target_badge = render_railcard(badge_label, ['game-card'], nil, tooltip)
-        
+        wrapper_classes = tooltip ? ['cmd-company-wrapper', 'status-company-wrapper'] : nil
+        target_badge = render_railcard(
+          badge_label,
+          ['game-card'],
+          nil,
+          tooltip,
+          nil,
+          "cmd_bid_target_#{target.id}",
+          wrapper_classes
+        )
+
         cancel_btn = nil
         if Lib::Storage['selected_bid_corp'] && !(step.respond_to?(:auctioning) && step.auctioning)
           cancel_btn = h(:button, {
@@ -834,7 +869,8 @@ card_text = target.respond_to?(:sym) && target.sym ? target.sym : target.name
 
           process_action(Engine::Action::Bid.new(current_bidder, **bid_args))
         }
-row2_items = [
+
+        row2_items = [
           h(:input, {
             style: {
               width: '4.5rem',
@@ -936,12 +972,12 @@ row2_items = [
                       step.get_par_prices_with_help(entity, corporation)
                     elsif step.respond_to?(:get_par_prices)
                       step.get_par_prices(entity, corporation)
-                      elsif step.respond_to?(:par_prices)
-                    begin
-                      step.par_prices(entity, corporation)
-                    rescue ArgumentError
-                      step.par_prices(corporation)
-                    end
+                    elsif step.respond_to?(:par_prices)
+                      begin
+                        step.par_prices(entity, corporation)
+                      rescue ArgumentError
+                        step.par_prices(corporation)
+                      end
                     elsif @game.respond_to?(:par_prices)
                       @game.par_prices(corporation)
                     else
@@ -956,7 +992,7 @@ row2_items = [
           end
         end
 
-corp_badge = render_railcard(corporation.name, ['game-card'])
+        corp_badge = render_railcard(corporation.name, ['game-card'])
 
         buttons = par_nodes.map do |node|
           price = node.is_a?(Array) ? node[0] : node
@@ -999,9 +1035,9 @@ corp_badge = render_railcard(corporation.name, ['game-card'])
               fontWeight: 'bold',
               fontFamily: FONT_MONEY,
               backgroundColor: can_afford ? '#f8f9fa' : '#e9ecef',
-    color: can_afford ? COLOR_MONEY : '#9ca3af',
+              color: can_afford ? COLOR_MONEY : '#9ca3af',
               border: can_afford ? "1px solid #{COLOR_MONEY}" : '1px solid #ced4da',
-                          borderRadius: '4px',
+              borderRadius: '4px',
               cursor: can_afford ? 'pointer' : 'not-allowed',
               opacity: can_afford ? '1' : '0.6',
               whiteSpace: 'nowrap',
@@ -1023,7 +1059,7 @@ corp_badge = render_railcard(corporation.name, ['game-card'])
             alignItems: 'flex-start',
           },
         }, [
-render_action_row('Select Par Price:', [corp_badge, *buttons]),
+          render_action_row('Select Par Price:', [corp_badge, *buttons]),
         ])
       end
 
@@ -1127,18 +1163,6 @@ render_action_row('Select Par Price:', [corp_badge, *buttons]),
 
           can_choose = !is_owned && actions.include?('choose') && (step.respond_to?(:choices_for) ? step.choices_for(item)&.any? : true)
 
-          card_border = if is_active
-                          '#ffc107'
-                        elsif is_selected
-                          '#2563eb'
-                        elsif is_owned
-                          '#94a3b8'
-                        elsif can_buy || can_bid || can_choose
-                          '#28a745'
-                        else
-                          '#cbd5e1'
-                        end
-
           buy_btn = if can_buy
                       h(:button, {
                         style: {
@@ -1218,16 +1242,15 @@ render_action_row('Select Par Price:', [corp_badge, *buttons]),
                       }, is_selected ? 'Bidding' : 'Bid')
                     end
 
-          card_sym = item.respond_to?(:sym) ? item.sym : item.name
-          tooltip = item.respond_to?(:company?) && item.company? ? build_company_tooltip(item) : nil
-          subtext = (item.respond_to?(:value) && item.value) ? @game.format_currency(item.value) : nil
-
-card_classes = ['game-card']
-          card_classes << 'action-buy' if can_buy || can_bid || can_choose || is_active
-          card_classes << 'clickable' if can_bid
-          card_label = subtext ? "#{card_sym} #{subtext}" : card_sym
-          click_handler = can_bid ? -> { Lib::Storage['selected_bid_corp'] = item.id; update } : nil
-          item_card_element = render_railcard(card_label, card_classes, click_handler, tooltip)
+         card_sym = item.respond_to?(:sym) ? item.sym : item.name
+tooltip = (item.respond_to?(:company?) && item.company?) || item.is_a?(Engine::Company) ? build_company_tooltip(item) : nil
+subtext = (item.respond_to?(:value) && item.value) ? @game.format_currency(item.value) : nil
+      card_classes = ['game-card']
+      card_classes << 'action-buy' if can_buy || can_bid || can_choose || is_active
+      card_classes << 'clickable' if can_bid
+      card_label = subtext ? "#{card_sym} #{subtext}" : card_sym
+      click_handler = can_bid ? -> { Lib::Storage['selected_bid_corp'] = item.id; update } : nil
+      item_card_element = render_railcard(card_label, card_classes, click_handler, tooltip)
 
           row_cells = [
             h(:td, {
@@ -1287,7 +1310,7 @@ card_classes = ['game-card']
               if is_leader
                 cell_content = h(:span, {
                   style: {
-                   backgroundColor: '#f3e8ff',
+                    backgroundColor: '#f3e8ff',
                     color: COLOR_MONEY,
                     border: '1px solid #d8b4fe',
                     padding: '2px 5px',
@@ -1415,7 +1438,7 @@ card_classes = ['game-card']
                     h(:span, {
                       style: {
                         fontWeight: 'bold',
-color: COLOR_MONEY,
+                        color: COLOR_MONEY,
                         fontSize: '0.85rem',
                         fontFamily: FONT_MONEY,
                       },
@@ -1541,7 +1564,7 @@ color: COLOR_MONEY,
                 border: '2px solid #333333',
                 borderRadius: '8px',
                 padding: '1.5rem',
-                zIndex: '10000',
+zIndex: '100000',
                 boxShadow: '0px 10px 30px rgba(0,0,0,0.5)',
                 color: '#000000',
                 minWidth: '250px',
@@ -1610,7 +1633,9 @@ color: COLOR_MONEY,
           end
 
           card_text = (c.sym || c.name).to_s
-render_railcard(card_text, ['game-card', 'action-buy', 'clickable'], company_click_handler, build_company_tooltip(c), menu_dropdown)
+tooltip = Lib::Storage[menu_storage_key] ? nil : build_company_tooltip(c)
+render_railcard(card_text, ['game-card', 'action-buy', 'clickable'], company_click_handler, tooltip, menu_dropdown)
+
         end.compact
 
         return nil if company_boxes.empty?
@@ -1637,7 +1662,7 @@ render_railcard(card_text, ['game-card', 'action-buy', 'clickable'], company_cli
               train: train
             ))
           }
-train_boxes << render_railcard(train.name, ['game-card', 'action-sell', 'clickable'], click_handler)
+          train_boxes << render_railcard(train.name, ['game-card', 'action-sell', 'clickable'], click_handler)
         end
 
         return nil if train_boxes.empty?
@@ -1711,9 +1736,9 @@ train_boxes << render_railcard(train.name, ['game-card', 'action-sell', 'clickab
             cost_str = "(#{@game.format_currency(cost)})" if cost && !cost.zero?
           end
 
-surrender_label = cost_str.empty? ? train.name : "#{train.name} #{cost_str.strip}"
+          surrender_label = cost_str.empty? ? train.name : "#{train.name} #{cost_str.strip}"
           train_boxes << render_railcard(surrender_label, ['game-card', 'action-sell', 'clickable'], click_handler)
-                end
+        end
 
         return nil if train_boxes.empty?
 
@@ -1769,11 +1794,11 @@ surrender_label = cost_str.empty? ? train.name : "#{train.name} #{cost_str.strip
                   variant: variant_param
                 ))
               }
-train_classes = ['game-card', 'action-buy']
+              train_classes = ['game-card', 'action-buy']
               train_classes << 'clickable' if can_afford
               train_label = "#{variant_str} (Bank: #{@game.format_currency(price)})"
               train_boxes << render_railcard(train_label, train_classes, (can_afford ? click_handler : nil))
-                        end
+            end
           end
         end
 
@@ -1907,7 +1932,7 @@ train_classes = ['game-card', 'action-buy']
               ])
             end
 
-train_boxes << render_railcard("#{t.name} (#{c.id || c.name})", ['game-card', 'action-buy', 'clickable'], train_click_handler, nil, menu_dropdown)
+            train_boxes << render_railcard("#{t.name} (#{c.id || c.name})", ['game-card', 'action-buy', 'clickable'], train_click_handler, nil, menu_dropdown)
           end
         end
 
@@ -2006,8 +2031,7 @@ train_boxes << render_railcard("#{t.name} (#{c.id || c.name})", ['game-card', 'a
               end
             }
 
-render_railcard("#{pct_str} #{price_str}", ['game-card', 'action-sell', 'clickable'], click_handler)
-
+            render_railcard("#{pct_str} #{price_str}", ['game-card', 'action-sell', 'clickable'], click_handler)
           end
           rows << render_action_row('Issue:', issue_buttons)
         elsif (@game.round.actions_for(entity) || []).include?('issue_shares')
@@ -2052,8 +2076,7 @@ render_railcard("#{pct_str} #{price_str}", ['game-card', 'action-sell', 'clickab
               ))
             }
 
-render_railcard("#{pct_str} #{price_str}", ['game-card', 'action-buy', 'clickable'], click_handler)
-
+            render_railcard("#{pct_str} #{price_str}", ['game-card', 'action-buy', 'clickable'], click_handler)
           end
           rows << render_action_row('Redeem:', redeem_buttons)
         end
@@ -2067,26 +2090,26 @@ render_railcard("#{pct_str} #{price_str}", ['game-card', 'action-buy', 'clickabl
         return h(:div) if @game.finished
 
         return h(UpgradeOrDiscardTrains) if actions.include?('discard_train') && actions.include?('swap_train')
-if actions.include?('par')
-        pending_corp = if step&.respond_to?(:corporation_pending_par) && step.corporation_pending_par
-                         step.corporation_pending_par
-                       elsif step&.respond_to?(:corporation) && step.corporation
-                         step.corporation
-                       elsif step&.respond_to?(:par_corporation) && step.par_corporation
-                         step.par_corporation
-                       elsif step&.respond_to?(:parring) && step.parring
-                         step.parring
-                       elsif step&.respond_to?(:corporations) && step.corporations&.one?
-                         step.corporations.first
-                       elsif (step&.current_entity || current_entity)&.corporation?
-                         step&.current_entity || current_entity
-                       end
-        return render_par_step(step, step&.current_entity || current_entity, pending_corp) if pending_corp
-      end
+        if actions.include?('par')
+          pending_corp = if step&.respond_to?(:corporation_pending_par) && step.corporation_pending_par
+                           step.corporation_pending_par
+                         elsif step&.respond_to?(:corporation) && step.corporation
+                           step.corporation
+                         elsif step&.respond_to?(:par_corporation) && step.par_corporation
+                           step.par_corporation
+                         elsif step&.respond_to?(:parring) && step.parring
+                           step.parring
+                         elsif step&.respond_to?(:corporations) && step.corporations&.one?
+                           step.corporations.first
+                         elsif (step&.current_entity || current_entity)&.corporation?
+                           step&.current_entity || current_entity
+                         end
+          return render_par_step(step, step&.current_entity || current_entity, pending_corp) if pending_corp
+        end
 
         case @game.round
         when Engine::Round::Stock
-         is_start_auction_step = (step&.respond_to?(:auctioning) && step.auctioning) ||
+          is_start_auction_step = (step&.respond_to?(:auctioning) && step.auctioning) ||
                                   (step.class.name =~ /Waterfall|Draft|Auction|Initial/i) ||
                                   (actions.include?('bid') && !actions.include?('buy_shares') && !actions.include?('par'))
 
