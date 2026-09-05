@@ -118,17 +118,16 @@ module View
                                                                                                     #{'                                         '}
                                                                                                                                              @keyframes zeroJankPulse { 0% { opacity: 1; } 50% { opacity: var(--pulse-opacity-min); } 100% { opacity: 1; } }
 
-                                                                                                                                             tr.directed-by-active-player { background-color: rgba(37, 99, 235, 0.06) !important; }
-                                                                                                                                             tr.company-row-unfloated, tr.company-row-closed { opacity: var(--opacity-unopened-row) !important; filter: grayscale(40%) !important; }
-
-                                                                                                                                 .column-zone-market { background-color: var(--bg-market-zone) !important; }
+                                                                                                                                          tr.company-row-unfloated, tr.company-row-closed { opacity: var(--opacity-unopened-row) !important; filter: grayscale(40%) !important; }
+          tr.company-row-unfloated:hover, tr.company-row-closed:hover { opacity: 1 !important; filter: none !important; }
+          tr.active-turn-focus:hover { animation: none !important; opacity: 1 !important; }
+                                                                                                                                           .column-zone-market { background-color: var(--bg-market-zone) !important; }
           .column-zone-corporate { background-color: var(--bg-corporate-zone) !important; }
           tr.active-turn-focus td.column-zone-market, tr.active-turn-focus td.column-zone-corporate { background-color: var(--bg-active-row) !important; }
                       th.column-zone-corporate { background-color: #e9d5ff !important; color: #4c1d95 !important; }
-        .status-corp-wrapper:hover .status-corp-tooltip {
-display: block !important;
-}
-        
+.status-corp-wrapper:hover { z-index: 99999; }
+          .status-corp-wrapper:hover .status-corp-tooltip { display: block !important; }
+          
                       CSS
 
                       
@@ -584,6 +583,8 @@ display: block !important;
         row_classes << 'last-minor-row' if is_last_minor
 
         tr_props[:attrs][:class] = row_classes.join(' ') unless row_classes.empty?
+
+        
         name_props = {
           attrs: { class: 'status-corp-wrapper' },
           style: {
