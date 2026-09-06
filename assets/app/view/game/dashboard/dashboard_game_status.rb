@@ -1989,6 +1989,104 @@ cash_str = is_unopened ? '0' : @game.format_currency(corporation.cash || 0)
         ])
       end
 
+      def render_price_dialog(title, storage_key, min_price, max_price, on_confirm, on_cancel)
+  current_val = Lib::Storage[storage_key] || min_price.to_s
+
+  modal_box = h(:div, {
+    style: {
+      backgroundColor: '#ffffff',
+      border: '2px solid #333333',
+      borderRadius: '8px',
+      padding: '1.5rem',
+      boxShadow: '0px 10px 30px rgba(0,0,0,0.5)',
+      color: '#000000',
+      minWidth: '260px',
+      textAlign: 'center',
+      boxSizing: 'border-box',
+    },
+  }, [
+    h(:div, { style: { fontSize: '0.85rem', fontWeight: 'bold', marginBottom: '0.8rem', whiteSpace: 'nowrap' } }, title),
+    h(:input, {
+      key: storage_key,
+      style: {
+        display: 'block',
+        width: '100%',
+        marginBottom: '0.8rem',
+        boxSizing: 'border-box',
+        padding: '5px 8px',
+        fontSize: '1rem',
+        fontFamily: FONT_MONEY,
+        fontWeight: 'bold',
+        color: COLOR_MONEY,
+      },
+      props: { value: current_val },
+      attrs: { type: 'number', min: min_price.to_s, max: max_price.to_s },
+      on: { input: ->(event) { Lib::Storage[storage_key] = `#{event}.target.value`; update } },
+    }),
+    h(:button, {
+      style: {
+        display: 'block',
+        width: '100%',
+        marginBottom: '0.2rem',
+        cursor: 'pointer',
+        fontSize: '0.75rem',
+        fontWeight: 'bold',
+        padding: '3px 6px',
+        backgroundColor: '#007bff',
+        border: '1px solid #0056b3',
+        color: '#ffffff',
+        borderRadius: '3px',
+      },
+      on: {
+        click: lambda {
+          val = Lib::Storage[storage_key].to_i
+          val = min_price if val < min_price
+          val = max_price if val > max_price
+          Lib::Storage[storage_key] = nil
+          on_confirm.call(val)
+        },
+      },
+    }, 'Confirm'),
+    h(:button, {
+      style: {
+        display: 'block',
+        width: '100%',
+        cursor: 'pointer',
+        fontSize: '0.75rem',
+        padding: '3px 6px',
+        backgroundColor: '#e0e0e0',
+        border: '1px solid #999',
+        borderRadius: '3px',
+      },
+      on: {
+        click: lambda {
+          Lib::Storage[storage_key] = nil
+          on_cancel.call
+        },
+      },
+    }, 'Cancel'),
+  ])
+
+  h(:div, {
+    style: {
+      position: 'fixed',
+      top: '0',
+      left: '0',
+      width: '100vw',
+      height: '100vh',
+      backgroundColor: 'rgba(0, 0, 0, 0.4)',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      zIndex: '2147483647',
+    },
+    hook: {
+      insert: ->(vnode) { `document.body.appendChild(#{vnode}.elm);` },
+      destroy: ->(vnode) { `if (#{vnode}.elm && #{vnode}.elm.parentNode) { #{vnode}.elm.parentNode.removeChild(#{vnode}.elm); }` },
+    },
+  }, [modal_box])
+end
+
       private
 
       def player_time_details(p)

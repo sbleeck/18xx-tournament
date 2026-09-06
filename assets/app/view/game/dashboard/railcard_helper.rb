@@ -31,9 +31,23 @@ module View
             z-index: 99999 !important;
           }
         '
-
-        def render_tooltip_style
-          h(:style, {}, TOOLTIP_CSS)
+def render_tooltip_style
+          h(:style, {}, '
+            .cmd-company-wrapper:hover .cmd-company-tooltip,
+            .cmd-company-wrapper:hover .status-company-tooltip,
+            .status-company-wrapper:hover .status-company-tooltip,
+            .status-company-wrapper:hover .cmd-company-tooltip,
+            .cmd-corp-wrapper:hover .cmd-corp-tooltip,
+            .cmd-corp-wrapper:hover .status-corp-tooltip,
+            .status-corp-wrapper:hover .status-corp-tooltip,
+            .status-corp-wrapper:hover .cmd-corp-tooltip,
+            .cmd-company-tooltip,
+            .status-company-tooltip,
+            .cmd-corp-tooltip,
+            .status-corp-tooltip {
+              display: none !important;
+            }
+          ')
         end
 
         def render_company_tooltip(title, subtitle, desc, val, rev, owner)
@@ -216,6 +230,122 @@ module View
           end
         end
 
+        def render_price_dialog(title, storage_key, min_price, max_price, on_confirm, on_cancel)
+
+          stored = Lib::Storage[storage_key]
+          val_i = stored ? stored.to_i : min_price
+          val_i = min_price if val_i < min_price
+          val_i = max_price if val_i > max_price
+          current_val = val_i.to_s
+
+          modal_box = h(:div, {
+            style: {
+              backgroundColor: '#ffffff',
+              border: '2px solid #333333',
+              borderRadius: '8px',
+              padding: '1.5rem',
+              boxShadow: '0px 10px 30px rgba(0,0,0,0.5)',
+              color: '#000000',
+              minWidth: '260px',
+              textAlign: 'center',
+              boxSizing: 'border-box',
+            },
+          }, [
+            h(:div, { style: { fontSize: '0.85rem', fontWeight: 'bold', marginBottom: '0.8rem', whiteSpace: 'nowrap' } }, title),
+            h(:input, {
+              key: storage_key,
+              style: {
+                display: 'block',
+                width: '100%',
+                marginBottom: '0.8rem',
+                boxSizing: 'border-box',
+                padding: '5px 8px',
+                fontSize: '1rem',
+                fontFamily: FONT_MONEY,
+                fontWeight: 'bold',
+                color: COLOR_MONEY,
+              },
+              props: {
+                value: current_val,
+              },
+              attrs: {
+                type: 'number',
+                min: min_price.to_s,
+                max: max_price.to_s,
+              },
+              on: {
+                input: lambda { |event|
+                  Lib::Storage[storage_key] = `#{event}.target.value`
+                  update
+                },
+              },
+            }),
+            h(:button, {
+              style: {
+                display: 'block',
+                width: '100%',
+                marginBottom: '0.2rem',
+                cursor: 'pointer',
+                fontSize: '0.75rem',
+                fontWeight: 'bold',
+                padding: '3px 6px',
+                backgroundColor: '#007bff',
+                border: '1px solid #0056b3',
+                color: '#ffffff',
+                borderRadius: '3px',
+              },
+              on: {
+                click: lambda {
+                  price_value = Lib::Storage[storage_key].to_i
+                  price_value = min_price if price_value < min_price
+                  price_value = max_price if price_value > max_price
+
+                  Lib::Storage[storage_key] = nil
+                  on_confirm.call(price_value)
+                },
+              },
+            }, 'Confirm'),
+            h(:button, {
+              style: {
+                display: 'block',
+                width: '100%',
+                cursor: 'pointer',
+                fontSize: '0.75rem',
+                padding: '3px 6px',
+                backgroundColor: '#e0e0e0',
+                border: '1px solid #999',
+                borderRadius: '3px',
+              },
+              on: {
+                click: lambda {
+                  Lib::Storage[storage_key] = nil
+                  on_cancel.call
+                },
+              },
+            }, 'Cancel'),
+          ])
+
+          h(:div, {
+            attrs: { id: "dialog_#{storage_key}" },
+            style: {
+              position: 'fixed',
+              top: '0',
+              left: '0',
+              width: '100vw',
+              height: '100vh',
+              backgroundColor: 'rgba(0, 0, 0, 0.4)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              zIndex: '2147483647',
+            },
+            hook: {
+              insert: ->(vnode) { `document.body.appendChild(vnode.elm);` },
+            },
+
+          }, [modal_box])
+        end
+
         def render_railcard(text, card_classes = ['game-card'], click_handler = nil, tooltip = nil, dropdown = nil, wrapper_id = nil, wrapper_classes = nil)
           is_buy = false
           is_sell = false
@@ -234,47 +364,8 @@ module View
 
           `
 
-          if (typeof window !== 'undefined' && !window._railcard_portal_installed) {
-            window._railcard_portal_installed = true;
-            var portal = document.createElement('div');
-            portal.id = 'railcard-portal';
-            portal.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;pointer-events:none;z-index:2147483647;display:none;align-items:center;justify-content:center;';
-            document.body.appendChild(portal);
+         
 
-            document.addEventListener('mouseover', function(e) {
-              var wrapper = e.target.closest && e.target.closest('.cmd-company-wrapper, .status-company-wrapper, .cmd-corp-wrapper, .status-corp-wrapper');
-              if (wrapper) {
-                var tt = wrapper.querySelector('.cmd-company-tooltip, .status-company-tooltip, .cmd-corp-tooltip, .status-corp-tooltip');
-                if (tt) {
-                  portal.innerHTML = tt.outerHTML;
-                  var inner = portal.firstElementChild;
-                  if (inner) {
-                    inner.classList.remove('cmd-company-tooltip', 'status-company-tooltip', 'cmd-corp-tooltip', 'status-corp-tooltip');
-                    inner.style.display = 'block';
-                    inner.style.position = 'relative';
-                    inner.style.top = 'auto';
-                    inner.style.left = 'auto';
-                    inner.style.transform = 'none';
-                    inner.style.margin = 'auto';
-                    inner.style.boxShadow = '0 16px 48px rgba(0,0,0,0.5)';
-                  }
-                  portal.style.display = 'flex';
-                }
-              }
-            });
-
-            document.addEventListener('mouseout', function(e) {
-              var wrapper = e.target.closest && e.target.closest('.cmd-company-wrapper, .status-company-wrapper, .cmd-corp-wrapper, .status-corp-wrapper');
-              if (wrapper) {
-                var related = e.relatedTarget && e.relatedTarget.closest && e.relatedTarget.closest('.cmd-company-wrapper, .status-company-wrapper, .cmd-corp-wrapper, .status-corp-wrapper');
-                if (related !== wrapper) {
-                  portal.style.display = 'none';
-                  portal.innerHTML = '';
-                }
-              }
-            });
-          }
-            
           function isPresent(val) {
             return val !== undefined && val !== null && val !== false && val !== Opal.nil;
           }
@@ -321,6 +412,56 @@ module View
             clean_wrapper_id = String(wrapper_id);
           }
 
+          if (typeof window !== 'undefined') {
+            var portal = document.getElementById('railcard-portal');
+            if (!portal) {
+              portal = document.createElement('div');
+              portal.id = 'railcard-portal';
+              document.body.appendChild(portal);
+            }
+            portal.style.cssText = 'position:fixed;top:12px;left:50%;transform:translateX(-50%);pointer-events:none !important;z-index:2147483647;display:none;width:320px;max-width:90vw;background:#ffffff;border:2px solid #333333;border-radius:6px;padding:8px;box-shadow:0 12px 36px rgba(0,0,0,0.5);color:#000000;text-align:left;box-sizing:border-box;white-space:normal;word-break:break-word;';
+
+            if (!window._railcard_portal_installed) {
+              window._railcard_portal_installed = true;
+
+              var hidePortal = function() {
+                var p = document.getElementById('railcard-portal');
+                if (p && p.style.display !== 'none') {
+                  p.style.display = 'none';
+                  p.innerHTML = '';
+                }
+              };
+
+              document.addEventListener('mouseover', function(e) {
+                var wrapper = e.target.closest && e.target.closest('.cmd-company-wrapper, .status-company-wrapper, .cmd-corp-wrapper, .status-corp-wrapper');
+                if (wrapper) {
+                  var tt = wrapper.querySelector('.cmd-company-tooltip, .status-company-tooltip, .cmd-corp-tooltip, .status-corp-tooltip');
+                  if (tt) {
+                    var p = document.getElementById('railcard-portal');
+                    if (p) {
+                      p.innerHTML = tt.innerHTML;
+                      p.style.display = 'block';
+                    }
+                  }
+                } else {
+                  hidePortal();
+                }
+              });
+
+              document.addEventListener('mouseout', function(e) {
+                var wrapper = e.target.closest && e.target.closest('.cmd-company-wrapper, .status-company-wrapper, .cmd-corp-wrapper, .status-corp-wrapper');
+                if (wrapper) {
+                  var related = e.relatedTarget && e.relatedTarget.closest && e.relatedTarget.closest('.cmd-company-wrapper, .status-company-wrapper, .cmd-corp-wrapper, .status-corp-wrapper');
+                  if (related !== wrapper) {
+                    hidePortal();
+                  }
+                }
+              });
+
+              window.addEventListener('scroll', hidePortal, true);
+            }
+          }
+          
           var valid_classes = [];
           if (has_tooltip) {
             valid_classes.push('cmd-company-wrapper');
