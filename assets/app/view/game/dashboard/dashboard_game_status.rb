@@ -77,69 +77,69 @@ module View
         end
 
         css = <<~CSS
-                                                                                                                                             :root {
-                                                                                                                                               --font-money: 'Courier New', monospace;
-                                                                                                                                               --font-standard: "Helvetica Neue", Helvetica, Arial, sans-serif;
-                                                                                                                                               --color-money-text: #4c1d95;
-                                                                                                                                               --accent-action-color: #2563eb;
-                                                                                                                                               --pulse-opacity-min: 0.75;
-                                                                                                                                               --pulse-scale-duration: 2s;
-                                                                                                                                               --opacity-unopened-row: 0.45;
-                                                                                                                                               --bg-active-row: #ffffff;
+                                                                                                                                            :root {
+                                                                                                                                              --font-money: 'Courier New', monospace;
+                                                                                                                                              --font-standard: "Helvetica Neue", Helvetica, Arial, sans-serif;
+                                                                                                                                              --color-money-text: #4c1d95;
+                                                                                                                                              --accent-action-color: #2563eb;
+                                                                                                                                              --pulse-opacity-min: 0.75;
+                                                                                                                                              --pulse-scale-duration: 2s;
+                                                                                                                                              --opacity-unopened-row: 0.45;
+                                                                                                                                              --bg-active-row: #ffffff;
                                                                                                                                                --bg-market-zone: #e6f4ea; /* Soft Sage Green */
-                                                                                                                                               --bg-corporate-zone: #f3e8ff;
-                                                                                                                                               --action-buy-edge: #16a34a;
-                                                                                                                                               --action-sell-edge: #dc2626;
-                                                                                                                                               --shadow-card: 0 1px 3px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.24);
-                                                                                                                                             }
+                                                                                                                                              --bg-corporate-zone: #f3e8ff;
+                                                                                                                                              --action-buy-edge: #16a34a;
+                                                                                                                                              --action-sell-edge: #dc2626;
+                                                                                                                                              --shadow-card: 0 1px 3px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.24);
+                                                                                                                                            }
                                                                                 #spreadsheet table { border-collapse: collapse; border: 3px solid #333333; background-color: #{COLOR_INACTIVE}; }
                                                                       #spreadsheet th, #spreadsheet td { border: 1px solid #b3b3b3 !important; vertical-align: middle !important; padding: 4px 2px !important; }
-                                                                                                     #spreadsheet thead tr:last-child th { border-bottom: 3px solid #333333 !important; }
-                                                                                                     #spreadsheet tr.last-player-row th, #spreadsheet tr.last-player-row td { border-bottom: 3px solid #333333 !important; }
-                                                                                                     #spreadsheet tr.last-minor-row th, #spreadsheet tr.last-minor-row td { border-bottom: 3px solid #333333 !important; }
+                                                                                                    #spreadsheet thead tr:last-child th { border-bottom: 3px solid #333333 !important; }
+                                                                                                    #spreadsheet tr.last-player-row th, #spreadsheet tr.last-player-row td { border-bottom: 3px solid #333333 !important; }
+                                                                                                    #spreadsheet tr.last-minor-row th, #spreadsheet tr.last-minor-row td { border-bottom: 3px solid #333333 !important; }
                                                                                                               .thick-right { border-right: 3px solid #333333 !important; }
-                                                                                                     .no-border { border: none !important; }
+                                                                                                    .no-border { border: none !important; }
                                                                                                                                 .money-value, .padded_number { text-align: right !important; padding-right: 0.5rem !important; }
                                                   .money-value { font-family: var(--font-money) !important; font-weight: bold !important; color: var(--color-money-text) !important; font-variant-numeric: tabular-nums !important; }
 
                                         .game-card { display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; min-width: 3.5rem; height: 1.45rem; font-size: 0.85rem; padding: 0 4px; margin: 2px; border: 1px solid #888888; border-radius: 4px; background-color: #fdfbf7; color: #000000; box-shadow: var(--shadow-card); transition: transform 0.1s ease; font-family: var(--font-standard); }
-                                                                                                               .game-card.clickable:hover { cursor: pointer; transform: translateY(-1px); box-shadow: 0 2px 5px rgba(0,0,0,0.2); }
+                                                                                                              .game-card.clickable:hover { cursor: pointer; transform: translateY(-1px); box-shadow: 0 2px 5px rgba(0,0,0,0.2); }
                     .game-card.action-sell { border: 2px solid var(--action-sell-edge) !important; background-color: #fef2f2 !important; box-shadow: 0 0 0 1px var(--action-sell-edge) !important; }
 
 
-                                                                                                               .game-card.action-buy { border: 2px solid var(--action-buy-edge) !important; background-color: #e6f4ea !important; box-shadow: 0 0 0 1px var(--action-buy-edge) !important; }                                                  #{'                                         '}
-                                                                                                                                             .sell-restricted { text-decoration: line-through !important; opacity: 0.5 !important; cursor: not-allowed !important; }
-                                                                                                                                             .token-bond { display: inline-block; width: 12px; height: 12px; background-color: #b91c1c; border-radius: 2px; }
-                                                                                                                                             .align-top { vertical-align: top !important; }
+                                                                                                            .game-card.action-buy { border: 2px solid var(--action-buy-edge) !important; background-color: #e6f4ea !important; box-shadow: 0 0 0 1px var(--action-buy-edge) !important; }                                                  #{'                                         '}
+                                                                                                                                          .sell-restricted { text-decoration: line-through !important; opacity: 0.5 !important; cursor: not-allowed !important; }
+                                                                                                                                          .token-bond { display: inline-block; width: 12px; height: 12px; background-color: #b91c1c; border-radius: 2px; }
+                                                                                                                                          .align-top { vertical-align: top !important; }
 
 
-                                                                     tr.active-turn-focus { background-color: var(--bg-active-row) !important; animation: zeroJankPulse var(--pulse-scale-duration) infinite ease-in-out; }                                                                                                   tr.active-turn-focus th, tr.active-turn-focus td { box-shadow: inset 0 3px 0 var(--accent-action-color), inset 0 -3px 0 var(--accent-action-color) !important; }
-                                                                                                                                             tr.active-turn-focus th:first-child, tr.active-turn-focus td:first-child { box-shadow: inset 3px 3px 0 var(--accent-action-color), inset 0 -3px 0 var(--accent-action-color) !important; }
-                                                                                                                                             tr.active-turn-focus th:last-child, tr.active-turn-focus td:last-child { box-shadow: inset -3px 3px 0 var(--accent-action-color), inset 0 -3px 0 var(--accent-action-color) !important; }
+                                                                  tr.active-turn-focus { background-color: var(--bg-active-row) !important; animation: zeroJankPulse var(--pulse-scale-duration) infinite ease-in-out; }                                                                                                   tr.active-turn-focus th, tr.active-turn-focus td { box-shadow: inset 0 3px 0 var(--accent-action-color), inset 0 -3px 0 var(--accent-action-color) !important; }
+                                                                                                                                          tr.active-turn-focus th:first-child, tr.active-turn-focus td:first-child { box-shadow: inset 3px 3px 0 var(--accent-action-color), inset 0 -3px 0 var(--accent-action-color) !important; }
+                                                                                                                                          tr.active-turn-focus th:last-child, tr.active-turn-focus td:last-child { box-shadow: inset -3px 3px 0 var(--accent-action-color), inset 0 -3px 0 var(--accent-action-color) !important; }
                                                                                                     #{'                                         '}
-                                                                                                                                             @keyframes zeroJankPulse { 0% { opacity: 1; } 50% { opacity: var(--pulse-opacity-min); } 100% { opacity: 1; } }
+                                                                                                                                          @keyframes zeroJankPulse { 0% { opacity: 1; } 50% { opacity: var(--pulse-opacity-min); } 100% { opacity: 1; } }
 
                                                                                                                                           tr.company-row-unfloated, tr.company-row-closed { opacity: var(--opacity-unopened-row) !important; filter: grayscale(40%) !important; }
           tr.company-row-unfloated:hover, tr.company-row-closed:hover { opacity: 1 !important; filter: none !important; }
           tr.active-turn-focus:hover { animation: none !important; opacity: 1 !important; }
-                                                                                                                                           .column-zone-market { background-color: var(--bg-market-zone) !important; }
+                                                                                                                                          .column-zone-market { background-color: var(--bg-market-zone) !important; }
           .column-zone-corporate { background-color: var(--bg-corporate-zone) !important; }
           tr.active-turn-focus td.column-zone-market, tr.active-turn-focus td.column-zone-corporate { background-color: var(--bg-active-row) !important; }
                       th.column-zone-corporate { background-color: #e9d5ff !important; color: #4c1d95 !important; }
-.status-corp-wrapper:hover { z-index: 99999; }
-          .status-corp-wrapper:hover .status-corp-tooltip { display: block !important; }
-          
-                      CSS
+          .status-corp-wrapper:hover { z-index: 99999; }
+          .status-corp-tooltip, .status-company-tooltip, .cmd-corp-tooltip, .cmd-company-tooltip { display: none !important; }
+          #{'          '}
+        CSS
 
         h(:div, [
-           h('div#spreadsheet', {
-               style: {
-                 overflow: 'auto',
-                 marginTop: '1rem',
-               },
-             },
-             [h(:style, css), render_corporation_table]),
-         ])
+            h('div#spreadsheet', {
+                style: {
+                  overflow: 'auto',
+                  marginTop: '1rem',
+                },
+              },
+              [h(:style, css), render_corporation_table]),
+          ])
       end
 
       def render_corporation_table
@@ -261,7 +261,7 @@ module View
 
       def render_extra_cards
         children = []
-       train_handler = lambda do |train, price = nil, variant = nil|
+        train_handler = lambda do |train, price = nil, variant = nil|
           owner_entity = train.owner
           if owner_entity.respond_to?(:owner) # Corporate train
             owner_key = owner_entity.respond_to?(:id) ? owner_entity.id : 'depot'
@@ -273,7 +273,7 @@ module View
             variant_name = variant ? variant.to_s : train.name.to_s
             variant_param = (variant_name == train.name.to_s ? nil : variant_name)
 
-            clean_variant_id = variant_name.gsub('/', '_')
+            clean_variant_id = variant_name.tr('/', '_')
             escaped_train_id = `CSS.escape('bank_train_' + #{train.id} + '_' + #{clean_variant_id})`
             escaped_dest_id = `CSS.escape('trains_' + #{active_entity.id})`
             source_selector = "##{escaped_train_id} .game-card"
@@ -375,27 +375,27 @@ module View
                                     fill: COLOR_CASH,
                                   },
                                 }, [
-               h(:rect, attrs: { x: '0', y: '2', width: '6', height: '1' }),
-               h(:rect, attrs: { x: '1', y: '3', width: '4', height: '7' }),
-               h(:rect, attrs: { x: '11', y: '1', width: '2', height: '4' }),
-               h(:rect, attrs: { x: '4', y: '5', width: '10', height: '5' }),
-               h(:rect, attrs: { x: '1', y: '10', width: '14', height: '2' }),
-               h(:polygon, attrs: { points: '14,10 16,12 14,12' }),
-               h(:circle, attrs: { cx: '3.5', cy: '13.5', r: '1.5' }),
-               h(:circle, attrs: { cx: '8.5', cy: '13.5', r: '1.5' }),
-               h(:circle, attrs: { cx: '12.5', cy: '13.5', r: '1.5' }),
-             ])
+              h(:rect, attrs: { x: '0', y: '2', width: '6', height: '1' }),
+              h(:rect, attrs: { x: '1', y: '3', width: '4', height: '7' }),
+              h(:rect, attrs: { x: '11', y: '1', width: '2', height: '4' }),
+              h(:rect, attrs: { x: '4', y: '5', width: '10', height: '5' }),
+              h(:rect, attrs: { x: '1', y: '10', width: '14', height: '2' }),
+              h(:polygon, attrs: { points: '14,10 16,12 14,12' }),
+              h(:circle, attrs: { cx: '3.5', cy: '13.5', r: '1.5' }),
+              h(:circle, attrs: { cx: '8.5', cy: '13.5', r: '1.5' }),
+              h(:circle, attrs: { cx: '12.5', cy: '13.5', r: '1.5' }),
+            ])
           end
 
           players_subtitles << h("th.name.nowrap#{'.thick-right' if is_last}", props, header_content)
         end
 
         pool_subtitles = [
-           h('th.column-zone-market', { attrs: { class: 'column-zone-market' }, style: { color: '#000000' } },
-             render_sort_link('Shares', :market_shares)),
-           h('th.thick-right.column-zone-market', { attrs: { class: 'column-zone-market' }, style: { color: '#000000' } },
-             render_sort_link('Prices', :share_price)),
-         ]
+          h('th.column-zone-market', { attrs: { class: 'column-zone-market' }, style: { color: '#000000' } },
+            render_sort_link('Shares', :market_shares)),
+          h('th.thick-right.column-zone-market', { attrs: { class: 'column-zone-market' }, style: { color: '#000000' } },
+            render_sort_link('Prices', :share_price)),
+        ]
         ipo_subtitles = [
           h('th.column-zone-market', { attrs: { class: 'column-zone-market' }, style: { color: '#000000' } },
             render_sort_link('Shares', :ipo_shares)),
@@ -403,7 +403,7 @@ module View
             render_sort_link('Price', :par_price)),
         ]
 
-       corporation_subtitles = [
+        corporation_subtitles = [
           h('th.column-zone-corporate', {}, render_sort_link('Treasury', :cash)),
           *treasury,
           h('th.column-zone-corporate', {}, render_sort_link('Trains', :trains)),
@@ -413,7 +413,7 @@ module View
 
         corporation_subtitles << h('th.column-zone-corporate', {}, render_sort_link('Privates', :companies)) if @show_privates
         corporation_subtitles << h('th.column-zone-corporate', {}, render_sort_link('Last Run', :prev_revenue))
-        
+
         titles = [
           players_title,
           pool_title,
@@ -480,7 +480,7 @@ module View
             },
             @hide_not_floated ? 'Show unfloated' : 'Hide unfloated'),
           ')',
-         ])
+        ])
       end
 
       def sorted_corporations
@@ -569,7 +569,7 @@ module View
         row_classes << 'last-minor-row' if is_last_minor
 
         tr_props[:attrs][:class] = row_classes.join(' ') unless row_classes.empty?
-name_props = {
+        name_props = {
           attrs: { class: 'status-corp-wrapper' },
           style: {
             backgroundColor: corporation.color,
@@ -781,17 +781,17 @@ name_props = {
 
               if just_sold
                 dropdowns << h(:span, {
-                                   attrs: { class: 'token-bond' },
-                                   style: {
-                                     position: 'absolute',
-                                     top: '2px',
-                                     right: '2px',
-                                     width: '6px',
-                                     height: '6px',
-                                     borderRadius: '50%',
-                                     backgroundColor: '#dc2626',
-                                   },
-                                 })
+                                 attrs: { class: 'token-bond' },
+                                 style: {
+                                   position: 'absolute',
+                                   top: '2px',
+                                   right: '2px',
+                                   width: '6px',
+                                   height: '6px',
+                                   borderRadius: '50%',
+                                   backgroundColor: '#dc2626',
+                                 },
+                               })
               end
 
               if Lib::Storage['sell_menu_player'] == p.id && Lib::Storage['sell_menu_corp'] == corporation.id && can_sell
@@ -837,10 +837,8 @@ name_props = {
               end
 
               card = render_railcard(text, card_classes, click_handler, nil, dropdowns)
-              
-              if n_shares.zero?
-                card = h(:span, { style: { visibility: 'hidden', display: 'inline-block' } }, [card])
-              end
+
+              card = h(:span, { style: { visibility: 'hidden', display: 'inline-block' } }, [card]) if n_shares.zero?
 
               players_row_content << h(:td, { attrs: { id: "player_shares_#{p.id}_#{corporation.id}" }, style: { backgroundColor: bg_color, textAlign: 'center', position: 'relative' } },
                                        [card])
@@ -905,7 +903,7 @@ name_props = {
             }
             dropdowns << render_choice_menu('Buy from Pool:', options, cancel_handler)
           end
-          
+
           pool_cell_children << render_railcard(pool_share_text, card_classes, pool_click_handler, nil, dropdowns)
         end
 
@@ -924,17 +922,17 @@ name_props = {
                              end
 
         pool_row_content = [
-                   h('td.column-zone-market',
-                     { attrs: { id: "pool_shares_#{corporation.id}" }, style: { position: 'relative', textAlign: 'center' } }, pool_cell_children),
-                   h('td.padded_number.column-zone-market.money-value', { style: market_style }, clean_market_price),
-                 ]
+                  h('td.column-zone-market',
+                    { attrs: { id: "pool_shares_#{corporation.id}" }, style: { position: 'relative', textAlign: 'center' } }, pool_cell_children),
+                  h('td.padded_number.column-zone-market.money-value', { style: market_style }, clean_market_price),
+                ]
 
         # --- IPO Shares Content ---
         ipo_share_text = n_ipo_shares.zero? ? '' : "#{n_ipo_shares * 10}%"
         ipo_click_handler = nil
         valid_ipo_shares = []
 
-       player_actions = if active_player && @game.round.respond_to?(:actions_for)
+        player_actions = if active_player && @game.round.respond_to?(:actions_for)
                            begin
                              @game.round.actions_for(active_player)
                            rescue StandardError
@@ -980,13 +978,13 @@ name_props = {
                        else
                          @game.stock_market.par_prices.sort_by(&:price)
                        end
-                       # Exclude par prices that have already filled all available slots (e.g. 1837 2-corp limit)
-                        if @game.respond_to?(:par_chart)
-                          par_prices = par_prices.reject do |sp|
-                          slots = @game.par_chart[sp]
-                          slots && slots.none?(&:nil?)
-                          end
-                        end
+          # Exclude par prices that have already filled all available slots (e.g. 1837 2-corp limit)
+          if @game.respond_to?(:par_chart)
+            par_prices = par_prices.reject do |sp|
+              slots = @game.par_chart[sp]
+              slots && slots.none?(&:nil?)
+            end
+          end
 
           unless par_prices.empty?
             ipo_click_handler = lambda {
@@ -1000,7 +998,7 @@ name_props = {
             store(:selected_company, corporation)
             Lib::Storage['selected_bid_corp'] = corporation.id
             update
-          } 
+          }
         elsif step.respond_to?(:can_buy?) && active_player
           ipo_shares = corporation.respond_to?(:ipo_shares) ? corporation.ipo_shares : []
           valid_ipo_shares = ipo_shares.select do |s|
@@ -1021,7 +1019,7 @@ name_props = {
                                 end
           end
         end
-can_issue = is_active_row && step&.current_actions&.include?('issue_shares')
+        can_issue = is_active_row && step&.current_actions&.include?('issue_shares')
         issuable_bundles = []
 
         if can_issue
@@ -1061,17 +1059,11 @@ can_issue = is_active_row && step&.current_actions&.include?('issue_shares')
         ipo_cell_children = []
         unless ipo_share_text.empty?
           card_classes = ['game-card']
-          if ipo_click_handler || can_issue
-            card_classes << 'action-buy'
-          end
+          card_classes << 'action-buy' if ipo_click_handler || can_issue
 
-          if ipo_click_handler
-            card_classes << 'clickable'
-          end
+          card_classes << 'clickable' if ipo_click_handler
 
           dropdowns = []
-
-        
 
           if Lib::Storage['buy_ipo_menu_corp'] == corporation.id && !valid_ipo_shares.empty?
             options = valid_ipo_shares.map do |share|
@@ -1097,7 +1089,7 @@ can_issue = is_active_row && step&.current_actions&.include?('issue_shares')
             }
             dropdowns << render_par_matrix_menu(corporation, par_prices, cancel_handler)
           end
-          
+
           ipo_cell_children << render_railcard(ipo_share_text, card_classes, ipo_click_handler, nil, dropdowns)
         end
 
@@ -1289,7 +1281,7 @@ can_issue = is_active_row && step&.current_actions&.include?('issue_shares')
         corporation_row_content << render_companies(corporation, 'var(--bg-corporate-zone)') if @show_privates
         corporation_row_content << h('td.padded_number.column-zone-corporate.money-value',
                                      { hook: Lib::MoneyAnimation.hook }, clean_rev)
-       
+
         row_content = []
         row_content.concat(players_row_content)
         row_content.concat(pool_row_content)
@@ -1301,115 +1293,6 @@ can_issue = is_active_row && step&.current_actions&.include?('issue_shares')
           *row_content,
         ])
       end
-
-
-
-      def render_corp_tooltip(corporation)
-        owner_name = corporation.owner ? corporation.owner.name : 'Unowned / Bank'
-        corp_type = if corporation.minor?
-        'Minor Corporation'
-        elsif corporation.respond_to?(:type) && corporation.type == :national
-        'National Railway'
-        else
-        'Major Corporation'
-        end
-
-
-        is_minor = corporation.respond_to?(:minor?) && corporation.minor?
-        is_unopened = !is_minor && corporation.respond_to?(:floated?) && !corporation.floated?
-        status_label = if is_minor
-                         corporation.owner ? 'Operating' : 'Available'
-                       elsif is_unopened
-                         (corporation.respond_to?(:ipoed) && corporation.ipoed) ? 'Unfloated (Parred)' : 'Unopened'
-                       else
-                         'Operating'
-                       end
-        market_price_str = corporation.share_price ? @game.format_currency(corporation.share_price.price) : 'Not on Market'
-        par_price_str = corporation.respond_to?(:par_price) && corporation.par_price ? @game.format_currency(corporation.par_price.price) : 'Not Parred'
-
-
-cash_str = is_unopened ? '0' : @game.format_currency(corporation.cash || 0)
-
-    details = []
-    details << "Status: #{status_label}"
-    details << "President / Owner: #{owner_name}"
-    details << "Treasury: #{cash_str}"
-    details << "Market Price: #{market_price_str} | Par: #{par_price_str}"
-
-    if corporation.respond_to?(:float_percent) && corporation.float_percent
-      shares_needed = corporation.respond_to?(:percent_to_float) ? "#{corporation.percent_to_float}% remaining" : ''
-      details << "Float Rule: #{corporation.float_percent}% #{'(' + shares_needed + ')' if is_unopened && !shares_needed.empty?}"
-    end
-
-    if corporation.respond_to?(:tokens) && corporation.tokens.any?
-      token_costs = corporation.tokens.map { |t| t.price ? @game.format_currency(t.price) : 'Free' }.join(', ')
-      details << "Tokens: #{corporation.tokens.size} (#{token_costs})"
-    end
-
-    if corporation.respond_to?(:coordinates) && corporation.coordinates
-      home_hex = Array(corporation.coordinates).join(', ')
-      details << "Home Hex: #{home_hex}"
-    end
-
-
-
-    abilities_text = []
-    if corporation.respond_to?(:abilities) && corporation.abilities&.any?
-      corporation.abilities.each do |a|
-        desc = a.respond_to?(:description) ? a.description : nil
-        abilities_text << desc if desc && !desc.empty?
-      end
-    end
-
-    h(:div, {
-      attrs: { class: 'status-corp-tooltip' },
-      style: {
-        display: 'none',
-        position: 'fixed',
-        top: '50%',
-        left: '50%',
-        transform: 'translate(-50%, -50%)',
-        width: '320px',
-        backgroundColor: '#ffffff',
-        border: '2px solid #333333',
-        borderRadius: '6px',
-        padding: '10px',
-        boxShadow: '0 8px 24px rgba(0,0,0,0.35)',
-        zIndex: '99999',
-        pointerEvents: 'none',
-        color: '#000000',
-        textAlign: 'left',
-        boxSizing: 'border-box',
-        whiteSpace: 'normal',
-        fontWeight: 'normal',
-      },
-    }, [
-      h(:div, {
-        style: {
-          backgroundColor: corporation.color || '#4c1d95',
-          color: corporation.text_color || '#ffffff',
-          fontWeight: 'bold',
-          fontSize: '0.85rem',
-          textAlign: 'center',
-          padding: '3px 6px',
-          marginBottom: '6px',
-          textTransform: 'uppercase',
-          borderRadius: '3px',
-          border: '1px solid #333',
-        },
-      }, corp_type),
-      h(:div, { style: { fontWeight: 'bold', fontSize: '1rem', textAlign: 'center', marginBottom: '6px', color: '#111' } }, "#{corporation.name} (#{corporation.id})"),
-      h(:div, { style: { borderTop: '1px solid #ddd', paddingTop: '6px', marginBottom: '6px' } },
-        details.map { |d| h(:div, { style: { fontSize: '0.78rem', marginBottom: '3px', color: '#222' } }, "• #{d}") }),
-      (if abilities_text.any?
-         h(:div, { style: { borderTop: '1px solid #ddd', paddingTop: '4px', marginTop: '4px' } }, [
-           h(:div, { style: { fontSize: '0.78rem', fontWeight: 'bold', color: '#b91c1c', marginBottom: '2px' } }, 'Special Abilities / Details:'),
-           *abilities_text.map { |ab| h(:div, { style: { fontSize: '0.75rem', color: '#333', lineHeight: '1.2' } }, ab) },
-         ])
-       end),
-    ].compact)
-  end
-
 
       def render_unplaced_tokens(corporation)
         return h(:span, '') unless corporation.respond_to?(:tokens)
@@ -1592,7 +1475,7 @@ cash_str = is_unopened ? '0' : @game.format_currency(corporation.cash || 0)
 
           not_own_company = active_ent && entity != active_ent
 
-        buy_company_step = nil
+          buy_company_step = nil
           is_buyable = false
 
           if @game.round.respond_to?(:steps)
@@ -1617,8 +1500,8 @@ cash_str = is_unopened ? '0' : @game.format_currency(corporation.cash || 0)
           end
 
           # Restrict buyable list to only show privates owned by the operating corporation's president
-          if active_ent.respond_to?(:corporation?) && active_ent.corporation?
-            is_buyable = false if !c.owner || c.owner != active_ent.owner
+          if active_ent.respond_to?(:corporation?) && active_ent.corporation? && (!c.owner || c.owner != active_ent.owner)
+            is_buyable = false
           end
 
           matching_special_action = valid_special_actions.find do |_, _action_class|
@@ -1647,7 +1530,7 @@ cash_str = is_unopened ? '0' : @game.format_currency(corporation.cash || 0)
             card_classes << 'action-buy'
             card_classes << 'clickable'
 
-           min_price = if buy_company_step.respond_to?(:min_price)
+            min_price = if buy_company_step.respond_to?(:min_price)
                           buy_company_step.min_price(c)
                         else
                           (c.respond_to?(:min_price) ? c.min_price : 1)
@@ -1673,21 +1556,13 @@ cash_str = is_unopened ? '0' : @game.format_currency(corporation.cash || 0)
 
           end
 
-            tooltip_card = build_company_tooltip(c)
+          tooltip_card = build_company_tooltip(c)
           wrapper_id = "company_wrapper_#{entity.id}_#{c.id}"
           wrapper_classes = ['status-company-wrapper']
 
           render_railcard(c.sym, card_classes, company_click_handler, tooltip_card, menu_dropdown, wrapper_id, wrapper_classes)
         end
-
-        h(:td, props, [
-          h(:style, {}, '
-            .status-company-wrapper:hover .status-company-tooltip {
-              display: block !important;
-            }
-          '),
-          *company_cards,
-        ])
+        h(:td, props, company_cards)
       end
 
       def render_player_companies
@@ -1929,21 +1804,19 @@ cash_str = is_unopened ? '0' : @game.format_currency(corporation.cash || 0)
               on: {},
             }
 
-           if can_afford
-            cell_props[:on][:click] = lambda {
-            Lib::Storage['par_menu_corp'] = nil
-            slot = if @game.respond_to?(:par_chart) && @game.par_chart[par_node]
-                     @game.par_chart[par_node].index(nil)
-                   end
+            if can_afford
+              cell_props[:on][:click] = lambda {
+                Lib::Storage['par_menu_corp'] = nil
+                slot = (@game.par_chart[par_node].index(nil) if @game.respond_to?(:par_chart) && @game.par_chart[par_node])
 
-            process_action(Engine::Action::Par.new(
-              active_player,
-              corporation: corporation,
-              share_price: par_node,
-              slot: slot
-            ))
-          }
-        end
+                process_action(Engine::Action::Par.new(
+                  active_player,
+                  corporation: corporation,
+                  share_price: par_node,
+                  slot: slot
+                ))
+              }
+            end
 
             cells << h(:td, cell_props, @game.format_currency(cost))
           end
@@ -1988,104 +1861,6 @@ cash_str = is_unopened ? '0' : @game.format_currency(corporation.cash || 0)
             }, 'Cancel'),
         ])
       end
-
-      def render_price_dialog(title, storage_key, min_price, max_price, on_confirm, on_cancel)
-  current_val = Lib::Storage[storage_key] || min_price.to_s
-
-  modal_box = h(:div, {
-    style: {
-      backgroundColor: '#ffffff',
-      border: '2px solid #333333',
-      borderRadius: '8px',
-      padding: '1.5rem',
-      boxShadow: '0px 10px 30px rgba(0,0,0,0.5)',
-      color: '#000000',
-      minWidth: '260px',
-      textAlign: 'center',
-      boxSizing: 'border-box',
-    },
-  }, [
-    h(:div, { style: { fontSize: '0.85rem', fontWeight: 'bold', marginBottom: '0.8rem', whiteSpace: 'nowrap' } }, title),
-    h(:input, {
-      key: storage_key,
-      style: {
-        display: 'block',
-        width: '100%',
-        marginBottom: '0.8rem',
-        boxSizing: 'border-box',
-        padding: '5px 8px',
-        fontSize: '1rem',
-        fontFamily: FONT_MONEY,
-        fontWeight: 'bold',
-        color: COLOR_MONEY,
-      },
-      props: { value: current_val },
-      attrs: { type: 'number', min: min_price.to_s, max: max_price.to_s },
-      on: { input: ->(event) { Lib::Storage[storage_key] = `#{event}.target.value`; update } },
-    }),
-    h(:button, {
-      style: {
-        display: 'block',
-        width: '100%',
-        marginBottom: '0.2rem',
-        cursor: 'pointer',
-        fontSize: '0.75rem',
-        fontWeight: 'bold',
-        padding: '3px 6px',
-        backgroundColor: '#007bff',
-        border: '1px solid #0056b3',
-        color: '#ffffff',
-        borderRadius: '3px',
-      },
-      on: {
-        click: lambda {
-          val = Lib::Storage[storage_key].to_i
-          val = min_price if val < min_price
-          val = max_price if val > max_price
-          Lib::Storage[storage_key] = nil
-          on_confirm.call(val)
-        },
-      },
-    }, 'Confirm'),
-    h(:button, {
-      style: {
-        display: 'block',
-        width: '100%',
-        cursor: 'pointer',
-        fontSize: '0.75rem',
-        padding: '3px 6px',
-        backgroundColor: '#e0e0e0',
-        border: '1px solid #999',
-        borderRadius: '3px',
-      },
-      on: {
-        click: lambda {
-          Lib::Storage[storage_key] = nil
-          on_cancel.call
-        },
-      },
-    }, 'Cancel'),
-  ])
-
-  h(:div, {
-    style: {
-      position: 'fixed',
-      top: '0',
-      left: '0',
-      width: '100vw',
-      height: '100vh',
-      backgroundColor: 'rgba(0, 0, 0, 0.4)',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      zIndex: '2147483647',
-    },
-    hook: {
-      insert: ->(vnode) { `document.body.appendChild(#{vnode}.elm);` },
-      destroy: ->(vnode) { `if (#{vnode}.elm && #{vnode}.elm.parentNode) { #{vnode}.elm.parentNode.removeChild(#{vnode}.elm); }` },
-    },
-  }, [modal_box])
-end
 
       private
 

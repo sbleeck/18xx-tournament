@@ -1,4 +1,5 @@
 # frozen_string_literal: true
+
 # backtick_javascript: true
 
 # rubocop:disable Layout/LineLength
@@ -49,24 +50,23 @@ module View
           (!entity.respond_to?(:corporation?) && !entity.respond_to?(:minor?) && (entity.respond_to?(:value) || entity.respond_to?(:desc)))
       end
 
-
       def render_action_row(label, children)
         is_arr = `Array.isArray(#{children})`
         items = (is_arr ? children : [children]).compact
         return nil if items.empty?
 
         h(:div, {
-          style: {
-            display: 'flex',
-            flexDirection: 'row',
-            alignItems: 'center',
-            justifyContent: 'flex-start',
-            gap: '0.4rem',
-            width: '100%',
-            maxWidth: '100%',
-            margin: '0 auto',
-          },
-        }, [
+            style: {
+              display: 'flex',
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'flex-start',
+              gap: '0.4rem',
+              width: '100%',
+              maxWidth: '100%',
+              margin: '0 auto',
+            },
+          }, [
           h(:span, { style: { fontSize: '0.92rem', fontWeight: 'bold', color: '#333', minWidth: '6.5rem', textAlign: 'left', flexShrink: '0' } }, label),
           h(:div, { style: { display: 'flex', flexDirection: 'row', flexWrap: 'nowrap', alignItems: 'center', gap: '0.3rem', overflowX: 'auto', maxWidth: '100%' } }, items),
         ])
@@ -82,16 +82,14 @@ module View
           next false unless is_owner
 
           c_actions = begin
-                        @game.round.actions_for(c)
-                      rescue StandardError
-                        []
-                      end || []
+            @game.round.actions_for(c)
+          rescue StandardError
+            []
+          end || []
 
           next false if c_actions.empty?
 
-          if @game.respond_to?(:entity_can_use_company?)
-            next false unless @game.entity_can_use_company?(entity, c)
-          end
+          next false if @game.respond_to?(:entity_can_use_company?) && !@game.entity_can_use_company?(entity, c)
 
           true
         end
@@ -103,10 +101,10 @@ module View
 
           click_handler = lambda {
             c_actions = begin
-                          @game.round.actions_for(c)
-                        rescue StandardError
-                          []
-                        end || []
+              @game.round.actions_for(c)
+            rescue StandardError
+              []
+            end || []
 
             if c_actions.include?('buy_shares') && (ability = @game.abilities(c, :exchange))
               step = @game.round.active_step(c)
@@ -163,26 +161,26 @@ module View
 
           render_railcard(
             card_text,
-            ['game-card', 'action-buy', 'clickable'],
+            %w[game-card action-buy clickable],
             click_handler,
             build_company_tooltip(c),
             nil,
             "cmd_company_#{c.id}",
-            ['cmd-company-wrapper', 'status-company-wrapper']
+            %w[cmd-company-wrapper status-company-wrapper]
           )
         end
 
         h(:div, {
-          style: {
-            width: '100%',
-            display: 'flex',
-            flexDirection: 'row',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: '0.4rem',
-            height: '1.8rem',
-          },
-        }, [
+            style: {
+              width: '100%',
+              display: 'flex',
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '0.4rem',
+              height: '1.8rem',
+            },
+          }, [
           h(:span, { style: { fontSize: '0.92rem', fontWeight: 'bold', color: '#333', flexShrink: '0' } }, 'Abilities:'),
           h(:div, { style: { display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.3rem', flexWrap: 'wrap' } }, ability_boxes),
         ])
@@ -235,9 +233,9 @@ module View
         elsif actions.include?('issue_shares')
           phase = :issue_shares
         elsif actions.include?('par') && (
-          (step&.respond_to?(:corporation_pending_par) && step.corporation_pending_par) ||
-          (step&.respond_to?(:corporation) && step.corporation) ||
-          (step&.respond_to?(:par_corporation) && step.par_corporation) ||
+          (step&.respond_to?(:corporation_pending_par) && step&.corporation_pending_par) ||
+          (step&.respond_to?(:corporation) && step&.corporation) ||
+          (step&.respond_to?(:par_corporation) && step&.par_corporation) ||
           (step&.respond_to?(:corporations) && step.corporations&.one?) ||
           (step&.current_entity || current_entity)&.corporation?
         )
@@ -290,9 +288,14 @@ module View
           return h(:div, { style: { display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%' } }, [
             h(:div, { style: { fontSize: '2rem', fontWeight: 'bold', marginBottom: '1rem' } }, 'End of Game'),
             h(:button, {
-              style: { padding: '1rem 2rem', fontSize: '1.2rem', backgroundColor: '#28a745', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' },
-              on: { click: -> { Lib::Storage['show_results_overlay'] = true; update } },
-            }, 'Show Results'),
+                style: { padding: '1rem 2rem', fontSize: '1.2rem', backgroundColor: '#28a745', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' },
+                on: {
+                  click: lambda {
+                    Lib::Storage['show_results_overlay'] = true
+                    update
+                  },
+                },
+              }, 'Show Results'),
             (Lib::Storage['show_results_overlay'] ? h(View::Game::Dashboard::ResultsOverlay, game: @game) : nil),
           ].compact)
         end
@@ -348,9 +351,25 @@ module View
             zone_2_content << h(:div, { style: { padding: '0.2rem', textAlign: 'center', color: '#666', fontStyle: 'italic', fontSize: '0.9rem' } }, '🔄 Computing optimal network tracks...')
           else
             zone_2_content << render_action_row('Revenue:', [
-              h(:button, { style: { width: '1.8rem', height: '1.8rem', fontSize: '1.1rem', fontWeight: 'bold', cursor: 'pointer', backgroundColor: '#e0e0e0', border: '1px solid #999', borderRadius: '4px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '0', lineHeight: '1' }, on: { click: -> { Lib::Storage[storage_key] = [current_revenue - 10, 0].max; update } } }, '-'),
+              h(:button, {
+                  style: { width: '1.8rem', height: '1.8rem', fontSize: '1.1rem', fontWeight: 'bold', cursor: 'pointer', backgroundColor: '#e0e0e0', border: '1px solid #999', borderRadius: '4px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '0', lineHeight: '1' },
+                  on: {
+                    click: lambda {
+                      Lib::Storage[storage_key] = [current_revenue - 10, 0].max
+                      update
+                    },
+                  },
+                }, '-'),
               h(:div, { style: { fontSize: '1.2rem', fontWeight: 'bold', color: COLOR_MONEY, fontFamily: FONT_MONEY, minWidth: '4.5rem', textAlign: 'center', height: '1.8rem', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', lineHeight: '1' } }, formatted_revenue),
-              h(:button, { style: { width: '1.8rem', height: '1.8rem', fontSize: '1.1rem', fontWeight: 'bold', cursor: 'pointer', backgroundColor: '#e0e0e0', border: '1px solid #999', borderRadius: '4px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '0', lineHeight: '1' }, on: { click: -> { Lib::Storage[storage_key] = current_revenue + 10; update } } }, '+'),
+              h(:button, {
+                  style: { width: '1.8rem', height: '1.8rem', fontSize: '1.1rem', fontWeight: 'bold', cursor: 'pointer', backgroundColor: '#e0e0e0', border: '1px solid #999', borderRadius: '4px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '0', lineHeight: '1' },
+                  on: {
+                    click: lambda {
+                      Lib::Storage[storage_key] = current_revenue + 10
+                      update
+                    },
+                  },
+                }, '+'),
             ])
           end
         elsif phase == :dividend
@@ -467,28 +486,28 @@ module View
 
           h(:div, { style: { width: '100%', marginTop: 'auto', display: 'flex', flexDirection: 'column', gap: '0.35rem', alignItems: 'center' } }, [
             h(:button, {
-              style: {
-                width: '100%',
-                height: '1.45rem',
-                minHeight: '1.45rem',
-                maxHeight: '1.45rem',
-                padding: '0',
-                fontSize: '0.85rem',
-                fontWeight: 'bold',
-                backgroundColor: advance_color,
-                color: advance_text_color,
-                border: 'none',
-                borderRadius: '4px',
-                cursor: advance_disabled ? 'not-allowed' : 'pointer',
-                boxShadow: advance_disabled ? 'none' : '0 1px 3px rgba(0,0,0,0.1)',
-                display: 'inline-flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                lineHeight: '1',
-              },
-              attrs: { disabled: advance_disabled },
-              on: { click: advance_action },
-            }, advance_text),
+                style: {
+                  width: '100%',
+                  height: '1.45rem',
+                  minHeight: '1.45rem',
+                  maxHeight: '1.45rem',
+                  padding: '0',
+                  fontSize: '0.85rem',
+                  fontWeight: 'bold',
+                  backgroundColor: advance_color,
+                  color: advance_text_color,
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: advance_disabled ? 'not-allowed' : 'pointer',
+                  boxShadow: advance_disabled ? 'none' : '0 1px 3px rgba(0,0,0,0.1)',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  lineHeight: '1',
+                },
+                attrs: { disabled: advance_disabled },
+                on: { click: advance_action },
+              }, advance_text),
 
             h(:div, { attrs: { class: 'cmd-undo-redo-wrapper' }, style: { width: '100%' } }, [
               h(:style, {}, '
@@ -598,11 +617,11 @@ module View
           }.call
         end
 
-h(:div, { style: { display: 'flex', flexDirection: 'row', width: '100%', height: '100%', boxSizing: 'border-box', backgroundColor: '#fff', position: 'relative', zIndex: 99999, overflow: 'visible' } }, [
-              zone_1,
-          zone_2,
-          zone_3,
-        ])
+        h(:div, { style: { display: 'flex', flexDirection: 'row', width: '100%', height: '100%', boxSizing: 'border-box', backgroundColor: '#fff', position: 'relative', zIndex: 99_999, overflow: 'visible' } }, [
+                      zone_1,
+                      zone_2,
+                      zone_3,
+                ])
       end
 
       def render_merger_step(step, entity, actions)
@@ -613,34 +632,39 @@ h(:div, { style: { display: 'flex', flexDirection: 'row', width: '100%', height:
 
         if actions.include?('convert')
           top_buttons << h(:button, {
-            style: { padding: '0.3rem 0.6rem', fontSize: '0.9rem', fontWeight: 'bold', backgroundColor: '#2563eb', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' },
-            on: { click: -> { process_action(Engine::Action::Convert.new(entity)) } },
-          }, 'Convert')
+                             style: { padding: '0.3rem 0.6rem', fontSize: '0.9rem', fontWeight: 'bold', backgroundColor: '#2563eb', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' },
+                             on: { click: -> { process_action(Engine::Action::Convert.new(entity)) } },
+                           }, 'Convert')
         end
 
         show_merge = Lib::Storage['show_merge_candidates'] || !actions.include?('convert')
 
         if actions.include?('merge')
           top_buttons << h(:button, {
-            style: { padding: '0.3rem 0.6rem', fontSize: '0.9rem', fontWeight: 'bold', backgroundColor: show_merge ? '#16a34a' : '#2563eb', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' },
-            on: { click: -> { Lib::Storage['show_merge_candidates'] = true; update } },
-          }, 'Merge')
+                             style: { padding: '0.3rem 0.6rem', fontSize: '0.9rem', fontWeight: 'bold', backgroundColor: show_merge ? '#16a34a' : '#2563eb', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' },
+                             on: {
+                               click: lambda {
+                                 Lib::Storage['show_merge_candidates'] = true
+                                 update
+                               },
+                             },
+                           }, 'Merge')
         end
 
         if actions.include?('take_loan')
           loan_amount = @game.respond_to?(:loan_value) ? @game.loan_value(entity) : (@game.loans.first&.amount || 0)
           btn_text = loan_amount.positive? ? "Take Loan (#{@game.format_currency(loan_amount)})" : 'Take Loan'
           top_buttons << h(:button, {
-            style: { padding: '0.3rem 0.6rem', fontSize: '0.9rem', fontWeight: 'bold', fontFamily: loan_amount.positive? ? FONT_MONEY : 'inherit', backgroundColor: '#dc2626', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' },
-            on: { click: -> { process_action(Engine::Action::TakeLoan.new(entity, loan: @game.loans.first)) } },
-          }, btn_text)
+                             style: { padding: '0.3rem 0.6rem', fontSize: '0.9rem', fontWeight: 'bold', fontFamily: loan_amount.positive? ? FONT_MONEY : 'inherit', backgroundColor: '#dc2626', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' },
+                             on: { click: -> { process_action(Engine::Action::TakeLoan.new(entity, loan: @game.loans.first)) } },
+                           }, btn_text)
         end
 
         if actions.include?('payoff_loan')
           top_buttons << h(:button, {
-            style: { padding: '0.3rem 0.6rem', fontSize: '0.9rem', fontWeight: 'bold', backgroundColor: '#2563eb', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' },
-            on: { click: -> { process_action(Engine::Action::PayoffLoan.new(entity, loan: entity.loans.first)) } },
-          }, 'Payoff Loan')
+                             style: { padding: '0.3rem 0.6rem', fontSize: '0.9rem', fontWeight: 'bold', backgroundColor: '#2563eb', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' },
+                             on: { click: -> { process_action(Engine::Action::PayoffLoan.new(entity, loan: entity.loans.first)) } },
+                           }, 'Payoff Loan')
         end
 
         components << render_action_row('Action:', top_buttons) if top_buttons.any?
@@ -667,7 +691,7 @@ h(:div, { style: { display: 'flex', flexDirection: 'row', width: '100%', height:
                 end
                 process_action(Engine::Action::Merge.new(entity, **kwargs))
               }
-              render_railcard(target.name, ['game-card', 'action-buy', 'clickable'], click_handler)
+              render_railcard(target.name, %w[game-card action-buy clickable], click_handler)
             end
             components << h(:div, { style: { fontSize: '0.85rem', fontWeight: 'bold', color: '#333', marginTop: '0.2rem', marginBottom: '0.2rem' } }, "Corporations that can merge with #{entity.name}:")
             components << h(:div, { style: { display: 'flex', flexDirection: 'row', flexWrap: 'wrap', gap: '0.3rem' } }, merge_boxes)
@@ -688,16 +712,24 @@ h(:div, { style: { display: 'flex', flexDirection: 'row', width: '100%', height:
           if buyable.any?
             buy_boxes = buyable.map do |raw_bundle|
               bundle = raw_bundle.respond_to?(:to_bundle) && !raw_bundle.respond_to?(:num_shares) ? raw_bundle.to_bundle : raw_bundle
-              num_shares = bundle.respond_to?(:num_shares) ? bundle.num_shares : (bundle.respond_to?(:shares) ? bundle.shares.size : 1)
+              num_shares = if bundle.respond_to?(:num_shares)
+                             bundle.num_shares
+                           else
+                             (bundle.respond_to?(:shares) ? bundle.shares.size : 1)
+                           end
               pct = bundle.respond_to?(:percent) ? bundle.percent : (num_shares * 10)
-              price = bundle.respond_to?(:price) ? bundle.price : (bundle.respond_to?(:share_price) ? bundle.share_price.price * num_shares : 0)
+              price = if bundle.respond_to?(:price)
+                        bundle.price
+                      else
+                        (bundle.respond_to?(:share_price) ? bundle.share_price.price * num_shares : 0)
+                      end
 
               click_handler = lambda {
                 action_class = actions.include?('corporate_buy_shares') ? Engine::Action::CorporateBuyShares : Engine::Action::BuyShares
                 process_action(action_class.new(entity, shares: bundle.respond_to?(:shares) ? bundle.shares : [bundle], share_price: bundle.respond_to?(:share_price) ? bundle.share_price : nil, percent: pct))
               }
               corp = bundle.respond_to?(:corporation) ? bundle.corporation : entity
-              render_railcard("Buy #{pct}% (#{@game.format_currency(price)})", ['game-card', 'action-buy', 'clickable'], click_handler)
+              render_railcard("Buy #{pct}% (#{@game.format_currency(price)})", %w[game-card action-buy clickable], click_handler)
             end
             components << render_action_row('Buy Treasury Share:', buy_boxes)
           else
@@ -708,7 +740,7 @@ h(:div, { style: { display: 'flex', flexDirection: 'row', width: '100%', height:
         h(:div, { style: { display: 'flex', flexDirection: 'column', gap: '0.4rem', width: '100%' } }, components)
       end
 
-      def render_bid(step, entity, actions, target = nil)
+      def render_bid(step, entity, _actions, target = nil)
         target ||= if step.respond_to?(:auctioning) && step.auctioning
                      step.auctioning
                    elsif Lib::Storage['selected_bid_corp']
@@ -786,16 +818,14 @@ h(:div, { style: { display: 'flex', flexDirection: 'row', width: '100%', height:
 
         storage_key = "cmd_bid_price_#{target.id}"
         stored_val = Lib::Storage[storage_key]&.to_i
-        current_bid = (stored_val && stored_val >= min_bid) ? stored_val : min_bid
+        current_bid = stored_val && stored_val >= min_bid ? stored_val : min_bid
 
         card_text = target.respond_to?(:sym) && target.sym ? target.sym : target.name
-        subtext = (target.respond_to?(:value) && target.value) ? @game.format_currency(target.value) : nil
+        subtext = target.respond_to?(:value) && target.value ? @game.format_currency(target.value) : nil
         tooltip = company?(target) ? build_company_tooltip(target) : nil
         badge_label = subtext ? "#{card_text} #{subtext}" : card_text
 
-
-
-        wrapper_classes = tooltip ? ['cmd-company-wrapper', 'status-company-wrapper'] : nil
+        wrapper_classes = tooltip ? %w[cmd-company-wrapper status-company-wrapper] : nil
         target_badge = render_railcard(
           badge_label,
           ['game-card'],
@@ -809,25 +839,30 @@ h(:div, { style: { display: 'flex', flexDirection: 'row', width: '100%', height:
         cancel_btn = nil
         if Lib::Storage['selected_bid_corp'] && !(step.respond_to?(:auctioning) && step.auctioning)
           cancel_btn = h(:button, {
-            style: {
-              padding: '0 6px',
-              height: '1.45rem',
-              minHeight: '1.45rem',
-              maxHeight: '1.45rem',
-              fontSize: '0.75rem',
-              backgroundColor: '#e0e0e0',
-              border: '1px solid #999',
-              borderRadius: '3px',
-              cursor: 'pointer',
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              lineHeight: '1',
-              boxSizing: 'border-box',
-              margin: '0',
-            },
-            on: { click: lambda { Lib::Storage['selected_bid_corp'] = nil; update } },
-          }, 'Cancel')
+                           style: {
+                             padding: '0 6px',
+                             height: '1.45rem',
+                             minHeight: '1.45rem',
+                             maxHeight: '1.45rem',
+                             fontSize: '0.75rem',
+                             backgroundColor: '#e0e0e0',
+                             border: '1px solid #999',
+                             borderRadius: '3px',
+                             cursor: 'pointer',
+                             display: 'inline-flex',
+                             alignItems: 'center',
+                             justifyContent: 'center',
+                             lineHeight: '1',
+                             boxSizing: 'border-box',
+                             margin: '0',
+                           },
+                           on: {
+                             click: lambda {
+                               Lib::Storage['selected_bid_corp'] = nil
+                               update
+                             },
+                           },
+                         }, 'Cancel')
         end
 
         row1_items = [
@@ -861,51 +896,56 @@ h(:div, { style: { display: 'flex', flexDirection: 'row', width: '100%', height:
 
         row2_items = [
           h(:input, {
-            style: {
-              width: '4.5rem',
-              height: '1.45rem',
-              minHeight: '1.45rem',
-              maxHeight: '1.45rem',
-              fontSize: '0.85rem',
-              textAlign: 'center',
-              boxSizing: 'border-box',
-              border: '1px solid #999',
-              borderRadius: '3px',
-              fontFamily: FONT_MONEY,
-              fontWeight: 'bold',
-              color: COLOR_MONEY,
-              padding: '0 4px',
-              margin: '0',
-              lineHeight: '1.45rem',
-            },
-            attrs: { type: 'number', min: min_bid.to_s, max: max_bid.to_s, step: min_increment.to_s },
-            props: { value: current_bid.to_s },
-            on: { input: lambda { |e| Lib::Storage[storage_key] = `#{e}.target.value`.to_i; update } },
-          }),
+              style: {
+                width: '4.5rem',
+                height: '1.45rem',
+                minHeight: '1.45rem',
+                maxHeight: '1.45rem',
+                fontSize: '0.85rem',
+                textAlign: 'center',
+                boxSizing: 'border-box',
+                border: '1px solid #999',
+                borderRadius: '3px',
+                fontFamily: FONT_MONEY,
+                fontWeight: 'bold',
+                color: COLOR_MONEY,
+                padding: '0 4px',
+                margin: '0',
+                lineHeight: '1.45rem',
+              },
+              attrs: { type: 'number', min: min_bid.to_s, max: max_bid.to_s, step: min_increment.to_s },
+              props: { value: current_bid.to_s },
+              on: {
+                input: lambda { |e|
+                  Lib::Storage[storage_key] = `#{e}.target.value`.to_i
+                  update
+                },
+              },
+            }),
           h(:button, {
-            style: {
-              height: '1.45rem',
-              minHeight: '1.45rem',
-              maxHeight: '1.45rem',
-              padding: '0 8px',
-              fontSize: '0.82rem',
-              fontWeight: 'bold',
-              fontFamily: FONT_MONEY,
-              backgroundColor: can_afford ? '#28a745' : '#ccc',
-              color: '#fff',
-              border: 'none',
-              borderRadius: '3px',
-              cursor: can_afford ? 'pointer' : 'not-allowed',
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              lineHeight: '1',
-              boxSizing: 'border-box',
-              margin: '0',
-            },
-            attrs: { disabled: !can_afford },
-            on: { click: confirm_bid },
-          }, "Bid #{@game.format_currency(current_bid)}"),
+              style: {
+                height: '1.45rem',
+                minHeight: '1.45rem',
+                maxHeight: '1.45rem',
+                padding: '0 8px',
+                fontSize: '0.82rem',
+                fontWeight: 'bold',
+                fontFamily: FONT_MONEY,
+                backgroundColor: can_afford ? '#28a745' : '#ccc',
+                color: '#fff',
+                border: 'none',
+                borderRadius: '3px',
+                cursor: can_afford ? 'pointer' : 'not-allowed',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                lineHeight: '1',
+                boxSizing: 'border-box',
+                margin: '0',
+              },
+              attrs: { disabled: !can_afford },
+              on: { click: confirm_bid },
+            }, "Bid #{@game.format_currency(current_bid)}"),
         ]
 
         h(:div, { style: { display: 'flex', flexDirection: 'column', gap: '0.3rem', width: '100%' } }, [
@@ -921,11 +961,19 @@ h(:div, { style: { display: 'flex', flexDirection: 'row', width: '100%', height:
           bids_for_item = step.bids[item]
           if bids_for_item.is_a?(Array)
             found_bid = bids_for_item.find do |b|
-              b_entity = b.respond_to?(:entity) ? b.entity : (b.is_a?(Hash) ? b[:entity] : nil)
+              b_entity = if b.respond_to?(:entity)
+                           b.entity
+                         else
+                           (b.is_a?(Hash) ? b[:entity] : nil)
+                         end
               b_entity == player
             end
             if found_bid
-              return found_bid.respond_to?(:price) ? found_bid.price : (found_bid.is_a?(Hash) ? found_bid[:price] : nil)
+              if found_bid.respond_to?(:price)
+                return found_bid.price
+              else
+                return (found_bid.is_a?(Hash) ? found_bid[:price] : nil)
+              end
             end
           end
         end
@@ -1002,9 +1050,7 @@ h(:div, { style: { display: 'flex', flexDirection: 'row', width: '100%', height:
           can_afford = (entity.respond_to?(:cash) ? entity.cash : 0) >= cost
 
           click_handler = lambda {
-            slot = if @game.respond_to?(:par_chart) && @game.par_chart[price]
-                     @game.par_chart[price].index(nil)
-                   end
+            slot = (@game.par_chart[price].index(nil) if @game.respond_to?(:par_chart) && @game.par_chart[price])
 
             args = {
               corporation: corporation,
@@ -1016,38 +1062,38 @@ h(:div, { style: { display: 'flex', flexDirection: 'row', width: '100%', height:
           }
 
           h(:button, {
-            attrs: { disabled: !can_afford },
-            style: {
-              height: '1.45rem',
-              padding: '0 8px',
-              fontSize: '0.82rem',
-              fontWeight: 'bold',
-              fontFamily: FONT_MONEY,
-              backgroundColor: can_afford ? '#f8f9fa' : '#e9ecef',
-              color: can_afford ? COLOR_MONEY : '#9ca3af',
-              border: can_afford ? "1px solid #{COLOR_MONEY}" : '1px solid #ced4da',
-              borderRadius: '4px',
-              cursor: can_afford ? 'pointer' : 'not-allowed',
-              opacity: can_afford ? '1' : '0.6',
-              whiteSpace: 'nowrap',
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              boxShadow: can_afford ? '0 1px 2px rgba(0,0,0,0.05)' : 'none',
-            },
-            on: can_afford ? { click: click_handler } : {},
-          }, label)
+              attrs: { disabled: !can_afford },
+              style: {
+                height: '1.45rem',
+                padding: '0 8px',
+                fontSize: '0.82rem',
+                fontWeight: 'bold',
+                fontFamily: FONT_MONEY,
+                backgroundColor: can_afford ? '#f8f9fa' : '#e9ecef',
+                color: can_afford ? COLOR_MONEY : '#9ca3af',
+                border: can_afford ? "1px solid #{COLOR_MONEY}" : '1px solid #ced4da',
+                borderRadius: '4px',
+                cursor: can_afford ? 'pointer' : 'not-allowed',
+                opacity: can_afford ? '1' : '0.6',
+                whiteSpace: 'nowrap',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                boxShadow: can_afford ? '0 1px 2px rgba(0,0,0,0.05)' : 'none',
+              },
+              on: can_afford ? { click: click_handler } : {},
+            }, label)
         end
 
         h(:div, {
-          style: {
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '0.35rem',
-            width: '100%',
-            alignItems: 'flex-start',
-          },
-        }, [
+            style: {
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '0.35rem',
+              width: '100%',
+              alignItems: 'flex-start',
+            },
+          }, [
           render_action_row('Select Par Price:', [corp_badge, *buttons]),
         ])
       end
@@ -1135,7 +1181,15 @@ h(:div, { style: { display: 'flex', flexDirection: 'row', width: '100%', height:
                     elsif can_buy
                       false
                     elsif step.respond_to?(:may_bid?)
-                      min_p = step.respond_to?(:min_bid) ? (step.min_bid(item) rescue 0) : 0
+                      min_p = if step.respond_to?(:min_bid)
+                                begin
+                                  step.min_bid(item)
+                                rescue StandardError
+                                  0
+                                end
+                              else
+                                0
+                              end
                       step.may_bid?(item) && ((entity.respond_to?(:cash) ? entity.cash : 0) >= min_p)
                     elsif step.respond_to?(:can_bid?)
                       begin
@@ -1144,7 +1198,15 @@ h(:div, { style: { display: 'flex', flexDirection: 'row', width: '100%', height:
                         step.can_bid?(entity)
                       end
                     elsif actions.include?('bid')
-                      min_b = step.respond_to?(:min_bid) ? (step.min_bid(item) rescue step.min_bid) : (item.value || 10)
+                      min_b = if step.respond_to?(:min_bid)
+                                begin
+                                  step.min_bid(item)
+                                rescue StandardError
+                                  step.min_bid
+                                end
+                              else
+                                (item.value || 10)
+                              end
                       (entity.respond_to?(:cash) ? entity.cash : 0) >= min_b
                     else
                       false
@@ -1154,92 +1216,90 @@ h(:div, { style: { display: 'flex', flexDirection: 'row', width: '100%', height:
 
           buy_btn = if can_buy
                       h(:button, {
-                        style: {
-                          padding: '0 5px',
-                          height: '1.35rem',
-                          fontSize: '0.75rem',
-                          fontWeight: 'bold',
-                          fontFamily: FONT_MONEY,
-                          backgroundColor: '#28a745',
-                          color: '#fff',
-                          border: 'none',
-                          borderRadius: '3px',
-                          cursor: 'pointer',
-                          whiteSpace: 'nowrap',
-                        },
-                        on: {
-                          click: lambda {
-                            if actions.include?('buy_company')
-                              process_action(Engine::Action::BuyCompany.new(entity, company: item, price: buy_price))
-                            elsif actions.include?('bid')
-                              bid_args = { price: buy_price }
-                              if item.respond_to?(:company?) && item.company?
-                                bid_args[:company] = item
-                              elsif item.is_a?(Engine::Minor)
-                                bid_args[:minor] = item
-                              else
-                                bid_args[:corporation] = item
-                              end
-                              process_action(Engine::Action::Bid.new(entity, **bid_args))
-                            end
+                          style: {
+                            padding: '0 5px',
+                            height: '1.35rem',
+                            fontSize: '0.75rem',
+                            fontWeight: 'bold',
+                            fontFamily: FONT_MONEY,
+                            backgroundColor: '#28a745',
+                            color: '#fff',
+                            border: 'none',
+                            borderRadius: '3px',
+                            cursor: 'pointer',
+                            whiteSpace: 'nowrap',
                           },
-                        },
-                      }, "Buy #{@game.format_currency(buy_price)}")
+                          on: {
+                            click: lambda {
+                              if actions.include?('buy_company')
+                                process_action(Engine::Action::BuyCompany.new(entity, company: item, price: buy_price))
+                              elsif actions.include?('bid')
+                                bid_args = { price: buy_price }
+                                if item.respond_to?(:company?) && item.company?
+                                  bid_args[:company] = item
+                                elsif item.is_a?(Engine::Minor)
+                                  bid_args[:minor] = item
+                                else
+                                  bid_args[:corporation] = item
+                                end
+                                process_action(Engine::Action::Bid.new(entity, **bid_args))
+                              end
+                            },
+                          },
+                        }, "Buy #{@game.format_currency(buy_price)}")
                     elsif can_choose
                       h(:button, {
-                        style: {
-                          padding: '0 5px',
-                          height: '1.35rem',
-                          fontSize: '0.75rem',
-                          fontWeight: 'bold',
-                          backgroundColor: '#6f42c1',
-                          color: '#fff',
-                          border: 'none',
-                          borderRadius: '3px',
-                          cursor: 'pointer',
-                          whiteSpace: 'nowrap',
-                        },
-                        on: {
-                          click: lambda {
-                            choice = item.respond_to?(:id) ? item.id : item
-                            process_action(Engine::Action::Choose.new(entity, choice: choice))
+                          style: {
+                            padding: '0 5px',
+                            height: '1.35rem',
+                            fontSize: '0.75rem',
+                            fontWeight: 'bold',
+                            backgroundColor: '#6f42c1',
+                            color: '#fff',
+                            border: 'none',
+                            borderRadius: '3px',
+                            cursor: 'pointer',
+                            whiteSpace: 'nowrap',
                           },
-                        },
-                      }, 'Pick')
+                          on: {
+                            click: lambda {
+                              choice = item.respond_to?(:id) ? item.id : item
+                              process_action(Engine::Action::Choose.new(entity, choice: choice))
+                            },
+                          },
+                        }, 'Pick')
                     end
 
           bid_btn = if can_bid
                       h(:button, {
-                        style: {
-                          padding: '0 5px',
-                          height: '1.35rem',
-                          fontSize: '0.75rem',
-                          fontWeight: 'bold',
-                          backgroundColor: is_selected ? '#1d4ed8' : '#2563eb',
-                          color: '#fff',
-                          border: 'none',
-                          borderRadius: '3px',
-                          cursor: 'pointer',
-                          whiteSpace: 'nowrap',
-                        },
-                        on: {
-                          click: lambda {
-                            Lib::Storage['selected_bid_corp'] = item.id
-                            update
+                          style: {
+                            padding: '0 5px',
+                            height: '1.35rem',
+                            fontSize: '0.75rem',
+                            fontWeight: 'bold',
+                            backgroundColor: is_selected ? '#1d4ed8' : '#2563eb',
+                            color: '#fff',
+                            border: 'none',
+                            borderRadius: '3px',
+                            cursor: 'pointer',
+                            whiteSpace: 'nowrap',
                           },
-                        },
-                      }, is_selected ? 'Bidding' : 'Bid')
+                          on: {
+                            click: lambda {
+                              Lib::Storage['selected_bid_corp'] = item.id
+                              update
+                            },
+                          },
+                        }, is_selected ? 'Bidding' : 'Bid')
                     end
 
-card_sym = item.respond_to?(:sym) ? item.sym : item.name
-tooltip = build_entity_tooltip(item)
-          subtext = (item.respond_to?(:value) && item.value) ? @game.format_currency(item.value) : nil
+          card_sym = item.respond_to?(:sym) ? item.sym : item.name
+          tooltip = build_entity_tooltip(item)
+          subtext = item.respond_to?(:value) && item.value ? @game.format_currency(item.value) : nil
           card_classes = ['game-card']
           card_classes << 'action-buy' if can_buy || can_bid || can_choose || is_active
           card_classes << 'clickable' if can_buy || can_bid || can_choose
           card_label = subtext ? "#{card_sym} #{subtext}" : card_sym
-
-         
 
           click_handler = nil
           if can_buy
@@ -1264,12 +1324,13 @@ tooltip = build_entity_tooltip(item)
               process_action(Engine::Action::Choose.new(entity, choice: choice))
             }
           elsif can_bid
-            click_handler = -> { Lib::Storage['selected_bid_corp'] = item.id; update }
+            click_handler = lambda {
+              Lib::Storage['selected_bid_corp'] = item.id
+              update
+            }
           end
 
-
-
-          wrapper_classes = tooltip ? ['cmd-company-wrapper', 'status-company-wrapper'] : nil
+          wrapper_classes = tooltip ? %w[cmd-company-wrapper status-company-wrapper] : nil
           wrapper_id = "cmd_auction_#{item.id}"
           item_card_element = render_railcard(
             card_label,
@@ -1283,158 +1344,158 @@ tooltip = build_entity_tooltip(item)
 
           row_cells = [
             h(:td, {
-              style: {
-                padding: '3px 4px 3px 6px',
-                textAlign: 'left',
-                borderBottom: '1px solid #e2e8f0',
-                whiteSpace: 'nowrap',
-                width: '1%',
-              },
-            }, [item_card_element]),
+                style: {
+                  padding: '3px 4px 3px 6px',
+                  textAlign: 'left',
+                  borderBottom: '1px solid #e2e8f0',
+                  whiteSpace: 'nowrap',
+                  width: '1%',
+                },
+              }, [item_card_element]),
             h(:td, {
-              style: {
-                padding: '3px 4px',
-                textAlign: 'left',
-                borderBottom: '1px solid #e2e8f0',
-                width: '4.6rem',
-                minWidth: '4.6rem',
-                whiteSpace: 'nowrap',
-              },
-            }, [buy_btn].compact),
+                style: {
+                  padding: '3px 4px',
+                  textAlign: 'left',
+                  borderBottom: '1px solid #e2e8f0',
+                  width: '4.6rem',
+                  minWidth: '4.6rem',
+                  whiteSpace: 'nowrap',
+                },
+              }, [buy_btn].compact),
             h(:td, {
-              style: {
-                padding: '3px 4px',
-                textAlign: 'left',
-                borderBottom: '1px solid #e2e8f0',
-                width: '3.2rem',
-                minWidth: '3.2rem',
-                whiteSpace: 'nowrap',
-              },
-            }, [bid_btn].compact),
+                style: {
+                  padding: '3px 4px',
+                  textAlign: 'left',
+                  borderBottom: '1px solid #e2e8f0',
+                  width: '3.2rem',
+                  minWidth: '3.2rem',
+                  whiteSpace: 'nowrap',
+                },
+              }, [bid_btn].compact),
           ]
 
           players.each do |p|
             cell_content = nil
             if is_owned
-              if item.owner == p
-                cell_content = h(:span, {
-                  style: {
-                    backgroundColor: '#16a34a',
-                    color: '#ffffff',
-                    padding: '2px 5px',
-                    borderRadius: '3px',
-                    fontWeight: 'bold',
-                    fontSize: '0.72rem',
-                    display: 'inline-block',
-                    lineHeight: '1.2',
-                  },
-                }, 'OWNED')
-              else
-                cell_content = h(:span, { style: { color: '#cbd5e1' } }, '-')
-              end
+              cell_content = if item.owner == p
+                               h(:span, {
+                                   style: {
+                                     backgroundColor: '#16a34a',
+                                     color: '#ffffff',
+                                     padding: '2px 5px',
+                                     borderRadius: '3px',
+                                     fontWeight: 'bold',
+                                     fontSize: '0.72rem',
+                                     display: 'inline-block',
+                                     lineHeight: '1.2',
+                                   },
+                                 }, 'OWNED')
+                             else
+                               h(:span, { style: { color: '#cbd5e1' } }, '-')
+                             end
             else
               p_bid = player_bid_for(step, item, p)
               is_leader = (p == high_bidder && high_amount && high_amount.positive?)
 
-              if is_leader
-                cell_content = h(:span, {
-                  style: {
-                    backgroundColor: '#f3e8ff',
-                    color: COLOR_MONEY,
-                    border: '1px solid #d8b4fe',
-                    padding: '2px 5px',
-                    borderRadius: '3px',
-                    fontWeight: 'bold',
-                    fontSize: '0.75rem',
-                    fontFamily: FONT_MONEY,
-                    display: 'inline-block',
-                    lineHeight: '1.2',
-                  },
-                }, @game.format_currency(high_amount))
-              elsif p_bid && p_bid.positive?
-                cell_content = h(:span, {
-                  style: {
-                    color: '#9ca3af',
-                    textDecoration: 'line-through',
-                    fontSize: '0.75rem',
-                    fontFamily: FONT_MONEY,
-                  },
-                }, @game.format_currency(p_bid))
-              else
-                cell_content = h(:span, { style: { color: '#cbd5e1' } }, '-')
-              end
+              cell_content = if is_leader
+                               h(:span, {
+                                   style: {
+                                     backgroundColor: '#f3e8ff',
+                                     color: COLOR_MONEY,
+                                     border: '1px solid #d8b4fe',
+                                     padding: '2px 5px',
+                                     borderRadius: '3px',
+                                     fontWeight: 'bold',
+                                     fontSize: '0.75rem',
+                                     fontFamily: FONT_MONEY,
+                                     display: 'inline-block',
+                                     lineHeight: '1.2',
+                                   },
+                                 }, @game.format_currency(high_amount))
+                             elsif p_bid && p_bid.positive?
+                               h(:span, {
+                                   style: {
+                                     color: '#9ca3af',
+                                     textDecoration: 'line-through',
+                                     fontSize: '0.75rem',
+                                     fontFamily: FONT_MONEY,
+                                   },
+                                 }, @game.format_currency(p_bid))
+                             else
+                               h(:span, { style: { color: '#cbd5e1' } }, '-')
+                             end
             end
 
             row_cells << h(:td, {
-              style: {
-                padding: '3px 4px',
-                textAlign: 'center',
-                borderBottom: '1px solid #e2e8f0',
-                backgroundColor: is_selected ? '#f8faff' : 'transparent',
-                width: '4.8rem',
-                minWidth: '4.2rem',
-                maxWidth: '5.5rem',
-              },
-            }, [cell_content])
+                             style: {
+                               padding: '3px 4px',
+                               textAlign: 'center',
+                               borderBottom: '1px solid #e2e8f0',
+                               backgroundColor: is_selected ? '#f8faff' : 'transparent',
+                               width: '4.8rem',
+                               minWidth: '4.2rem',
+                               maxWidth: '5.5rem',
+                             },
+                           }, [cell_content])
           end
 
           row_bg = if is_active
-                    '#fffbeb'
-                  elsif is_selected
-                    '#eff6ff'
-                  else
-                    'transparent'
-                  end
+                     '#fffbeb'
+                   elsif is_selected
+                     '#eff6ff'
+                   else
+                     'transparent'
+                   end
 
           h(:tr, { style: { backgroundColor: row_bg } }, row_cells)
         end
 
         table_element = h(:div, {
-          style: {
-            width: '100%',
-            overflowX: 'auto',
-            border: '1px solid #e2e8f0',
-            borderRadius: '4px',
-            backgroundColor: '#ffffff',
-            boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
-          },
-        }, [
+                            style: {
+                              width: '100%',
+                              overflowX: 'auto',
+                              border: '1px solid #e2e8f0',
+                              borderRadius: '4px',
+                              backgroundColor: '#ffffff',
+                              boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+                            },
+                          }, [
           h(:table, {
-            style: {
-              width: '100%',
-              borderCollapse: 'collapse',
-              fontSize: '0.8rem',
-              fontFamily: 'inherit',
-            },
-          }, [
+              style: {
+                width: '100%',
+                borderCollapse: 'collapse',
+                fontSize: '0.8rem',
+                fontFamily: 'inherit',
+              },
+            }, [
             h(:thead, [
               h(:tr, [
                 h(:th, {
-                  attrs: { colspan: '3' },
-                  style: {
-                    padding: '4px 6px',
-                    textAlign: 'left',
-                    borderBottom: '2px solid #cbd5e1',
-                    backgroundColor: '#f8fafc',
-                    color: '#475569',
-                    fontWeight: 'bold',
-                  },
-                }, 'Private / Minor'),
+                    attrs: { colspan: '3' },
+                    style: {
+                      padding: '4px 6px',
+                      textAlign: 'left',
+                      borderBottom: '2px solid #cbd5e1',
+                      backgroundColor: '#f8fafc',
+                      color: '#475569',
+                      fontWeight: 'bold',
+                    },
+                  }, 'Private / Minor'),
                 *players.map do |p|
                   is_p_turn = (p == (step.respond_to?(:current_entity) ? step.current_entity : current_entity))
                   h(:th, {
-                    style: {
-                      padding: '4px 4px',
-                      textAlign: 'center',
-                      borderBottom: '2px solid #cbd5e1',
-                      backgroundColor: is_p_turn ? '#e0f2fe' : '#f8fafc',
-                      color: is_p_turn ? '#0369a1' : '#475569',
-                      fontWeight: is_p_turn ? 'bold' : '600',
-                      width: '4.8rem',
-                      minWidth: '4.2rem',
-                      maxWidth: '5.5rem',
-                    },
-                  }, p.name)
+                      style: {
+                        padding: '4px 4px',
+                        textAlign: 'center',
+                        borderBottom: '2px solid #cbd5e1',
+                        backgroundColor: is_p_turn ? '#e0f2fe' : '#f8fafc',
+                        color: is_p_turn ? '#0369a1' : '#475569',
+                        fontWeight: is_p_turn ? 'bold' : '600',
+                        width: '4.8rem',
+                        minWidth: '4.2rem',
+                        maxWidth: '5.5rem',
+                      },
+                    }, p.name)
                 end,
               ]),
             ]),
@@ -1442,36 +1503,36 @@ tooltip = build_entity_tooltip(item)
             h(:tfoot, [
               h(:tr, [
                 h(:td, {
-                  attrs: { colspan: '3' },
-                  style: {
-                    padding: '4px 6px',
-                    fontWeight: 'bold',
-                    textAlign: 'left',
-                    borderTop: '2px solid #cbd5e1',
-                    color: '#334155',
-                    fontSize: '0.8rem',
-                  },
-                }, 'Cash:'),
+                    attrs: { colspan: '3' },
+                    style: {
+                      padding: '4px 6px',
+                      fontWeight: 'bold',
+                      textAlign: 'left',
+                      borderTop: '2px solid #cbd5e1',
+                      color: '#334155',
+                      fontSize: '0.8rem',
+                    },
+                  }, 'Cash:'),
                 *players.map do |p|
                   h(:td, {
-                    style: {
-                      padding: '4px 4px',
-                      textAlign: 'center',
-                      borderTop: '2px solid #cbd5e1',
-                      verticalAlign: 'middle',
-                      width: '4.8rem',
-                      minWidth: '4.2rem',
-                      maxWidth: '5.5rem',
-                    },
-                  }, [
-                    h(:span, {
                       style: {
-                        fontWeight: 'bold',
-                        color: COLOR_MONEY,
-                        fontSize: '0.85rem',
-                        fontFamily: FONT_MONEY,
+                        padding: '4px 4px',
+                        textAlign: 'center',
+                        borderTop: '2px solid #cbd5e1',
+                        verticalAlign: 'middle',
+                        width: '4.8rem',
+                        minWidth: '4.2rem',
+                        maxWidth: '5.5rem',
                       },
-                    }, @game.format_currency(p.cash)),
+                    }, [
+                    h(:span, {
+                        style: {
+                          fontWeight: 'bold',
+                          color: COLOR_MONEY,
+                          fontSize: '0.85rem',
+                          fontFamily: FONT_MONEY,
+                        },
+                      }, @game.format_currency(p.cash)),
                   ])
                 end,
               ]),
@@ -1480,18 +1541,18 @@ tooltip = build_entity_tooltip(item)
         ])
 
         bid_detail_row = if selected_item && (actions.include?('bid') || active_auction_item)
-                          render_bid(step, entity, actions, selected_item)
-                        end
+                           render_bid(step, entity, actions, selected_item)
+                         end
 
         h(:div, {
-          style: {
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '0.35rem',
-            width: '100%',
-            alignItems: 'flex-start',
-          },
-        }, [
+            style: {
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '0.35rem',
+              width: '100%',
+              alignItems: 'flex-start',
+            },
+          }, [
           table_element,
           bid_detail_row,
         ].compact)
@@ -1501,10 +1562,10 @@ tooltip = build_entity_tooltip(item)
         return nil unless entity
 
         operating_player = if entity.respond_to?(:player?) && entity.player?
-                            entity
-                          elsif entity.respond_to?(:owner) && entity.owner
-                            entity.owner
-                          end
+                             entity
+                           elsif entity.respond_to?(:owner) && entity.owner
+                             entity.owner
+                           end
 
         return nil unless operating_player
 
@@ -1544,63 +1605,46 @@ tooltip = build_entity_tooltip(item)
                         buy_company_step.max_price(entity, c)
                       else
                         (if c.respond_to?(:max_price)
-                          c.max_price
-                        else
-                          (entity.respond_to?(:cash) ? entity.cash : 0)
-                        end)
+                           c.max_price
+                         else
+                           (entity.respond_to?(:cash) ? entity.cash : 0)
+                         end)
                       end
 
-          menu_storage_key = "cmd_buy_company_menu_#{c.id}"
-          price_storage_key = "cmd_buy_company_price_#{c.id}"
-
           company_click_handler = lambda {
-            Lib::Storage[menu_storage_key] = true
-            Lib::Storage[price_storage_key] = entity.respond_to?(:cash) ? entity.cash : 0
-            update
-          }
-          
-menu_dropdown = nil
-          if Lib::Storage[menu_storage_key]
+            `var p = document.getElementById('railcard-portal'); if (p) { p.style.display = 'none'; p.innerHTML = ''; }`
             menu_title = "Buy #{c.name} from #{owner_name} (#{min_price}-#{max_price}):"
-            on_confirm = lambda do |price_val|
-              Lib::Storage[menu_storage_key] = nil
-              process_action(Engine::Action::BuyCompany.new(
-                entity,
-                company: c,
-                price: price_val
-              ))
-            end
-            on_cancel = lambda do
-              Lib::Storage[menu_storage_key] = nil
-              update
-            end
-            menu_dropdown = render_price_dialog(
+            default_price = [entity.respond_to?(:cash) ? entity.cash : min_price, max_price].min
+            default_price = [default_price, min_price].max
+
+            show_price_dialog(
               menu_title,
-              price_storage_key,
               min_price,
               max_price,
-              on_confirm,
-              on_cancel
+              default_price,
+              lambda { |price_val|
+                process_action(Engine::Action::BuyCompany.new(
+                  entity,
+                  company: c,
+                  price: price_val
+                ))
+              }
             )
-          end
+          }
 
           card_text = (c.sym || c.name).to_s
           tooltip = build_company_tooltip(c)
 
-
-          wrapper_classes = tooltip ? ['cmd-company-wrapper', 'status-company-wrapper'] : nil
-          wrapper_id = "cmd_buy_company_#{c.id}"
-
+          wrapper_classes = tooltip ? %w[cmd-company-wrapper status-company-wrapper] : nil
           render_railcard(
             card_text,
-            ['game-card', 'action-buy', 'clickable'],
+            %w[game-card action-buy clickable],
             company_click_handler,
             tooltip,
-            menu_dropdown,
-            wrapper_id,
+            nil,
+            nil,
             wrapper_classes
           )
-
         end.compact
 
         return nil if company_boxes.empty?
@@ -1627,7 +1671,7 @@ menu_dropdown = nil
               train: train
             ))
           }
-          train_boxes << render_railcard(train.name, ['game-card', 'action-sell', 'clickable'], click_handler)
+          train_boxes << render_railcard(train.name, %w[game-card action-sell clickable], click_handler)
         end
 
         return nil if train_boxes.empty?
@@ -1679,7 +1723,7 @@ menu_dropdown = nil
           if btn_text
             if (m = btn_text.match(/\(([^)]+)\)/))
               cost_str = "(#{m[1]})"
-            elsif (m = btn_text.match(/([+-]?\d+[\w]*)/))
+            elsif (m = btn_text.match(/([+-]?\d+\w*)/))
               cost_str = "(#{m[1]})"
             end
           end
@@ -1702,7 +1746,7 @@ menu_dropdown = nil
           end
 
           surrender_label = cost_str.empty? ? train.name : "#{train.name} #{cost_str.strip}"
-          train_boxes << render_railcard(surrender_label, ['game-card', 'action-sell', 'clickable'], click_handler)
+          train_boxes << render_railcard(surrender_label, %w[game-card action-sell clickable], click_handler)
         end
 
         return nil if train_boxes.empty?
@@ -1759,7 +1803,7 @@ menu_dropdown = nil
                   variant: variant_param
                 ))
               }
-              train_classes = ['game-card', 'action-buy']
+              train_classes = %w[game-card action-buy]
               train_classes << 'clickable' if can_afford
               train_label = "#{variant_str} (Bank: #{@game.format_currency(price)})"
               train_boxes << render_railcard(train_label, train_classes, (can_afford ? click_handler : nil))
@@ -1795,10 +1839,7 @@ menu_dropdown = nil
               update
             }
 
-
-
-
-menu_dropdown = nil
+            menu_dropdown = nil
             if Lib::Storage[menu_storage_key]
               menu_title = "Buy #{t.name} from #{c.name} (#{min_price}-#{max_price}):"
               on_confirm = lambda do |price_val|
@@ -1823,10 +1864,7 @@ menu_dropdown = nil
               )
             end
 
-
-
-
-            train_boxes << render_railcard("#{t.name} (#{c.id || c.name})", ['game-card', 'action-buy', 'clickable'], train_click_handler, nil, menu_dropdown)
+            train_boxes << render_railcard("#{t.name} (#{c.id || c.name})", %w[game-card action-buy clickable], train_click_handler, nil, menu_dropdown)
           end
         end
 
@@ -1901,10 +1939,10 @@ menu_dropdown = nil
 
             click_handler = lambda {
               actions = begin
-                          @game.round.actions_for(entity)
-                        rescue StandardError
-                          []
-                        end || []
+                @game.round.actions_for(entity)
+              rescue StandardError
+                []
+              end || []
               if actions.include?('issue_shares')
                 process_action(Engine::Action::IssueShares.new(
                   entity,
@@ -1925,7 +1963,7 @@ menu_dropdown = nil
               end
             }
 
-            render_railcard("#{pct_str} #{price_str}", ['game-card', 'action-sell', 'clickable'], click_handler)
+            render_railcard("#{pct_str} #{price_str}", %w[game-card action-sell clickable], click_handler)
           end
           rows << render_action_row('Issue:', issue_buttons)
         elsif (@game.round.actions_for(entity) || []).include?('issue_shares')
@@ -1957,10 +1995,10 @@ menu_dropdown = nil
 
             click_handler = lambda {
               actions = begin
-                          @game.round.actions_for(entity)
-                        rescue StandardError
-                          []
-                        end || []
+                @game.round.actions_for(entity)
+              rescue StandardError
+                []
+              end || []
               action_class = actions.include?('corporate_buy_shares') ? Engine::Action::CorporateBuyShares : Engine::Action::BuyShares
               process_action(action_class.new(
                 entity,
@@ -1970,7 +2008,7 @@ menu_dropdown = nil
               ))
             }
 
-            render_railcard("#{pct_str} #{price_str}", ['game-card', 'action-buy', 'clickable'], click_handler)
+            render_railcard("#{pct_str} #{price_str}", %w[game-card action-buy clickable], click_handler)
           end
           rows << render_action_row('Redeem:', redeem_buttons)
         end
@@ -1984,14 +2022,15 @@ menu_dropdown = nil
         return h(:div) if @game.finished
 
         return h(UpgradeOrDiscardTrains) if actions.include?('discard_train') && actions.include?('swap_train')
+
         if actions.include?('par')
-          pending_corp = if step&.respond_to?(:corporation_pending_par) && step.corporation_pending_par
+          pending_corp = if step&.respond_to?(:corporation_pending_par) && step&.corporation_pending_par
                            step.corporation_pending_par
-                         elsif step&.respond_to?(:corporation) && step.corporation
+                         elsif step&.respond_to?(:corporation) && step&.corporation
                            step.corporation
-                         elsif step&.respond_to?(:par_corporation) && step.par_corporation
+                         elsif step&.respond_to?(:par_corporation) && step&.par_corporation
                            step.par_corporation
-                         elsif step&.respond_to?(:parring) && step.parring
+                         elsif step&.respond_to?(:parring) && step&.parring
                            step.parring
                          elsif step&.respond_to?(:corporations) && step.corporations&.one?
                            step.corporations.first
@@ -2003,7 +2042,7 @@ menu_dropdown = nil
 
         case @game.round
         when Engine::Round::Stock
-          is_start_auction_step = (step&.respond_to?(:auctioning) && step.auctioning) ||
+          is_start_auction_step = (step&.respond_to?(:auctioning) && step&.auctioning) ||
                                   (step.class.name =~ /Waterfall|Draft|Auction|Initial/i) ||
                                   (actions.include?('bid') && !actions.include?('buy_shares') && !actions.include?('par'))
 
@@ -2038,9 +2077,7 @@ menu_dropdown = nil
             components << h(Choose) if actions.include?('choose')
             components << h(BuyToken, entity: step&.current_entity) if actions.include?('buy_token')
 
-            if actions.include?('issue_shares')
-              components << render_issue_shares(step, step&.current_entity || current_entity)
-            end
+            components << render_issue_shares(step, step&.current_entity || current_entity) if actions.include?('issue_shares')
 
             if actions.include?('buy_train') || actions.include?('sell_train')
               components << render_issue_shares(step, step&.current_entity || current_entity) if actions.include?('sell_shares') || actions.include?('buy_shares')
@@ -2093,16 +2130,16 @@ menu_dropdown = nil
 
                 if b_options.empty?
                   components << h(:button, {
-                    style: { width: '100%', padding: '0.5rem', backgroundColor: '#dc3545', color: 'white', fontWeight: 'bold', border: 'none', borderRadius: '4px', cursor: 'pointer' },
-                    on: { click: -> { process_action(Engine::Action::Bankrupt.new(entity)) } },
-                  }, 'Declare Bankruptcy')
+                                    style: { width: '100%', padding: '0.5rem', backgroundColor: '#dc3545', color: 'white', fontWeight: 'bold', border: 'none', borderRadius: '4px', cursor: 'pointer' },
+                                    on: { click: -> { process_action(Engine::Action::Bankrupt.new(entity)) } },
+                                  }, 'Declare Bankruptcy')
                 else
                   b_options.each do |opt|
                     btn_text = @game.respond_to?(:bankruptcy_button_text) ? @game.bankruptcy_button_text(opt) : 'Declare Bankruptcy'
                     components << h(:button, {
-                      style: { width: '100%', padding: '0.5rem', backgroundColor: '#dc3545', color: 'white', fontWeight: 'bold', border: 'none', borderRadius: '4px', cursor: 'pointer', marginBottom: '0.2rem' },
-                      on: { click: -> { process_action(Engine::Action::Bankrupt.new(entity, option: opt)) } },
-                    }, btn_text)
+                                      style: { width: '100%', padding: '0.5rem', backgroundColor: '#dc3545', color: 'white', fontWeight: 'bold', border: 'none', borderRadius: '4px', cursor: 'pointer', marginBottom: '0.2rem' },
+                                      on: { click: -> { process_action(Engine::Action::Bankrupt.new(entity, option: opt)) } },
+                                    }, btn_text)
                   end
                 end
               end
@@ -2111,16 +2148,10 @@ menu_dropdown = nil
             can_buy_companies = actions.include?('buy_company') ||
                                 (step.respond_to?(:buyable_companies) && step.buyable_companies(step&.current_entity)&.any?) ||
                                 (step.respond_to?(:can_buy_company?) && @game.companies.any? { |c| step.can_buy_company?(step&.current_entity, c) })
-            if can_buy_companies
-              components << render_buyable_companies(step, step&.current_entity)
-            end
+            components << render_buyable_companies(step, step&.current_entity) if can_buy_companies
 
-            if actions.include?('buy_train')
-              components << render_buyable_trains(step, step&.current_entity)
-            end
-            if actions.include?('discard_train')
-              components << render_discard_trains(step, step&.current_entity)
-            end
+            components << render_buyable_trains(step, step&.current_entity) if actions.include?('buy_train')
+            components << render_discard_trains(step, step&.current_entity) if actions.include?('discard_train')
 
             components << h(AcquireCompanies) if actions.include?('acquire_company')
             components << h(CorporateSellCompanies) if actions.include?('corporate_sell_company')

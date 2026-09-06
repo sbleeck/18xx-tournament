@@ -10,28 +10,15 @@ module View
         COLOR_MONEY = '#4c1d95'
 
         TOOLTIP_CSS = '
-          .cmd-company-wrapper:hover .cmd-company-tooltip,
-          .cmd-company-wrapper:hover .status-company-tooltip,
-          .status-company-wrapper:hover .status-company-tooltip,
-          .status-company-wrapper:hover .cmd-company-tooltip,
-          .cmd-corp-wrapper:hover .cmd-corp-tooltip,
-          .cmd-corp-wrapper:hover .status-corp-tooltip,
-          .status-corp-wrapper:hover .status-corp-tooltip,
-          .status-corp-wrapper:hover .cmd-corp-tooltip,
-          .cmd-company-wrapper:hover .status-corp-tooltip,
-          .status-company-wrapper:hover .cmd-corp-tooltip,
-          .cmd-corp-wrapper:hover .cmd-company-tooltip,
-          .status-corp-wrapper:hover .cmd-company-tooltip {
-            display: block !important;
-          }
-          .cmd-company-wrapper:hover,
-          .status-company-wrapper:hover,
-          .cmd-corp-wrapper:hover,
-          .status-corp-wrapper:hover {
-            z-index: 99999 !important;
+          .cmd-company-tooltip,
+          .status-company-tooltip,
+          .cmd-corp-tooltip,
+          .status-corp-tooltip {
+            display: none !important;
           }
         '
-def render_tooltip_style
+
+        def render_tooltip_style
           h(:style, {}, '
             .cmd-company-wrapper:hover .cmd-company-tooltip,
             .cmd-company-wrapper:hover .status-company-tooltip,
@@ -52,41 +39,41 @@ def render_tooltip_style
 
         def render_company_tooltip(title, subtitle, desc, val, rev, owner)
           h(:div, {
-            attrs: { class: 'status-company-tooltip cmd-company-tooltip' },
-            style: {
-              display: 'none',
-              position: 'fixed',
-              top: '50%',
-              left: '50%',
-              transform: 'translate(-50%, -50%)',
-              width: '300px',
-              backgroundColor: '#ffffff',
-              border: '2px solid #333333',
-              borderRadius: '6px',
-              padding: '8px',
-              boxShadow: '0 8px 24px rgba(0,0,0,0.35)',
-              zIndex: '99999',
-              pointerEvents: 'none',
-              color: '#000000',
-              textAlign: 'left',
-              boxSizing: 'border-box',
-              whiteSpace: 'normal',
-              wordBreak: 'break-word',
-            },
-          }, [
-            h(:div, {
+              attrs: { class: 'status-company-tooltip cmd-company-tooltip' },
               style: {
-                backgroundColor: '#ffff00',
-                border: '1px solid #000000',
-                fontWeight: 'bold',
-                fontSize: '0.8rem',
-                textAlign: 'center',
-                padding: '2px 4px',
-                marginBottom: '4px',
-                textTransform: 'uppercase',
-                borderRadius: '3px',
+                display: 'none',
+                position: 'fixed',
+                top: '50%',
+                left: '50%',
+                transform: 'translate(-50%, -50%)',
+                width: '300px',
+                backgroundColor: '#ffffff',
+                border: '2px solid #333333',
+                borderRadius: '6px',
+                padding: '8px',
+                boxShadow: '0 8px 24px rgba(0,0,0,0.35)',
+                zIndex: '99999',
+                pointerEvents: 'none',
+                color: '#000000',
+                textAlign: 'left',
+                boxSizing: 'border-box',
+                whiteSpace: 'normal',
+                wordBreak: 'break-word',
               },
-            }, title),
+            }, [
+            h(:div, {
+                style: {
+                  backgroundColor: '#ffff00',
+                  border: '1px solid #000000',
+                  fontWeight: 'bold',
+                  fontSize: '0.8rem',
+                  textAlign: 'center',
+                  padding: '2px 4px',
+                  marginBottom: '4px',
+                  textTransform: 'uppercase',
+                  borderRadius: '3px',
+                },
+              }, title),
             h(:div, { style: { fontWeight: 'bold', fontSize: '0.9rem', textAlign: 'center', marginBottom: '4px' } }, subtitle),
             h(:div, { style: { fontSize: '0.78rem', lineHeight: '1.25', marginBottom: '6px', color: '#222222', whiteSpace: 'normal', wordBreak: 'break-word' } }, desc),
             h(:div, { style: { display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', fontWeight: 'bold', borderTop: '1px solid #ddd', paddingTop: '4px', marginBottom: '2px' } }, [
@@ -130,7 +117,7 @@ def render_tooltip_style
           status_label = if is_minor
                            corporation.owner ? 'Operating' : 'Available'
                          elsif is_unopened
-                           (corporation.respond_to?(:ipoed) && corporation.ipoed) ? 'Unfloated (Parred)' : 'Unopened'
+                           corporation.respond_to?(:ipoed) && corporation.ipoed ? 'Unfloated (Parred)' : 'Unopened'
                          else
                            'Operating'
                          end
@@ -169,42 +156,42 @@ def render_tooltip_style
           end
 
           h(:div, {
-            attrs: { class: 'status-corp-tooltip cmd-corp-tooltip' },
-            style: {
-              display: 'none',
-              position: 'fixed',
-              top: '50%',
-              left: '50%',
-              transform: 'translate(-50%, -50%)',
-              width: '320px',
-              backgroundColor: '#ffffff',
-              border: '2px solid #333333',
-              borderRadius: '6px',
-              padding: '10px',
-              boxShadow: '0 8px 24px rgba(0,0,0,0.35)',
-              zIndex: '99999',
-              pointerEvents: 'none',
-              color: '#000000',
-              textAlign: 'left',
-              boxSizing: 'border-box',
-              whiteSpace: 'normal',
-              fontWeight: 'normal',
-            },
-          }, [
-            h(:div, {
+              attrs: { class: 'status-corp-tooltip cmd-corp-tooltip' },
               style: {
-                backgroundColor: corporation.color || '#4c1d95',
-                color: corporation.text_color || '#ffffff',
-                fontWeight: 'bold',
-                fontSize: '0.85rem',
-                textAlign: 'center',
-                padding: '3px 6px',
-                marginBottom: '6px',
-                textTransform: 'uppercase',
-                borderRadius: '3px',
-                border: '1px solid #333',
+                display: 'none',
+                position: 'fixed',
+                top: '50%',
+                left: '50%',
+                transform: 'translate(-50%, -50%)',
+                width: '320px',
+                backgroundColor: '#ffffff',
+                border: '2px solid #333333',
+                borderRadius: '6px',
+                padding: '10px',
+                boxShadow: '0 8px 24px rgba(0,0,0,0.35)',
+                zIndex: '99999',
+                pointerEvents: 'none',
+                color: '#000000',
+                textAlign: 'left',
+                boxSizing: 'border-box',
+                whiteSpace: 'normal',
+                fontWeight: 'normal',
               },
-            }, corp_type),
+            }, [
+            h(:div, {
+                style: {
+                  backgroundColor: corporation.color || '#4c1d95',
+                  color: corporation.text_color || '#ffffff',
+                  fontWeight: 'bold',
+                  fontSize: '0.85rem',
+                  textAlign: 'center',
+                  padding: '3px 6px',
+                  marginBottom: '6px',
+                  textTransform: 'uppercase',
+                  borderRadius: '3px',
+                  border: '1px solid #333',
+                },
+              }, corp_type),
             h(:div, { style: { fontWeight: 'bold', fontSize: '1rem', textAlign: 'center', marginBottom: '6px', color: '#111' } }, "#{corporation.name} (#{corporation.id})"),
             h(:div, { style: { borderTop: '1px solid #ddd', paddingTop: '6px', marginBottom: '6px' } },
               details.map { |d| h(:div, { style: { fontSize: '0.78rem', marginBottom: '3px', color: '#222' } }, "• #{d}") }),
@@ -231,7 +218,6 @@ def render_tooltip_style
         end
 
         def render_price_dialog(title, storage_key, min_price, max_price, on_confirm, on_cancel)
-
           stored = Lib::Storage[storage_key]
           val_i = stored ? stored.to_i : min_price
           val_i = min_price if val_i < min_price
@@ -239,180 +225,222 @@ def render_tooltip_style
           current_val = val_i.to_s
 
           modal_box = h(:div, {
-            style: {
-              backgroundColor: '#ffffff',
-              border: '2px solid #333333',
-              borderRadius: '8px',
-              padding: '1.5rem',
-              boxShadow: '0px 10px 30px rgba(0,0,0,0.5)',
-              color: '#000000',
-              minWidth: '260px',
-              textAlign: 'center',
-              boxSizing: 'border-box',
-            },
-          }, [
+                          style: {
+                            backgroundColor: '#ffffff',
+                            border: '2px solid #333333',
+                            borderRadius: '8px',
+                            padding: '1.5rem',
+                            boxShadow: '0px 10px 30px rgba(0,0,0,0.5)',
+                            color: '#000000',
+                            minWidth: '260px',
+                            textAlign: 'center',
+                            boxSizing: 'border-box',
+                          },
+                        }, [
             h(:div, { style: { fontSize: '0.85rem', fontWeight: 'bold', marginBottom: '0.8rem', whiteSpace: 'nowrap' } }, title),
             h(:input, {
-              key: storage_key,
-              style: {
-                display: 'block',
-                width: '100%',
-                marginBottom: '0.8rem',
-                boxSizing: 'border-box',
-                padding: '5px 8px',
-                fontSize: '1rem',
-                fontFamily: FONT_MONEY,
-                fontWeight: 'bold',
-                color: COLOR_MONEY,
-              },
-              props: {
-                value: current_val,
-              },
-              attrs: {
-                type: 'number',
-                min: min_price.to_s,
-                max: max_price.to_s,
-              },
-              on: {
-                input: lambda { |event|
-                  Lib::Storage[storage_key] = `#{event}.target.value`
-                  update
+                key: storage_key,
+                style: {
+                  display: 'block',
+                  width: '100%',
+                  marginBottom: '0.8rem',
+                  boxSizing: 'border-box',
+                  padding: '5px 8px',
+                  fontSize: '1rem',
+                  fontFamily: FONT_MONEY,
+                  fontWeight: 'bold',
+                  color: COLOR_MONEY,
                 },
-              },
-            }),
+                props: {
+                  value: current_val,
+                },
+                attrs: {
+                  type: 'number',
+                  min: min_price.to_s,
+                  max: max_price.to_s,
+                },
+                on: {
+                  input: lambda { |event|
+                    Lib::Storage[storage_key] = `#{event}.target.value`
+                    update
+                  },
+                },
+              }),
             h(:button, {
-              style: {
-                display: 'block',
-                width: '100%',
-                marginBottom: '0.2rem',
-                cursor: 'pointer',
-                fontSize: '0.75rem',
-                fontWeight: 'bold',
-                padding: '3px 6px',
-                backgroundColor: '#007bff',
-                border: '1px solid #0056b3',
-                color: '#ffffff',
-                borderRadius: '3px',
-              },
-              on: {
-                click: lambda {
-                  price_value = Lib::Storage[storage_key].to_i
-                  price_value = min_price if price_value < min_price
-                  price_value = max_price if price_value > max_price
+                style: {
+                  display: 'block',
+                  width: '100%',
+                  marginBottom: '0.2rem',
+                  cursor: 'pointer',
+                  fontSize: '0.75rem',
+                  fontWeight: 'bold',
+                  padding: '3px 6px',
+                  backgroundColor: '#007bff',
+                  border: '1px solid #0056b3',
+                  color: '#ffffff',
+                  borderRadius: '3px',
+                },
+                on: {
+                  click: lambda {
+                    price_value = Lib::Storage[storage_key].to_i
+                    price_value = min_price if price_value < min_price
+                    price_value = max_price if price_value > max_price
 
-                  Lib::Storage[storage_key] = nil
-                  on_confirm.call(price_value)
+                    Lib::Storage[storage_key] = nil
+                    on_confirm.call(price_value)
+                  },
                 },
-              },
-            }, 'Confirm'),
+              }, 'Confirm'),
             h(:button, {
-              style: {
-                display: 'block',
-                width: '100%',
-                cursor: 'pointer',
-                fontSize: '0.75rem',
-                padding: '3px 6px',
-                backgroundColor: '#e0e0e0',
-                border: '1px solid #999',
-                borderRadius: '3px',
-              },
-              on: {
-                click: lambda {
-                  Lib::Storage[storage_key] = nil
-                  on_cancel.call
+                style: {
+                  display: 'block',
+                  width: '100%',
+                  cursor: 'pointer',
+                  fontSize: '0.75rem',
+                  padding: '3px 6px',
+                  backgroundColor: '#e0e0e0',
+                  border: '1px solid #999',
+                  borderRadius: '3px',
                 },
-              },
-            }, 'Cancel'),
+                on: {
+                  click: lambda {
+                    Lib::Storage[storage_key] = nil
+                    on_cancel.call
+                  },
+                },
+              }, 'Cancel'),
           ])
 
           h(:div, {
-            attrs: { id: "dialog_#{storage_key}" },
-            style: {
-              position: 'fixed',
-              top: '0',
-              left: '0',
-              width: '100vw',
-              height: '100vh',
-              backgroundColor: 'rgba(0, 0, 0, 0.4)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              zIndex: '2147483647',
-            },
-            hook: {
-              insert: ->(vnode) { `document.body.appendChild(vnode.elm);` },
-            },
+              attrs: { id: "dialog_#{storage_key}" },
+              style: {
+                position: 'fixed',
+                top: '0',
+                left: '0',
+                width: '100vw',
+                height: '100vh',
+                backgroundColor: 'rgba(0, 0, 0, 0.4)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                zIndex: '2147483647',
+              },
+            }, [modal_box])
+        end
 
-          }, [modal_box])
+        def show_price_dialog(title, min_price, max_price, default_val, on_confirm, on_cancel = nil)
+          %x{
+            var existing = document.getElementById('railcard-dialog-portal');
+            if (existing) { existing.remove(); }
+
+            var overlay = document.createElement('div');
+            overlay.id = 'railcard-dialog-portal';
+            overlay.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:2147483647;box-sizing:border-box;';
+
+            var box = document.createElement('div');
+            box.style.cssText = 'background:#ffffff;border:2px solid #333333;border-radius:8px;padding:1.5rem;box-shadow:0px 12px 36px rgba(0,0,0,0.6);color:#000000;min-width:280px;max-width:90vw;text-align:center;box-sizing:border-box;';
+
+            var titleEl = document.createElement('div');
+            titleEl.style.cssText = 'font-size:0.95rem;font-weight:bold;margin-bottom:0.8rem;color:#111;word-break:break-word;';
+            titleEl.innerText = #{title};
+            box.appendChild(titleEl);
+
+            var inputEl = document.createElement('input');
+            inputEl.type = 'number';
+            inputEl.min = String(#{min_price});
+            inputEl.max = String(#{max_price});
+            inputEl.value = String(#{default_val});
+            inputEl.style.cssText = 'display:block;width:100%;margin-bottom:0.8rem;box-sizing:border-box;padding:6px 10px;font-size:1.1rem;font-family:"Courier New",Courier,monospace;font-weight:bold;color:#4c1d95;text-align:center;border:1px solid #999;border-radius:4px;';
+            box.appendChild(inputEl);
+
+            var confirmBtn = document.createElement('button');
+            confirmBtn.innerText = 'Confirm';
+            confirmBtn.style.cssText = 'display:block;width:100%;margin-bottom:0.4rem;cursor:pointer;font-size:0.85rem;font-weight:bold;padding:6px 12px;background-color:#007bff;border:1px solid #0056b3;color:#ffffff;border-radius:4px;';
+            confirmBtn.onclick = function() {
+              var val = parseInt(inputEl.value, 10);
+              if (isNaN(val) || val < #{min_price}) val = #{min_price};
+              if (val > #{max_price}) val = #{max_price};
+              overlay.remove();
+              if (#{on_confirm}) {
+                if (typeof #{on_confirm} === 'function') {
+                  #{on_confirm}(val);
+                } else if (#{on_confirm}['$call']) {
+                  #{on_confirm}['$call'](val);
+                }
+              }
+            };
+            box.appendChild(confirmBtn);
+
+            var cancelBtn = document.createElement('button');
+            cancelBtn.innerText = 'Cancel';
+            cancelBtn.style.cssText = 'display:block;width:100%;cursor:pointer;font-size:0.85rem;padding:6px 12px;background-color:#e0e0e0;border:1px solid #999;border-radius:4px;color:#333;';
+            cancelBtn.onclick = function() {
+              overlay.remove();
+              if (#{on_cancel}) {
+                if (typeof #{on_cancel} === 'function') {
+                  #{on_cancel}();
+                } else if (#{on_cancel}['$call']) {
+                  #{on_cancel}['$call']();
+                }
+              }
+            };
+            box.appendChild(cancelBtn);
+
+            inputEl.onkeydown = function(e) {
+              if (e.key === 'Enter') { confirmBtn.click(); }
+              else if (e.key === 'Escape') { cancelBtn.click(); }
+            };
+
+            overlay.onclick = function(e) {
+              if (e.target === overlay) { cancelBtn.click(); }
+            };
+
+            overlay.appendChild(box);
+            document.body.appendChild(overlay);
+
+            setTimeout(function() {
+              inputEl.focus();
+              inputEl.select();
+            }, 50);
+          }
+          nil
         end
 
         def render_railcard(text, card_classes = ['game-card'], click_handler = nil, tooltip = nil, dropdown = nil, wrapper_id = nil, wrapper_classes = nil)
-          is_buy = false
-          is_sell = false
-          is_clickable = false
-          border_color = '#888888'
-          bg_color = '#fdfbf7'
-          classes_str = 'game-card'
+          classes = []
+          if card_classes
+            `if (Array.isArray(#{card_classes})) {`
+            classes = card_classes
+            `} else {`
+            classes = [card_classes]
+            `}`
+          else
+            classes = ['game-card']
+          end
 
-          has_tooltip = false
-          has_dropdown = false
-          dropdown_items = []
-          has_wrapper_id = false
-          clean_wrapper_id = ''
-          has_wrapper_classes = false
-          clean_wrapper_classes = ''
+          classes_str = classes.join(' ')
+          is_buy = classes.include?('action-buy')
+          is_sell = classes.include?('action-sell')
+          is_clickable = click_handler ? true : false
 
-          `
+          border_color = if is_buy
+                           '#16a34a'
+                         elsif is_sell
+                           '#dc2626'
+                         else
+                           '#888888'
+                         end
 
-         
+          bg_color = if is_buy
+                       '#e6f4ea'
+                     elsif is_sell
+                       '#fef2f2'
+                     else
+                       '#fdfbf7'
+                     end
 
-          function isPresent(val) {
-            return val !== undefined && val !== null && val !== false && val !== Opal.nil;
-          }
-
-          is_clickable = isPresent(click_handler);
-
-          var classes = [];
-          if (Array.isArray(card_classes)) {
-            classes = card_classes;
-          } else if (isPresent(card_classes)) {
-            classes = [card_classes];
-          }
-
-          is_buy = classes.indexOf('action-buy') !== -1;
-          is_sell = classes.indexOf('action-sell') !== -1;
-          classes_str = classes.join(' ');
-
-          if (is_buy) {
-            border_color = '#16a34a';
-            bg_color = '#e6f4ea';
-          } else if (is_sell) {
-            border_color = '#dc2626';
-            bg_color = '#fef2f2';
-          }
-
-          if (isPresent(tooltip)) {
-            has_tooltip = true;
-          }
-
-          if (Array.isArray(dropdown)) {
-            for (var i = 0; i < dropdown.length; i++) {
-              if (isPresent(dropdown[i])) {
-                dropdown_items.push(dropdown[i]);
-                has_dropdown = true;
-              }
-            }
-          } else if (isPresent(dropdown)) {
-            dropdown_items.push(dropdown);
-            has_dropdown = true;
-          }
-
-          if (isPresent(wrapper_id) && String(wrapper_id).length > 0) {
-            has_wrapper_id = true;
-            clean_wrapper_id = String(wrapper_id);
-          }
-
-          if (typeof window !== 'undefined') {
+          %x(
+          if (typeof window !== 'undefined' && !window._railcard_portal_installed) {
             var portal = document.getElementById('railcard-portal');
             if (!portal) {
               portal = document.createElement('div');
@@ -421,76 +449,80 @@ def render_tooltip_style
             }
             portal.style.cssText = 'position:fixed;top:12px;left:50%;transform:translateX(-50%);pointer-events:none !important;z-index:2147483647;display:none;width:320px;max-width:90vw;background:#ffffff;border:2px solid #333333;border-radius:6px;padding:8px;box-shadow:0 12px 36px rgba(0,0,0,0.5);color:#000000;text-align:left;box-sizing:border-box;white-space:normal;word-break:break-word;';
 
-            if (!window._railcard_portal_installed) {
-              window._railcard_portal_installed = true;
+            window._railcard_portal_installed = true;
 
-              var hidePortal = function() {
-                var p = document.getElementById('railcard-portal');
-                if (p && p.style.display !== 'none') {
-                  p.style.display = 'none';
-                  p.innerHTML = '';
-                }
-              };
+            var hidePortal = function() {
+              var p = document.getElementById('railcard-portal');
+              if (p && p.style.display !== 'none') {
+                p.style.display = 'none';
+                p.innerHTML = '';
+              }
+            };
 
-              document.addEventListener('mouseover', function(e) {
-                var wrapper = e.target.closest && e.target.closest('.cmd-company-wrapper, .status-company-wrapper, .cmd-corp-wrapper, .status-corp-wrapper');
-                if (wrapper) {
-                  var tt = wrapper.querySelector('.cmd-company-tooltip, .status-company-tooltip, .cmd-corp-tooltip, .status-corp-tooltip');
-                  if (tt) {
-                    var p = document.getElementById('railcard-portal');
-                    if (p) {
-                      p.innerHTML = tt.innerHTML;
-                      p.style.display = 'block';
-                    }
+            document.addEventListener('mouseover', function(e) {
+              var wrapper = e.target.closest && e.target.closest('.cmd-company-wrapper, .status-company-wrapper, .cmd-corp-wrapper, .status-corp-wrapper');
+              if (wrapper) {
+                var tt = wrapper.querySelector('.cmd-company-tooltip, .status-company-tooltip, .cmd-corp-tooltip, .status-corp-tooltip');
+                if (tt) {
+                  var p = document.getElementById('railcard-portal');
+                  if (p) {
+                    p.innerHTML = tt.innerHTML;
+                    p.style.display = 'block';
                   }
-                } else {
+                }
+              } else {
+                hidePortal();
+              }
+            });
+
+            document.addEventListener('mouseout', function(e) {
+              var wrapper = e.target.closest && e.target.closest('.cmd-company-wrapper, .status-company-wrapper, .cmd-corp-wrapper, .status-corp-wrapper');
+              if (wrapper) {
+                var related = e.relatedTarget && e.relatedTarget.closest && e.relatedTarget.closest('.cmd-company-wrapper, .status-company-wrapper, .cmd-corp-wrapper, .status-corp-wrapper');
+                if (related !== wrapper) {
                   hidePortal();
                 }
-              });
-
-              document.addEventListener('mouseout', function(e) {
-                var wrapper = e.target.closest && e.target.closest('.cmd-company-wrapper, .status-company-wrapper, .cmd-corp-wrapper, .status-corp-wrapper');
-                if (wrapper) {
-                  var related = e.relatedTarget && e.relatedTarget.closest && e.relatedTarget.closest('.cmd-company-wrapper, .status-company-wrapper, .cmd-corp-wrapper, .status-corp-wrapper');
-                  if (related !== wrapper) {
-                    hidePortal();
-                  }
-                }
-              });
-
-              window.addEventListener('scroll', hidePortal, true);
-            }
-          }
-          
-          var valid_classes = [];
-          if (has_tooltip) {
-            valid_classes.push('cmd-company-wrapper');
-            valid_classes.push('status-company-wrapper');
-            valid_classes.push('cmd-corp-wrapper');
-            valid_classes.push('status-corp-wrapper');
-          }
-
-          if (Array.isArray(wrapper_classes)) {
-            for (var j = 0; j < wrapper_classes.length; j++) {
-              if (isPresent(wrapper_classes[j])) {
-                var cls = String(wrapper_classes[j]);
-                if (valid_classes.indexOf(cls) === -1) {
-                  valid_classes.push(cls);
-                }
               }
-            }
-          } else if (isPresent(wrapper_classes)) {
-            var single_cls = String(wrapper_classes);
-            if (valid_classes.indexOf(single_cls) === -1) {
-              valid_classes.push(single_cls);
-            }
-          }
+            });
 
-          if (valid_classes.length > 0) {
-            has_wrapper_classes = true;
-            clean_wrapper_classes = valid_classes.join(' ');
+            window.addEventListener('scroll', hidePortal, true);
+            window.addEventListener('click', hidePortal, true);
           }
-          `
+          )
+
+          has_tooltip = tooltip ? true : false
+          valid_classes = []
+          valid_classes.concat(%w[cmd-company-wrapper status-company-wrapper cmd-corp-wrapper status-corp-wrapper]) if has_tooltip
+
+          if wrapper_classes
+            `if (Array.isArray(#{wrapper_classes})) {`
+            wrapper_classes.each do |cls|
+              if cls
+                c_str = `String(#{cls})`
+                valid_classes << c_str unless valid_classes.include?(c_str)
+              end
+            end
+            `} else {`
+            c_str = `String(#{wrapper_classes})`
+            valid_classes << c_str unless valid_classes.include?(c_str)
+            `}`
+          end
+
+          has_wrapper_classes = !valid_classes.empty?
+          clean_wrapper_classes = valid_classes.join(' ')
+
+          has_wrapper_id = wrapper_id && !wrapper_id.to_s.empty?
+          clean_wrapper_id = wrapper_id.to_s if has_wrapper_id
+
+          dropdown_items = []
+          if dropdown
+            `if (Array.isArray(#{dropdown})) {`
+            dropdown_items = dropdown
+            `} else {`
+            dropdown_items = [dropdown]
+            `}`
+          end
+          has_dropdown = !dropdown_items.empty?
 
           style_props = {
             minWidth: '3.2rem',
@@ -529,17 +561,12 @@ def render_tooltip_style
             children = []
             children << tooltip if has_tooltip
             children << card
-
-            if has_dropdown
-              `for (var k = 0; k < dropdown_items.length; k++) {`
-                children << `dropdown_items[k]`
-              `}`
-            end
+            children.concat(dropdown_items) if has_dropdown
 
             h(:div, {
-              attrs: w_attrs,
-              style: { display: 'inline-block', position: 'relative' },
-            }, children.compact)
+                attrs: w_attrs,
+                style: { display: 'inline-block', position: 'relative' },
+              }, children.compact)
           else
             card
           end
