@@ -87,21 +87,9 @@ module Engine
           def actions(entity)
             return [] if finished?
 
+            return [] unless @companies.any? { |c| current_entity.cash >= min_bid(c) && may_purchase?(c) }
+
             entity == current_entity ? ACTIONS : []
-          end
-
-          def auto_actions(entity)
-            return [Engine::Action::Pass.new(entity)] if entity.player? && @companies.none? do |c|
-                                                           entity.cash >= c.value
-                                                         end
-
-            []
-          end
-
-          def skip!
-            current_entity.pass!
-            @round.next_entity_index!
-            action_finalized
           end
 
           def process_bid(action)
@@ -126,8 +114,7 @@ module Engine
 
             entities.each(&:unpass!)
             @round.last_to_act = player
-            @round.next_entity_index!
-            action_finalized
+            @round.next_entity!
           end
 
           def assign_company(company, player)
@@ -145,17 +132,18 @@ module Engine
           end
 
           def process_pass(action)
-            @log << "#{action.entity.name} passes"
+            log_pass(action.entity)
             action.entity.pass!
-            @round.last_to_act = action.entity
-            @round.next_entity_index!
-            action_finalized
+            @round.next_entity!
           end
 
-          def action_finalized
-            return unless finished?
+          def log_skip(entity)
+            @log << "#{entity.name} has no valid actions and passes"
+          end
 
-            @round.next_entity_index! if @game.optional_rules&.include?(:clemens)
+          def skip!
+            super
+            current_entity&.pass!
           end
 
           def may_choose?(_company)
