@@ -49,17 +49,15 @@ module View
           (!entity.respond_to?(:corporation?) && !entity.respond_to?(:minor?) && (entity.respond_to?(:value) || entity.respond_to?(:desc)))
       end
 
-      def tooltip_style
+def tooltip_style
         h(:style, {}, '
-          .cmd-company-wrapper:hover .cmd-company-tooltip,
-          .cmd-company-wrapper:hover .status-company-tooltip,
-          .status-company-wrapper:hover .status-company-tooltip,
-          .status-company-wrapper:hover .cmd-company-tooltip {
-            display: block !important;
-          }
-          .cmd-company-wrapper:hover,
-          .status-company-wrapper:hover {
-            z-index: 99999 !important;
+          .cmd-company-wrapper > .cmd-company-tooltip,
+          .cmd-company-wrapper > .status-company-tooltip,
+          .status-company-wrapper > .status-company-tooltip,
+          .status-company-wrapper > .cmd-company-tooltip,
+          .cmd-corp-wrapper > .cmd-corp-tooltip,
+          .status-corp-wrapper > .status-corp-tooltip {
+            display: none !important;
           }
         ')
       end
@@ -461,17 +459,14 @@ module View
           end
         end
 
-       zone_3 = h(:div, { style: { flex: '0 0 22%', display: 'flex', flexDirection: 'column', padding: '0.4rem', boxSizing: 'border-box', overflowY: 'auto', position: 'relative' } }, [
-          h(:style, {}, '
-            .cmd-company-wrapper:hover .cmd-company-tooltip,
-            .cmd-company-wrapper:hover .status-company-tooltip,
-            .status-company-wrapper:hover .status-company-tooltip,
-            .status-company-wrapper:hover .cmd-company-tooltip {
-              display: block !important;
-            }
-            .cmd-company-wrapper:hover,
-            .status-company-wrapper:hover {
-              z-index: 99999 !important;
+zone_3 = h(:div, { style: { flex: '0 0 22%', display: 'flex', flexDirection: 'column', padding: '0.4rem', boxSizing: 'border-box', overflowY: 'auto', position: 'relative' } }, [          h(:style, {}, '
+            .cmd-company-wrapper > .cmd-company-tooltip,
+            .cmd-company-wrapper > .status-company-tooltip,
+            .status-company-wrapper > .status-company-tooltip,
+            .status-company-wrapper > .cmd-company-tooltip,
+            .cmd-corp-wrapper > .cmd-corp-tooltip,
+            .status-corp-wrapper > .status-corp-tooltip {
+              display: none !important;
             }
           '),
 
@@ -612,8 +607,8 @@ module View
           }.call
         end
 
-h(:div, { style: { display: 'flex', flexDirection: 'row', width: '100%', height: '100%', boxSizing: 'border-box', backgroundColor: '#fff' } }, [
-          zone_1,
+h(:div, { style: { display: 'flex', flexDirection: 'row', width: '100%', height: '100%', boxSizing: 'border-box', backgroundColor: '#fff', position: 'relative', zIndex: 99999, overflow: 'visible' } }, [
+              zone_1,
           zone_2,
           zone_3,
         ])
@@ -1242,15 +1237,26 @@ h(:div, { style: { display: 'flex', flexDirection: 'row', width: '100%', height:
                       }, is_selected ? 'Bidding' : 'Bid')
                     end
 
-         card_sym = item.respond_to?(:sym) ? item.sym : item.name
-tooltip = (item.respond_to?(:company?) && item.company?) || item.is_a?(Engine::Company) ? build_company_tooltip(item) : nil
-subtext = (item.respond_to?(:value) && item.value) ? @game.format_currency(item.value) : nil
-      card_classes = ['game-card']
-      card_classes << 'action-buy' if can_buy || can_bid || can_choose || is_active
-      card_classes << 'clickable' if can_bid
-      card_label = subtext ? "#{card_sym} #{subtext}" : card_sym
-      click_handler = can_bid ? -> { Lib::Storage['selected_bid_corp'] = item.id; update } : nil
-      item_card_element = render_railcard(card_label, card_classes, click_handler, tooltip)
+          card_sym = item.respond_to?(:sym) ? item.sym : item.name
+          tooltip = (item.respond_to?(:company?) && item.company?) || item.is_a?(Engine::Company) ? build_company_tooltip(item) : nil
+          subtext = (item.respond_to?(:value) && item.value) ? @game.format_currency(item.value) : nil
+          card_classes = ['game-card']
+          card_classes << 'action-buy' if can_buy || can_bid || can_choose || is_active
+          card_classes << 'clickable' if can_bid
+          card_label = subtext ? "#{card_sym} #{subtext}" : card_sym
+          click_handler = can_bid ? -> { Lib::Storage['selected_bid_corp'] = item.id; update } : nil
+
+          wrapper_classes = tooltip ? ['cmd-company-wrapper', 'status-company-wrapper'] : nil
+          wrapper_id = "cmd_auction_#{item.id}"
+          item_card_element = render_railcard(
+            card_label,
+            card_classes,
+            click_handler,
+            tooltip,
+            nil,
+            wrapper_id,
+            wrapper_classes
+          )
 
           row_cells = [
             h(:td, {
@@ -1350,12 +1356,12 @@ subtext = (item.respond_to?(:value) && item.value) ? @game.format_currency(item.
           end
 
           row_bg = if is_active
-                     '#fffbeb'
-                   elsif is_selected
-                     '#eff6ff'
-                   else
-                     'transparent'
-                   end
+                    '#fffbeb'
+                  elsif is_selected
+                    '#eff6ff'
+                  else
+                    'transparent'
+                  end
 
           h(:tr, { style: { backgroundColor: row_bg } }, row_cells)
         end
@@ -1451,8 +1457,8 @@ subtext = (item.respond_to?(:value) && item.value) ? @game.format_currency(item.
         ])
 
         bid_detail_row = if selected_item && (actions.include?('bid') || active_auction_item)
-                           render_bid(step, entity, actions, selected_item)
-                         end
+                          render_bid(step, entity, actions, selected_item)
+                        end
 
         h(:div, {
           style: {
@@ -1472,10 +1478,10 @@ subtext = (item.respond_to?(:value) && item.value) ? @game.format_currency(item.
         return nil unless entity
 
         operating_player = if entity.respond_to?(:player?) && entity.player?
-                             entity
-                           elsif entity.respond_to?(:owner) && entity.owner
-                             entity.owner
-                           end
+                            entity
+                          elsif entity.respond_to?(:owner) && entity.owner
+                            entity.owner
+                          end
 
         return nil unless operating_player
 
@@ -1515,10 +1521,10 @@ subtext = (item.respond_to?(:value) && item.value) ? @game.format_currency(item.
                         buy_company_step.max_price(entity, c)
                       else
                         (if c.respond_to?(:max_price)
-                           c.max_price
-                         else
-                           (entity.respond_to?(:cash) ? entity.cash : 0)
-                         end)
+                          c.max_price
+                        else
+                          (entity.respond_to?(:cash) ? entity.cash : 0)
+                        end)
                       end
 
           menu_storage_key = "cmd_buy_company_menu_#{c.id}"
@@ -1564,7 +1570,7 @@ subtext = (item.respond_to?(:value) && item.value) ? @game.format_currency(item.
                 border: '2px solid #333333',
                 borderRadius: '8px',
                 padding: '1.5rem',
-zIndex: '100000',
+                zIndex: '100000',
                 boxShadow: '0px 10px 30px rgba(0,0,0,0.5)',
                 color: '#000000',
                 minWidth: '250px',
@@ -1633,8 +1639,20 @@ zIndex: '100000',
           end
 
           card_text = (c.sym || c.name).to_s
-tooltip = Lib::Storage[menu_storage_key] ? nil : build_company_tooltip(c)
-render_railcard(card_text, ['game-card', 'action-buy', 'clickable'], company_click_handler, tooltip, menu_dropdown)
+
+          tooltip = Lib::Storage[menu_storage_key] ? nil : build_company_tooltip(c)
+          wrapper_classes = tooltip ? ['cmd-company-wrapper', 'status-company-wrapper'] : nil
+          wrapper_id = "cmd_buy_company_#{c.id}"
+
+          render_railcard(
+            card_text,
+            ['game-card', 'action-buy', 'clickable'],
+            company_click_handler,
+            tooltip,
+            menu_dropdown,
+            wrapper_id,
+            wrapper_classes
+          )
 
         end.compact
 

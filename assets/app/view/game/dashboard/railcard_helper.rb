@@ -233,6 +233,48 @@ module View
           clean_wrapper_classes = ''
 
           `
+
+          if (typeof window !== 'undefined' && !window._railcard_portal_installed) {
+            window._railcard_portal_installed = true;
+            var portal = document.createElement('div');
+            portal.id = 'railcard-portal';
+            portal.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;pointer-events:none;z-index:2147483647;display:none;align-items:center;justify-content:center;';
+            document.body.appendChild(portal);
+
+            document.addEventListener('mouseover', function(e) {
+              var wrapper = e.target.closest && e.target.closest('.cmd-company-wrapper, .status-company-wrapper, .cmd-corp-wrapper, .status-corp-wrapper');
+              if (wrapper) {
+                var tt = wrapper.querySelector('.cmd-company-tooltip, .status-company-tooltip, .cmd-corp-tooltip, .status-corp-tooltip');
+                if (tt) {
+                  portal.innerHTML = tt.outerHTML;
+                  var inner = portal.firstElementChild;
+                  if (inner) {
+                    inner.classList.remove('cmd-company-tooltip', 'status-company-tooltip', 'cmd-corp-tooltip', 'status-corp-tooltip');
+                    inner.style.display = 'block';
+                    inner.style.position = 'relative';
+                    inner.style.top = 'auto';
+                    inner.style.left = 'auto';
+                    inner.style.transform = 'none';
+                    inner.style.margin = 'auto';
+                    inner.style.boxShadow = '0 16px 48px rgba(0,0,0,0.5)';
+                  }
+                  portal.style.display = 'flex';
+                }
+              }
+            });
+
+            document.addEventListener('mouseout', function(e) {
+              var wrapper = e.target.closest && e.target.closest('.cmd-company-wrapper, .status-company-wrapper, .cmd-corp-wrapper, .status-corp-wrapper');
+              if (wrapper) {
+                var related = e.relatedTarget && e.relatedTarget.closest && e.relatedTarget.closest('.cmd-company-wrapper, .status-company-wrapper, .cmd-corp-wrapper, .status-corp-wrapper');
+                if (related !== wrapper) {
+                  portal.style.display = 'none';
+                  portal.innerHTML = '';
+                }
+              }
+            });
+          }
+            
           function isPresent(val) {
             return val !== undefined && val !== null && val !== false && val !== Opal.nil;
           }
