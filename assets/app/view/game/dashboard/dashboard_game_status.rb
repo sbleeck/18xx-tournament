@@ -949,8 +949,9 @@ module View
                          else
                            []
                          end || []
+        is_corp = corporation.respond_to?(:corporation?) && corporation.corporation?
 
-        can_par = active_player && player_actions.include?('par') && corporation.corporation? &&
+        can_par = is_corp && active_player && player_actions.include?('par') &&
                   @game.respond_to?(:can_par?) && @game.can_par?(corporation, active_player)
 
         can_bid = active_player && player_actions.include?('bid') && (
@@ -960,7 +961,7 @@ module View
             rescue ArgumentError
               step.can_bid?(corporation)
             end
-          elsif @game.respond_to?(:can_par?)
+          elsif is_corp && @game.respond_to?(:can_par?)
             @game.can_par?(corporation, active_player)
           else
             corporation.respond_to?(:ipoed) ? !corporation.ipoed : true
@@ -1114,111 +1115,36 @@ module View
           not_own_train = active_entity && corporation != active_entity
 
           if train_buyable_step && not_own_train && owned_by_same_player && step.respond_to?(:can_buy_train?) && step.can_buy_train?(
-        active_entity, t
-      )
+                  active_entity, t
+                )
             card_classes << 'action-buy'
             card_classes << 'clickable'
 
-            menu_storage_key = "buy_train_menu_#{corporation.id}_#{t.id}"
-            price_storage_key = "buy_train_price_#{corporation.id}_#{t.id}"
+            min_price = 1
+            max_price = if step.respond_to?(:max_price)
+                          step.max_price(active_entity, t)
+                        else
+                          (active_entity.respond_to?(:cash) ? active_entity.cash : 9999)
+                        end
 
             train_click_handler = lambda {
-              Lib::Storage[menu_storage_key] = true
-              Lib::Storage[price_storage_key] = active_entity.cash
-              update
+              `var p = document.getElementById('railcard-portal'); if (p) { p.style.display = 'none'; p.innerHTML = ''; }`
+              menu_title = "Buy #{t.name} from #{corporation.name} (#{min_price}-#{max_price}):"
+              default_price = min_price
+
+              show_price_dialog(
+                menu_title,
+                min_price,
+                max_price,
+                default_price,
+                lambda { |price_val|
+                  escaped_train_wrapper_id = `CSS.escape('train_wrapper_' + #{corporation.id} + '_' + #{t.id})`
+                  source_selector = "##{escaped_train_wrapper_id} .game-card"
+                  exec_buy_corporate_train(source_selector, active_entity, t, price_val)
+                }
+              )
             }
 
-            if Lib::Storage[menu_storage_key]
-              menu_title = "#{active_entity.name} buys #{t.name} from #{corporation.name} for how much?"
-
-              confirm_handler = lambda {
-                price_value = Lib::Storage[price_storage_key].to_i
-                price_value = 1 if price_value < 1
-
-                Lib::Storage[menu_storage_key] = nil
-                Lib::Storage[price_storage_key] = nil
-
-                escaped_train_wrapper_id = `CSS.escape('train_wrapper_' + #{corporation.id} + '_' + #{t.id})`
-                source_selector = "##{escaped_train_wrapper_id} .game-card"
-                exec_buy_corporate_train(source_selector, active_entity, t, price_value)
-              }
-
-              cancel_handler = lambda {
-                Lib::Storage[menu_storage_key] = nil
-                Lib::Storage[price_storage_key] = nil
-                update
-              }
-
-              menu_dropdown = h(:div, {
-                                  style: {
-                                    position: 'absolute',
-                                    top: '105%',
-                                    left: '50%',
-                                    transform: 'translateX(-50%)',
-                                    backgroundColor: '#ffffff',
-                                    border: '2px solid #333333',
-                                    borderRadius: '4px',
-                                    padding: '0.5rem',
-                                    zIndex: '9999',
-                                    boxShadow: '0px 4px 10px rgba(0,0,0,0.3)',
-                                  },
-                                }, [
-                h(:div,
-                  { style: { fontSize: '0.75rem', fontWeight: 'bold', marginBottom: '0.4rem', color: '#333', whiteSpace: 'nowrap' } }, menu_title),
-                h(:input, {
-                    style: {
-                      display: 'block',
-                      width: '100%',
-                      marginBottom: '0.4rem',
-                      boxSizing: 'border-box',
-                      padding: '3px 6px',
-                      fontSize: '0.85rem',
-                    },
-                    props: {
-                      value: Lib::Storage[price_storage_key] || '1',
-                    },
-                    attrs: {
-                      type: 'number',
-                      min: '1',
-                    },
-                    on: {
-                      input: lambda { |event|
-                        Lib::Storage[price_storage_key] = event.target.value
-                        update
-                      },
-                    },
-                  }),
-                h(:button, {
-                    style: {
-                      display: 'block',
-                      width: '100%',
-                      marginBottom: '0.2rem',
-                      cursor: 'pointer',
-                      fontSize: '0.75rem',
-                      fontWeight: 'bold',
-                      padding: '3px 6px',
-                      backgroundColor: '#007bff',
-                      border: '1px solid #0056b3',
-                      color: '#ffffff',
-                      borderRadius: '3px',
-                    },
-                    on: { click: confirm_handler },
-                  }, 'Confirm'),
-                h(:button, {
-                    style: {
-                      display: 'block',
-                      width: '100%',
-                      cursor: 'pointer',
-                      fontSize: '0.75rem',
-                      padding: '3px 6px',
-                      backgroundColor: '#e0e0e0',
-                      border: '1px solid #999',
-                      borderRadius: '3px',
-                    },
-                    on: { click: cancel_handler },
-                  }, 'Cancel'),
-              ])
-            end
           elsif train_discardable_step && active_entity == corporation
             card_classes << 'action-sell'
             card_classes << 'clickable'
@@ -1545,15 +1471,26 @@ module View
                            end)
                         end
 
-            menu_storage_key = "cmd_buy_company_menu_#{c.id}"
-            price_storage_key = "cmd_buy_company_price_#{c.id}"
-
             company_click_handler = lambda {
-              Lib::Storage[menu_storage_key] = true
-              Lib::Storage[price_storage_key] = min_price
-              update
-            }
+              `var p = document.getElementById('railcard-portal'); if (p) { p.style.display = 'none'; p.innerHTML = ''; }`
+              menu_title = "Buy #{c.name} (#{min_price}-#{max_price}):"
+              default_price = [active_ent.respond_to?(:cash) ? active_ent.cash : min_price, max_price].min
+              default_price = [default_price, min_price].max
 
+              show_price_dialog(
+                menu_title,
+                min_price,
+                max_price,
+                default_price,
+                lambda { |price_val|
+                  process_action(Engine::Action::BuyCompany.new(
+                    active_ent,
+                    company: c,
+                    price: price_val
+                  ))
+                }
+              )
+            }
           end
 
           tooltip_card = build_company_tooltip(c)
