@@ -202,7 +202,7 @@ module View
             card_classes << 'action-buy clickable' if can_choose_item
             card_label = subtext ? "#{card_sym} #{subtext}" : card_sym
 
-            item_card = render_railcard(card_label, card_classes, (can_choose_item ? exec_choose : nil), tooltip)
+            item_card = render_railcard(card_label, card_classes, (can_choose_item ? exec_choose : nil), tooltip, entity: item)
 
             choose_btn = if can_choose_item
                            h(:button, {
@@ -517,7 +517,8 @@ module View
             end
           }
 
-          render_railcard(
+          c_hexes = resolve_target_hexes(c)
+          wrap_node = render_railcard(
             card_text,
             %w[game-card action-buy clickable],
             click_handler,
@@ -526,6 +527,23 @@ module View
             "cmd_company_#{c.id}",
             %w[cmd-company-wrapper status-company-wrapper]
           )
+          if c_hexes.any?
+            h(:div, {
+                style: { display: 'inline-block' },
+                on: {
+                  mouseenter: lambda {
+                    `window.highlightMapHexes && window.highlightMapHexes(#{c_hexes})`
+                    nil
+                  },
+                  mouseleave: lambda {
+                    `window.clearMapHexHighlights && window.clearMapHexHighlights()`
+                    nil
+                  },
+                },
+              }, [wrap_node])
+          else
+            wrap_node
+          end
         end
 
         h(:div, {
@@ -1212,7 +1230,25 @@ module View
           end
         end
 
-        corp_badge = render_railcard(corporation.name, ['game-card'])
+        corp_hexes = resolve_target_hexes(corporation)
+        corp_badge_node = render_railcard(corporation.name, ['game-card'])
+        corp_badge = if corp_hexes.any?
+                       h(:div, {
+                           style: { display: 'inline-block' },
+                           on: {
+                             mouseenter: lambda {
+                               `window.highlightMapHexes && window.highlightMapHexes(#{corp_hexes})`
+                               nil
+                             },
+                             mouseleave: lambda {
+                               `window.clearMapHexHighlights && window.clearMapHexHighlights()`
+                               nil
+                             },
+                           },
+                         }, [corp_badge_node])
+                     else
+                       corp_badge_node
+                     end
 
         buttons = par_nodes.map do |node|
           price = node.is_a?(Array) ? node[0] : node
@@ -1347,7 +1383,7 @@ module View
           tooltip = build_company_tooltip(c)
           wrapper_classes = tooltip ? %w[cmd-company-wrapper status-company-wrapper] : nil
 
-          render_railcard(card_text, %w[game-card action-buy clickable], company_click_handler, tooltip, nil, nil, wrapper_classes)
+          render_railcard(card_text, %w[game-card action-buy clickable], company_click_handler, tooltip, nil, nil, wrapper_classes, entity: c)
         end.compact
 
         return nil if company_boxes.empty?
@@ -1368,7 +1404,7 @@ module View
 
         train_boxes = (discardable || []).map do |train|
           click_handler = -> { process_action(Engine::Action::DiscardTrain.new(entity, train: train)) }
-          render_railcard(train.name, %w[game-card action-sell clickable], click_handler)
+          render_railcard(train.name, %w[game-card action-sell clickable], click_handler, nil, entity: train)
         end
 
         return nil if train_boxes.empty?

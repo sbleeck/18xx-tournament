@@ -311,6 +311,50 @@ module View
           has_par ? pending : nil
         end
 
+        def resolve_target_hexes(target)
+          return [] unless target
+
+          hexes = []
+
+          abilities = []
+          abilities.concat(target.all_abilities) if target.respond_to?(:all_abilities) && target.all_abilities
+          abilities.concat(Array(target.abilities)) if target.respond_to?(:abilities) && target.abilities
+
+          if @game.respond_to?(:abilities)
+            %i[blocks_hexes teleport tile_lay hex_bonus assign_hexes reservation close].each do |type|
+              ab = @game.abilities(target, type)
+              abilities.concat(Array(ab)) if ab
+            end
+          end
+
+          abilities.compact.uniq.each do |a|
+            if a.respond_to?(:hexes) && a.hexes
+              hexes.concat(Array(a.hexes))
+            elsif a.respond_to?(:hex) && a.hex
+              hexes << a.hex
+            end
+          end
+
+          hexes.concat(Array(target.coordinates)) if target.respond_to?(:coordinates) && target.coordinates
+
+          if target.respond_to?(:corporation?) && target.corporation?
+            placed_tokens = []
+            if target.respond_to?(:tokens) && target.tokens
+              placed_tokens = target.tokens.select do |t|
+                t.respond_to?(:used) && t.used && ((t.respond_to?(:city) && t.city&.hex) || (t.respond_to?(:hex) && t.hex))
+              end.map { |t| (t.city&.hex || t.hex).id }
+            end
+
+            if placed_tokens.any?
+              hexes.concat(placed_tokens)
+            elsif target.respond_to?(:coordinates) && target.coordinates
+              hexes.concat(Array(target.coordinates))
+            end
+          end
+
+          hexes.compact.map(&:to_s).uniq
+        end
+
         def current_entity
           @game.round.active_step&.current_entity ||
             (@game.round.respond_to?(:current_entity) ? @game.round.current_entity : nil) ||
@@ -607,7 +651,22 @@ module View
                        'transparent'
                      end
 
-            h(:tr, { style: { backgroundColor: row_bg, opacity: is_owned ? '0.88' : '1' } }, row_cells)
+            target_hexes = resolve_target_hexes(item)
+            row_events = {}
+            if target_hexes.any?
+              row_events = {
+                mouseenter: lambda {
+                  `window.highlightMapHexes && window.highlightMapHexes(#{target_hexes})`
+                  nil
+                },
+                mouseleave: lambda {
+                  `window.clearMapHexHighlights && window.clearMapHexHighlights()`
+                  nil
+                },
+              }
+            end
+
+            h(:tr, { style: { backgroundColor: row_bg, opacity: is_owned ? '0.88' : '1' }, on: row_events }, row_cells)
           end
 
           if can_pass

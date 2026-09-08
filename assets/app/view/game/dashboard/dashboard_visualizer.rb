@@ -343,15 +343,92 @@ module View
                           createPanHandler('map-panel-bot');
                           createPanHandler('panel-market');
 
-                          var styleTag = document.getElementById('dashboard-map-svg-styles');
+                       var styleTag = document.getElementById('dashboard-map-svg-styles');
                           if (!styleTag) {
                             styleTag = document.createElement('style');
                             styleTag.id = 'dashboard-map-svg-styles';
-                            styleTag.innerHTML = '.scaler-content text { font-size: 0.65em !important; letter-spacing: normal !important; } ' +
-                                                 '.scaler-content .tile__text { font-size: 0.75em !important; } ' +
-                                                 '.scaler-content text.number { font-size: 0.55em !important; }';
                             document.head.appendChild(styleTag);
                           }
+                          styleTag.innerHTML = '.scaler-content text { font-size: 0.65em !important; letter-spacing: normal !important; } ' +
+                                               '.scaler-content .tile__text { font-size: 0.75em !important; } ' +
+                                               '.scaler-content text.number { font-size: 0.55em !important; } ' +
+                                               '@keyframes map-hex-pulse { ' +
+                                               '  0% { stroke: #ff0055; stroke-width: 8px; fill-opacity: 0.18; } ' +
+                                               '  50% { stroke: #fbbf24; stroke-width: 10px; fill-opacity: 0.38; } ' +
+                                               '  100% { stroke: #ff0055; stroke-width: 8px; fill-opacity: 0.18; } ' +
+                                               '} ' +
+                                               '.map-hex-highlight .hex-highlight-poly { ' +
+                                               '  stroke: #ff0055 !important; ' +
+                                               '  stroke-width: 8px !important; ' +
+                                               '  fill: #ff0055 !important; ' +
+                                               '  fill-opacity: 0.25 !important; ' +
+                                               '  animation: map-hex-pulse 1.2s infinite ease-in-out !important; ' +
+                                               '}';
+
+                          window.highlightMapHexes = function(hexIds) {
+                            if (!hexIds) return;
+                            var ids = Array.isArray(hexIds) ? hexIds : [hexIds];
+                            if (!ids.length) return;
+                            var mapPanel = document.getElementById('map-panel-bot') || document;
+                            for (var i = 0; i < ids.length; i++) {
+                              var raw = String(ids[i]);
+                              var variants = [raw, raw.toUpperCase(), raw.toLowerCase()];
+                              for (var v = 0; v < variants.length; v++) {
+                                var hid = variants[v];
+                                var targets = mapPanel.querySelectorAll('#hex-' + hid + ', [data-hex="' + hid + '"], .hex-' + hid);
+                                for (var j = 0; j < targets.length; j++) {
+                                  targets[j].classList.add('map-hex-highlight');
+                                  var poly = targets[j].querySelector('.hex-highlight-poly');
+                                  if (poly) {
+                                    poly.setAttribute('stroke', '#ff0055');
+                                    poly.setAttribute('stroke-width', '8');
+                                    poly.setAttribute('fill', '#ff0055');
+                                    poly.setAttribute('fill-opacity', '0.25');
+                                  }
+                                }
+                              }
+                            }
+                          };
+
+                          window.clearMapHexHighlights = function() {
+                            var mapPanel = document.getElementById('map-panel-bot') || document;
+                            var highlighted = mapPanel.querySelectorAll('.map-hex-highlight');
+                            for (var i = 0; i < highlighted.length; i++) {
+                              highlighted[i].classList.remove('map-hex-highlight');
+                              var poly = highlighted[i].querySelector('.hex-highlight-poly');
+                              if (poly) {
+                                var origStroke = poly.getAttribute('data-orig-stroke') || 'transparent';
+                                var origWidth = poly.getAttribute('data-orig-width') || '0';
+                                poly.setAttribute('stroke', origStroke);
+                                poly.setAttribute('stroke-width', origWidth);
+                                poly.setAttribute('fill-opacity', '0');
+                              }
+                            }
+                          };
+
+                          window.highlightMapHexes = function(hexIds) {
+                            if (!hexIds) return;
+                            var ids = Array.isArray(hexIds) ? hexIds : [hexIds];
+                            if (!ids.length) return;
+                            var mapPanel = document.getElementById('map-panel-bot');
+                            if (!mapPanel) return;
+                            for (var i = 0; i < ids.length; i++) {
+                              var hid = String(ids[i]);
+                              var targets = mapPanel.querySelectorAll('#hex-' + hid + ', #' + hid + ', [data-hex="' + hid + '"], .hex-' + hid);
+                              for (var j = 0; j < targets.length; j++) {
+                                targets[j].classList.add('map-hex-highlight');
+                              }
+                            }
+                          };
+
+                          window.clearMapHexHighlights = function() {
+                            var mapPanel = document.getElementById('map-panel-bot');
+                            if (!mapPanel) return;
+                            var highlighted = mapPanel.querySelectorAll('.map-hex-highlight');
+                            for (var i = 0; i < highlighted.length; i++) {
+                              highlighted[i].classList.remove('map-hex-highlight');
+                            }
+                          };
 
                           var fitObserver = new ResizeObserver(function(entries) {
                             var dynStyle = document.getElementById('dynamic-scaler-styles');

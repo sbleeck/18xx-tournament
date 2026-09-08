@@ -92,8 +92,43 @@ module View
         @cols = compute_axes(axes_hexes.map(&:x))
         @rows = compute_axes(axes_hexes.map(&:y))
 
-       @start_pos = [@cols.first, @rows.first]
+        @start_pos = [@cols.first, @rows.first]
         @scale = 1.0 # Force native 1:1 pixel rendering; JS scaler handles window fit
+
+        %x{
+          if (typeof window !== 'undefined' && !window._map_hex_highlighter_installed) {
+            window._map_hex_highlighter_installed = true;
+
+            window.highlightMapHexes = function(hexIds) {
+              if (!hexIds) return;
+              window.clearMapHexHighlights();
+              var list = Array.isArray(hexIds) ? hexIds : (hexIds.to_a ? hexIds.to_a() : [hexIds]);
+              var len = list.length || 0;
+              for (var i = 0; i < len; i++) {
+                var hId = String(list[i]);
+                var hexEl = document.getElementById('hex-' + hId) || document.querySelector('.hex-' + hId);
+                if (hexEl) {
+                  var poly = hexEl.querySelector('.hex-highlight-poly');
+                  if (poly) {
+                    poly.setAttribute('stroke', '#9333ea');
+                    poly.setAttribute('stroke-width', '8');
+                  }
+                }
+              }
+            };
+
+            window.clearMapHexHighlights = function() {
+              var polys = document.querySelectorAll('.hex-highlight-poly');
+              for (var i = 0; i < polys.length; i++) {
+                var p = polys[i];
+                var origStroke = p.getAttribute('data-orig-stroke') || 'transparent';
+                var origWidth = p.getAttribute('data-orig-width') || '0';
+                p.setAttribute('stroke', origStroke);
+                p.setAttribute('stroke-width', origWidth);
+              }
+            };
+          }
+        }
 
         step = @game.round.active_step(@selected_company)
 
@@ -113,13 +148,21 @@ module View
 
         track_action_active = actions.include?('lay_tile')
         token_action_active = actions.include?('place_token') || actions.include?('hex_token')
-hovered_c_id = Lib::Storage['hovered_company_id']
+        hovered_c_id = Lib::Storage['hovered_company_id']
         hovered_target_hexes = []
         if hovered_c_id
           all_companies = @game.respond_to?(:companies) ? (@game.companies || []) : []
-          hovered_company = all_companies.find { |c| c.id.to_s == hovered_c_id || (c.respond_to?(:sym) && c.sym.to_s == hovered_c_id) } ||
-                            (@game.respond_to?(:minors) ? @game.minors.find { |m| m.id.to_s == hovered_c_id || (m.respond_to?(:sym) && m.sym.to_s == hovered_c_id) } : nil) ||
-                            @game.corporations.find { |corp| corp.id.to_s == hovered_c_id || (corp.respond_to?(:sym) && corp.sym.to_s == hovered_c_id) }
+          hovered_company = all_companies.find do |c|
+            c.id.to_s == hovered_c_id || (c.respond_to?(:sym) && c.sym.to_s == hovered_c_id)
+          end ||
+                            (if @game.respond_to?(:minors)
+                               @game.minors.find do |m|
+                                 m.id.to_s == hovered_c_id || (m.respond_to?(:sym) && m.sym.to_s == hovered_c_id)
+                               end
+                             end) ||
+                            @game.corporations.find do |corp|
+                              corp.id.to_s == hovered_c_id || (corp.respond_to?(:sym) && corp.sym.to_s == hovered_c_id)
+                            end
 
           if hovered_company
             # 1. Base coordinates defined directly on the company / minor
@@ -132,12 +175,16 @@ hovered_c_id = Lib::Storage['hovered_company_id']
 
             # 2. Coordinates across all abilities (tile_lay, token, reservation, blocks_hexes, teleport, hex_bonus)
             abilities = []
-            abilities.concat(hovered_company.all_abilities) if hovered_company.respond_to?(:all_abilities) && hovered_company.all_abilities
+            if hovered_company.respond_to?(:all_abilities) && hovered_company.all_abilities
+              abilities.concat(hovered_company.all_abilities)
+            end
             abilities.concat(hovered_company.abilities) if hovered_company.respond_to?(:abilities) && hovered_company.abilities
 
             # Check original game class entity definition as fallback
             if @game.class.const_defined?(:COMPANIES)
-              raw_def = @game.class::COMPANIES.find { |c_def| c_def[:sym].to_s == hovered_c_id || c_def[:name].to_s == hovered_c_id }
+              raw_def = @game.class::COMPANIES.find do |c_def|
+                c_def[:sym].to_s == hovered_c_id || c_def[:name].to_s == hovered_c_id
+              end
               if raw_def && raw_def[:abilities]
                 raw_def[:abilities].each do |raw_ab|
                   Array(raw_ab[:hexes]).each { |coord| hovered_target_hexes << coord.to_s } if raw_ab[:hexes]
@@ -147,9 +194,7 @@ hovered_c_id = Lib::Storage['hovered_company_id']
             end
 
             abilities.each do |ab|
-              if ab.respond_to?(:hexes) && ab.hexes
-                Array(ab.hexes).each { |coord| hovered_target_hexes << coord.to_s }
-              end
+              Array(ab.hexes).each { |coord| hovered_target_hexes << coord.to_s } if ab.respond_to?(:hexes) && ab.hexes
 
               if ab.respond_to?(:hex) && ab.hex
                 hex_val = ab.hex.respond_to?(:id) ? ab.hex.id : ab.hex
@@ -247,115 +292,145 @@ hovered_c_id = Lib::Storage['hovered_company_id']
             end
           end
 
-          if border_color
-            x, y = Hex.coordinates(hex, @start_pos)
-            transform_str = "translate(#{x}, #{y})#{hex.layout == :pointy ? ' rotate(30)' : ''}"
+          x, y = Hex.coordinates(hex, @start_pos)
+          transform_str = "translate(#{x}, #{y})#{hex.layout == :pointy ? ' rotate(30)' : ''}"
 
-            h(:g, { key: "dash-g-#{hex.id}" }, [
-              base_hex,
-              h(:g, { attrs: { transform: transform_str }, style: { pointerEvents: 'none' } }, [
-                dashboard_hex_highlight(hex, border_color),
+          initial_stroke = border_color || 'transparent'
+          initial_width = border_color ? (Hex::HIGHLIGHT_STROKE_WIDTH + 4) : 0
+
+          hex_children = [
+            base_hex,
+            h(:g, {
+                attrs: {
+                  transform: transform_str,
+                  class: 'hex-highlight-wrapper',
+                },
+                style: { pointerEvents: 'none' },
+              }, [
+                h(:polygon, {
+                    attrs: {
+                      points: Hex::HIGHLIGHT_POINTS,
+                      class: 'hex-highlight-poly',
+                      'data-orig-stroke': initial_stroke,
+                      'data-orig-width': initial_width.to_s,
+                      stroke: initial_stroke,
+                      'stroke-width': initial_width.to_s,
+                      'fill-opacity': '0',
+                    },
+                    style: {
+                      pointerEvents: 'none',
+                    },
+                  }),
               ]),
-            ])
-          else
-            base_hex
-          end
+          ]
+
+          h(:g, {
+              key: "dash-g-#{hex.id}",
+              attrs: {
+                id: "hex-#{hex.id}",
+                class: "map-hex-container hex-#{hex.id}",
+                'data-hex': hex.id.to_s,
+              },
+            }, hex_children)
+
+        
         end
         @hexes.compact!
 
-       map_w, map_h = map_size
-          children = [render_map(map_w, map_h)]
+        map_w, map_h = map_size
+        children = [render_map(map_w, map_h)]
 
         if current_entity && @tile_selector
           left = (@tile_selector.x + map_x) * @scale
           top = (@tile_selector.y + map_y) * @scale
-            selector =
-              if @tile_selector.is_a?(Lib::TokenSelector)
-                h(TokenSelector, zoom: 1.0)
-              elsif @tile_selector.role != :map
-              elsif @tile_selector.hex.tile != @tile_selector.tile
-                h(TileConfirmation, zoom: 1.0)
-              else
-                tiles = step.upgradeable_tiles(entity_or_entities, @tile_selector.hex)
-                all_upgrades = @game.all_potential_upgrades(@tile_selector.hex.tile, selected_company: @selected_company)
-                phase_colors = step.potential_tile_colors(current_entity, @tile_selector.hex)
-                select_tiles = all_upgrades.map do |tile|
-                  real_tile = tiles.find { |t| t.name == tile.name }
-                  if real_tile
-                    tiles.delete(real_tile)
-                    [real_tile, nil]
-                  elsif !@game.tile_valid_for_phase?(tile, hex: @tile_selector.hex, phase_color_cache: phase_colors)
-                    [tile, 'Later Phase']
-                  elsif @game.tiles.none? { |t| t.name == tile.name }
-                    [tile, 'None Left']
-                  end
-                end.compact
-
-                select_tiles.append(*tiles.map { |t| [t, nil] })
-
-                if select_tiles.empty?
-                  h(:div)
-                else
-                  distance = TileSelector::DISTANCE * 1.0
-                  width, height = [map_w, map_h]
-                  ts_ds = [TileSelector::DROP_SHADOW_SIZE - 5, 0].max
-                  left_col = left < distance
-                  right_col = width - left < distance + ts_ds
-                  top_row = top < distance
-                  bottom_row = height - top < distance + ts_ds
-
-                  h(TileSelector, layout: @layout, tiles: select_tiles, actions: actions, zoom: 1.0,
-                                  top_row: top_row, left_col: left_col, right_col: right_col, bottom_row: bottom_row)
+          selector =
+            if @tile_selector.is_a?(Lib::TokenSelector)
+              h(TokenSelector, zoom: 1.0)
+            elsif @tile_selector.role != :map
+            elsif @tile_selector.hex.tile != @tile_selector.tile
+              h(TileConfirmation, zoom: 1.0)
+            else
+              tiles = step.upgradeable_tiles(entity_or_entities, @tile_selector.hex)
+              all_upgrades = @game.all_potential_upgrades(@tile_selector.hex.tile, selected_company: @selected_company)
+              phase_colors = step.potential_tile_colors(current_entity, @tile_selector.hex)
+              select_tiles = all_upgrades.map do |tile|
+                real_tile = tiles.find { |t| t.name == tile.name }
+                if real_tile
+                  tiles.delete(real_tile)
+                  [real_tile, nil]
+                elsif !@game.tile_valid_for_phase?(tile, hex: @tile_selector.hex, phase_color_cache: phase_colors)
+                  [tile, 'Later Phase']
+                elsif @game.tiles.none? { |t| t.name == tile.name }
+                  [tile, 'None Left']
                 end
-              end
+              end.compact
 
-            props = {
-              style: {
-                position: 'absolute',
-                left: "#{left}px",
-                top: "#{top}px",
-              },
-            }
-            children.unshift(h(:div, props, [selector]))
-          end
-props = {
+              select_tiles.append(*tiles.map { |t| [t, nil] })
+
+              if select_tiles.empty?
+                h(:div)
+              else
+                distance = TileSelector::DISTANCE * 1.0
+                width = map_w
+                height = map_h
+                ts_ds = [TileSelector::DROP_SHADOW_SIZE - 5, 0].max
+                left_col = left < distance
+                right_col = width - left < distance + ts_ds
+                top_row = top < distance
+                bottom_row = height - top < distance + ts_ds
+
+                h(TileSelector, layout: @layout, tiles: select_tiles, actions: actions, zoom: 1.0,
+                                top_row: top_row, left_col: left_col, right_col: right_col, bottom_row: bottom_row)
+              end
+            end
+
+          props = {
             style: {
-              width: 'max-content',
-              height: 'max-content',
-              margin: '0',
-              position: 'relative',
+              position: 'absolute',
+              left: "#{left}px",
+              top: "#{top}px",
             },
           }
-
-          h(:div, props, children)
+          children.unshift(h(:div, props, [selector]))
         end
+        props = {
+          style: {
+            width: 'max-content',
+            height: 'max-content',
+            margin: '0',
+            position: 'relative',
+          },
+        }
 
-        def map_x
-          GAP + FONT_SIZE
+        h(:div, props, children)
+      end
+
+      def map_x
+        GAP + FONT_SIZE
+      end
+
+      def map_y
+        GAP + FONT_SIZE + (@layout == :flat ? (FONT_SIZE / 2.0) : FONT_SIZE)
+      end
+
+      def map_size
+        if @layout == :flat
+          [((((@cols.size * 1.5) + 0.5) * EDGE_LENGTH) + (2 * GAP)) * @scale,
+           ((((@rows.size / 2.0) + 0.5) * SIDE_TO_SIDE) + (2 * GAP)) * @scale]
+        else
+          [(((((@cols.size / 2.0) + 0.5) * SIDE_TO_SIDE) + (2 * GAP)) + 1) * @scale,
+           ((((@rows.size * 1.5) + 0.5) * EDGE_LENGTH) + (2 * GAP)) * @scale]
         end
+      end
 
-        def map_y
-          GAP + (FONT_SIZE) + (@layout == :flat ? (FONT_SIZE / 2.0) : FONT_SIZE)
-        end
-
-        def map_size
-          if @layout == :flat
-            [((((@cols.size * 1.5) + 0.5) * EDGE_LENGTH) + (2 * GAP)) * @scale,
-             ((((@rows.size / 2.0) + 0.5) * SIDE_TO_SIDE) + (2 * GAP)) * @scale]
-          else
-            [(((((@cols.size / 2.0) + 0.5) * SIDE_TO_SIDE) + (2 * GAP)) + 1) * @scale,
-             ((((@rows.size * 1.5) + 0.5) * EDGE_LENGTH) + (2 * GAP)) * @scale]
-          end
-        end
-
-        def render_map(width, height)
-          props = {
-            attrs: {
-              id: 'map',
-              width: width.to_s,
-              height: height.to_s,
-            }
-          }
+      def render_map(width, height)
+        props = {
+          attrs: {
+            id: 'map',
+            width: width.to_s,
+            height: height.to_s,
+          },
+        }
 
         h(:svg, props, [
           h(:g, { attrs: { transform: "scale(#{@scale})" } }, [

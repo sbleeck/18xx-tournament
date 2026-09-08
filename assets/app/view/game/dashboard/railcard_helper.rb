@@ -18,6 +18,81 @@ module View
           }
         '
 
+        def resolve_target_hexes(target)
+          return [] unless target
+
+          hexes = []
+          abilities = []
+          abilities.concat(target.all_abilities) if target.respond_to?(:all_abilities) && target.all_abilities
+          abilities.concat(Array(target.abilities)) if target.respond_to?(:abilities) && target.abilities
+
+          if @game.respond_to?(:abilities)
+            %i[blocks_hexes teleport tile_lay hex_bonus assign_hexes reservation close].each do |type|
+              ab = @game.abilities(target, type)
+              abilities.concat(Array(ab)) if ab
+            end
+          end
+
+          if @game && @game.class.const_defined?(:COMPANIES)
+            t_sym = target.respond_to?(:sym) ? target.sym.to_s : target.to_s
+            t_name = target.respond_to?(:name) ? target.name.to_s : target.to_s
+            raw_def = @game.class::COMPANIES.find { |c_def| c_def[:sym].to_s == t_sym || c_def[:name].to_s == t_name }
+            if raw_def && raw_def[:abilities]
+              raw_def[:abilities].each do |raw_ab|
+                hexes.concat(Array(raw_ab[:hexes])) if raw_ab[:hexes]
+                hexes << raw_ab[:hex] if raw_ab[:hex]
+              end
+            end
+          end
+
+          abilities.compact.uniq.each do |a|
+            if a.respond_to?(:hexes) && a.hexes
+              hexes.concat(Array(a.hexes))
+            elsif a.respond_to?(:hex) && a.hex
+              hex_id = a.hex.respond_to?(:id) ? a.hex.id : a.hex
+              hexes << hex_id
+            elsif a.respond_to?(:coordinates) && a.coordinates
+              hexes.concat(Array(a.coordinates))
+            end
+
+            target_corp = nil
+            if a.respond_to?(:corporation) && a.corporation
+              target_corp = @game.corporation_by_id(a.corporation) || a.corporation
+            elsif a.respond_to?(:minor) && a.minor
+              target_corp = (@game.respond_to?(:minor_by_id) ? @game.minor_by_id(a.minor) : nil) || a.minor
+            end
+
+            if target_corp && target_corp.respond_to?(:coordinates) && target_corp.coordinates
+              hexes.concat(Array(target_corp.coordinates))
+            end
+          end
+
+          hexes.concat(Array(target.coordinates)) if target.respond_to?(:coordinates) && target.coordinates
+
+          hexes << target.city.hex.id if target.respond_to?(:city) && target.city&.respond_to?(:hex) && target.city&.hex
+
+          if target.respond_to?(:corporation?) && target.corporation?
+            placed_tokens = []
+            if target.respond_to?(:tokens) && target.tokens
+              placed_tokens = target.tokens.map { |t| t.city&.hex&.id || (t.respond_to?(:hex) && t.hex&.id) }.compact
+            end
+
+            if placed_tokens.any?
+              hexes.concat(placed_tokens)
+            elsif target.respond_to?(:coordinates) && target.coordinates
+              hexes.concat(Array(target.coordinates))
+            end
+          end
+
+          if target.respond_to?(:desc) && target.desc && @game.respond_to?(:hex_by_id)
+            target.desc.scan(/\b[A-Za-z]\d{1,2}\b/).each do |h_id|
+              hexes << h_id.upcase if @game.hex_by_id(h_id) || @game.hex_by_id(h_id.upcase)
+            end
+          end
+
+          hexes.compact.map(&:to_s).uniq
+        end
+
         def render_tooltip_style
           h(:style, {}, '
             .cmd-company-wrapper:hover .cmd-company-tooltip,
@@ -406,7 +481,7 @@ module View
           nil
         end
 
-        def render_railcard(text, card_classes = ['game-card'], click_handler = nil, tooltip = nil, dropdown = nil, wrapper_id = nil, wrapper_classes = nil)
+        def render_railcard(text, card_classes = ['game-card'], click_handler = nil, tooltip = nil, dropdown = nil, wrapper_id = nil, wrapper_classes = nil, entity: nil)
           classes = []
           if card_classes
             `if (Array.isArray(#{card_classes})) {`
@@ -490,6 +565,39 @@ module View
           }
           )
 
+          resolved_entity = entity
+          if !resolved_entity && @game
+            t_str = text.to_s
+            t_clean = t_str.split('(').first.strip
+            t_clean = t_clean.sub(/\s+[$£€\d].*$/, '').strip
+
+            resolved_entity = (@game.respond_to?(:companies) ? @game.companies.find { |c| c.id.to_s == t_clean || (c.respond_to?(:sym) && c.sym.to_s == t_clean) || c.name.to_s == t_clean } : nil) ||
+                              (@game.respond_to?(:corporations) ? @game.corporations.find { |c| c.id.to_s == t_clean || (c.respond_to?(:sym) && c.sym.to_s == t_clean) || c.name.to_s == t_clean } : nil) ||
+                              (@game.respond_to?(:minors) ? @game.minors.find { |m| m.id.to_s == t_clean || (m.respond_to?(:sym) && m.sym.to_s == t_clean) || m.name.to_s == t_clean } : nil)
+          end
+
+          target_hexes = resolved_entity ? resolve_target_hexes(resolved_entity) : []
+
+          hover_events = {}
+          if target_hexes.any?
+            hover_events[:mouseenter] = lambda {
+              %x{
+                if (typeof window !== 'undefined' && window.highlightMapHexes) {
+                  window.highlightMapHexes(#{target_hexes});
+                }
+              }
+              nil
+            }
+            hover_events[:mouseleave] = lambda {
+              %x{
+                if (typeof window !== 'undefined' && window.clearMapHexHighlights) {
+                  window.clearMapHexHighlights();
+                }
+              }
+              nil
+            }
+          end
+
           has_tooltip = tooltip ? true : false
           valid_classes = []
           valid_classes.concat(%w[cmd-company-wrapper status-company-wrapper cmd-corp-wrapper status-corp-wrapper]) if has_tooltip
@@ -549,8 +657,6 @@ module View
           }
           card_props[:on] = { click: click_handler } if is_clickable
 
-          card = h(:div, card_props, text.to_s)
-
           needs_wrapper = has_tooltip || has_dropdown || has_wrapper_id || has_wrapper_classes
 
           if needs_wrapper
@@ -560,15 +666,18 @@ module View
 
             children = []
             children << tooltip if has_tooltip
-            children << card
+            children << h(:div, card_props, text.to_s)
             children.concat(dropdown_items) if has_dropdown
 
             h(:div, {
                 attrs: w_attrs,
                 style: { display: 'inline-block', position: 'relative' },
+                on: hover_events,
               }, children.compact)
           else
-            card
+            card_props[:on] ||= {}
+            card_props[:on].merge!(hover_events)
+            h(:div, card_props, text.to_s)
           end
         end
       end
