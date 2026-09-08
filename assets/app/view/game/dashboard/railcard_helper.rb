@@ -71,7 +71,7 @@ module View
 
           hexes << target.city.hex.id if target.respond_to?(:city) && target.city&.respond_to?(:hex) && target.city&.hex
 
-          if target.respond_to?(:corporation?) && target.corporation?
+          if (target.respond_to?(:corporation?) && target.corporation?) || (target.respond_to?(:minor?) && target.minor?)
             placed_tokens = []
             if target.respond_to?(:tokens) && target.tokens
               placed_tokens = target.tokens.map { |t| t.city&.hex&.id || (t.respond_to?(:hex) && t.hex&.id) }.compact
@@ -112,9 +112,12 @@ module View
           ')
         end
 
-        def render_company_tooltip(title, subtitle, desc, val, rev, owner)
+        def render_company_tooltip(title, subtitle, desc, val, rev, owner, hexes = [])
           h(:div, {
-              attrs: { class: 'status-company-tooltip cmd-company-tooltip' },
+              attrs: {
+                class: 'status-company-tooltip cmd-company-tooltip',
+                'data-hexes': Array(hexes).join(','),
+              },
               style: {
                 display: 'none',
                 position: 'fixed',
@@ -171,8 +174,9 @@ module View
 
           value_str = @game.format_currency(c.value || 0)
           revenue_str = @game.format_currency(c.revenue || 0)
+          target_hexes = resolve_target_hexes(c)
 
-          render_company_tooltip('Private Company', c.name, desc_text, value_str, revenue_str, owner_name)
+          render_company_tooltip('Private Company', c.name, desc_text, value_str, revenue_str, owner_name, target_hexes)
         end
 
         def render_corp_tooltip(corporation)
@@ -230,8 +234,13 @@ module View
             end
           end
 
+          target_hexes = resolve_target_hexes(corporation)
+
           h(:div, {
-              attrs: { class: 'status-corp-tooltip cmd-corp-tooltip' },
+              attrs: {
+                class: 'status-corp-tooltip cmd-corp-tooltip',
+                'data-hexes': target_hexes.join(','),
+              },
               style: {
                 display: 'none',
                 position: 'fixed',
@@ -532,6 +541,9 @@ module View
                 p.style.display = 'none';
                 p.innerHTML = '';
               }
+              if (typeof window !== 'undefined' && window.clearMapHexHighlights) {
+                window.clearMapHexHighlights();
+              }
             };
 
             document.addEventListener('mouseover', function(e) {
@@ -543,6 +555,13 @@ module View
                   if (p) {
                     p.innerHTML = tt.innerHTML;
                     p.style.display = 'block';
+                  }
+                  var hexAttr = tt.getAttribute('data-hexes');
+                  if (hexAttr && typeof window !== 'undefined' && window.highlightMapHexes) {
+                    var hexList = hexAttr.split(',').filter(Boolean);
+                    if (hexList.length > 0) {
+                      window.highlightMapHexes(hexList);
+                    }
                   }
                 }
               } else {
