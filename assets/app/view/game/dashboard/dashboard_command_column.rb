@@ -30,6 +30,337 @@ end
 
 module View
   module Game
+    module Dashboard
+      class DraftOverlay < Snabberb::Component
+        include Actionable
+        include Lib::Settings
+        include View::Game::Dashboard::RailcardHelper
+
+        FONT_MONEY = '"Courier New", Courier, monospace'
+        COLOR_MONEY = '#4c1d95'
+
+        needs :game, store: true
+
+        def current_entity
+          @game.round.active_step&.current_entity ||
+            (@game.round.respond_to?(:current_entity) ? @game.round.current_entity : nil) ||
+            @game.current_entity
+        rescue NotImplementedError, StandardError
+          nil
+        end
+
+        def render
+          step = @game.round.active_step
+          entity = current_entity
+          return h(:div) unless step && entity
+
+          actions = begin
+            @game.round.actions_for(entity)
+          rescue StandardError
+            step.current_actions || []
+          end || []
+
+          raw_hand = []
+          raw_hand.concat(step.companies) if step.respond_to?(:companies) && step.companies&.any?
+          raw_hand.concat(step.minors) if step.respond_to?(:minors) && step.minors&.any?
+          raw_hand.concat(step.available) if step.respond_to?(:available) && step.available&.any?
+          raw_hand.concat(step.items) if step.respond_to?(:items) && step.items&.any?
+          raw_hand.concat(step.cards) if step.respond_to?(:cards) && step.cards&.any?
+
+          available_choices = if step.respond_to?(:choices_for)
+                                begin
+                                  step.choices_for(entity)
+                                rescue ArgumentError
+                                  step.choices_for
+                                rescue StandardError
+                                  nil
+                                end
+                              elsif step.respond_to?(:choices)
+                                begin
+                                  step.choices(entity)
+                                rescue ArgumentError
+                                  step.choices
+                                rescue StandardError
+                                  nil
+                                end
+                              end
+
+          choice_list = if available_choices.is_a?(Hash)
+                          available_choices.keys
+                        elsif available_choices.is_a?(Array)
+                          available_choices
+                        else
+                          []
+                        end
+          raw_hand.concat(choice_list) if choice_list.any?
+
+          has_blank_card = raw_hand.any? do |c|
+            c.is_a?(Engine::Player) || (c.respond_to?(:player?) && c.player?) || c.to_s =~ /Player/i
+          end
+
+          find_entity = lambda do |token|
+            return token if token.is_a?(Engine::Company) || token.is_a?(Engine::Minor)
+
+            if token.is_a?(String) || token.is_a?(Symbol)
+              (@game.respond_to?(:companies) ? @game.companies.find { |c| c.id.to_s == token.to_s || (c.respond_to?(:sym) && c.sym.to_s == token.to_s) } : nil) ||
+              (@game.respond_to?(:minors) ? @game.minors.find { |m| m.id.to_s == token.to_s || m.name.to_s == token.to_s } : nil)
+            end
+          end
+
+          draft_items = []
+          raw_hand.each do |c|
+            ent = find_entity.call(c)
+            draft_items << ent if ent
+          end
+
+          if @game.respond_to?(:companies) && @game.companies
+            acquired_companies = @game.companies.select do |c|
+              c.respond_to?(:owner) && c.owner && c.owner.respond_to?(:player?) && c.owner.player? && (!c.respond_to?(:closed?) || !c.closed?)
+            end
+            draft_items.concat(acquired_companies)
+          end
+
+          if @game.respond_to?(:minors) && @game.minors
+            acquired_minors = @game.minors.select do |m|
+              m.respond_to?(:owner) && m.owner && m.owner.respond_to?(:player?) && m.owner.player? && (!m.respond_to?(:closed?) || !m.closed?)
+            end
+            draft_items.concat(acquired_minors)
+          end
+
+          if draft_items.empty?
+            draft_items = (@game.respond_to?(:companies) ? (@game.companies || []).dup : []) +
+                          (@game.respond_to?(:minors) ? (@game.minors || []).dup : [])
+          end
+
+          all_game_items = (@game.respond_to?(:companies) ? @game.companies : []) +
+                           (@game.respond_to?(:minors) ? @game.minors : [])
+          items = draft_items.compact.uniq.sort_by { |item| all_game_items.index(item) || 999 }
+
+          players = @game.players || []
+
+          rows = items.map do |item|
+            is_owned = item.respond_to?(:owner) && item.owner && item.owner.respond_to?(:player?) && item.owner.player?
+
+            item_price = if step.respond_to?(:min_bid)
+                           begin
+                             step.min_bid(item)
+                           rescue ArgumentError
+                             step.min_bid
+                           rescue StandardError
+                             (item.respond_to?(:value) ? item.value : 0)
+                           end
+                         elsif step.respond_to?(:buy_price)
+                           step.buy_price(item)
+                         elsif item.respond_to?(:value)
+                           item.value
+                         else
+                           0
+                         end
+
+            is_in_hand = raw_hand.empty? || raw_hand.any? do |c|
+              c == item ||
+                (item.respond_to?(:id) && (c == item.id || c == item.id.to_s)) ||
+                (item.respond_to?(:name) && c == item.name) ||
+                (item.respond_to?(:sym) && c == item.sym)
+            end
+
+            can_afford = (entity.respond_to?(:cash) ? entity.cash : 0) >= item_price
+
+            exec_choose = lambda {
+              if actions.include?('bid')
+                bid_args = { price: item_price }
+                if item.respond_to?(:company?) && item.company?
+                  bid_args[:company] = item
+                elsif item.is_a?(Engine::Minor)
+                  comp = @game.company_by_id(item.id) if @game.respond_to?(:company_by_id)
+                  bid_args[:company] = comp || item
+                elsif item.respond_to?(:corporation?) && item.corporation?
+                  bid_args[:corporation] = item
+                else
+                  bid_args[:company] = item
+                end
+                process_action(Engine::Action::Bid.new(entity, **bid_args))
+              elsif actions.include?('buy_company')
+                process_action(Engine::Action::BuyCompany.new(entity, company: item, price: item_price))
+              elsif actions.include?('choose')
+                choice_val = if available_choices.is_a?(Hash)
+                               available_choices.keys.find { |k| k == item || (item.respond_to?(:id) && k == item.id) } || item.id
+                             else
+                               item.respond_to?(:id) ? item.id : item
+                             end
+                process_action(Engine::Action::Choose.new(entity, choice: choice_val))
+              end
+            }
+
+            can_choose_item = !is_owned && is_in_hand && can_afford &&
+                              (actions.include?('bid') || actions.include?('buy_company') || actions.include?('choose'))
+
+            card_sym = item.respond_to?(:sym) ? item.sym : item.name
+            tooltip = build_entity_tooltip(item)
+            subtext = item.respond_to?(:value) && item.value ? @game.format_currency(item.value) : nil
+            card_classes = ['game-card']
+            card_classes << 'action-buy clickable' if can_choose_item
+            card_label = subtext ? "#{card_sym} #{subtext}" : card_sym
+
+            item_card = render_railcard(card_label, card_classes, (can_choose_item ? exec_choose : nil), tooltip)
+
+            choose_btn = if can_choose_item
+                           h(:button, {
+                               style: {
+                                 padding: '0 10px',
+                                 height: '1.6rem',
+                                 fontSize: '0.82rem',
+                                 fontWeight: 'bold',
+                                 fontFamily: FONT_MONEY,
+                                 backgroundColor: '#16a34a',
+                                 color: '#fff',
+                                 border: 'none',
+                                 borderRadius: '4px',
+                                 cursor: 'pointer',
+                               },
+                               on: { click: exec_choose },
+                             }, "Choose #{@game.format_currency(item_price)}")
+                         end
+
+            row_cells = [
+              h(:td, { style: { padding: '6px 8px', borderBottom: '1px solid #e2e8f0', width: '1%', whiteSpace: 'nowrap' } }, [item_card]),
+              h(:td, { style: { padding: '6px 8px', borderBottom: '1px solid #e2e8f0', width: '8rem', whiteSpace: 'nowrap' } }, [choose_btn].compact),
+            ]
+
+            players.each do |p|
+              owned_tag = if is_owned && item.respond_to?(:owner) && item.owner == p
+                            h(:span, {
+                                style: {
+                                  backgroundColor: '#16a34a',
+                                  color: '#fff',
+                                  padding: '3px 6px',
+                                  borderRadius: '3px',
+                                  fontWeight: 'bold',
+                                  fontSize: '0.75rem',
+                                },
+                              }, 'OWNED')
+                          else
+                            h(:span, { style: { color: '#cbd5e1' } }, '-')
+                          end
+              row_cells << h(:td, { style: { padding: '6px 8px', textAlign: 'center', borderBottom: '1px solid #e2e8f0' } }, [owned_tag])
+            end
+
+            h(:tr, { style: { backgroundColor: can_choose_item ? '#f0fdf4' : 'transparent' } }, row_cells)
+          end
+
+          if has_blank_card || actions.include?('pass')
+            blank_pass = -> { process_action(Engine::Action::Pass.new(entity)) }
+            blank_badge = render_railcard('Blank Card', %w[game-card action-buy clickable], blank_pass)
+            blank_btn = h(:button, {
+                            style: {
+                              padding: '0 10px',
+                              height: '1.6rem',
+                              fontSize: '0.82rem',
+                              fontWeight: 'bold',
+                              backgroundColor: '#64748b',
+                              color: '#fff',
+                              border: 'none',
+                              borderRadius: '4px',
+                              cursor: 'pointer',
+                            },
+                            on: { click: blank_pass },
+                          }, 'Take Blank (Pass)')
+
+            blank_cells = [
+              h(:td, { style: { padding: '6px 8px', borderBottom: '1px solid #e2e8f0', width: '1%', whiteSpace: 'nowrap' } }, [blank_badge]),
+              h(:td, { style: { padding: '6px 8px', borderBottom: '1px solid #e2e8f0', width: '8rem', whiteSpace: 'nowrap' } }, [blank_btn]),
+              *players.map { h(:td, { style: { padding: '6px 8px', textAlign: 'center', borderBottom: '1px solid #e2e8f0' } }, [h(:span, { style: { color: '#cbd5e1' } }, '-')]) },
+            ]
+            rows << h(:tr, { style: { backgroundColor: '#f8fafc' } }, blank_cells)
+          end
+
+          h(:div, {
+              style: {
+                position: 'fixed',
+                inset: '0',
+                backgroundColor: 'rgba(15, 23, 42, 0.65)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                zIndex: '100000',
+                backdropFilter: 'blur(2px)',
+              },
+            }, [
+            h(:div, {
+                style: {
+                  width: '90%',
+                  maxWidth: '920px',
+                  maxHeight: '88vh',
+                  backgroundColor: '#ffffff',
+                  borderRadius: '8px',
+                  boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.3)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  overflow: 'hidden',
+                  border: '1px solid #cbd5e1',
+                },
+              }, [
+              h(:div, {
+                  style: {
+                    padding: '0.8rem 1.2rem',
+                    borderBottom: '1px solid #e2e8f0',
+                    backgroundColor: '#f8fafc',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                  },
+                }, [
+                h(:div, [
+                  h(:h2, { style: { margin: '0', fontSize: '1.25rem', color: '#0f172a' } }, 'Private Distribution Draft'),
+                  h(:span, { style: { fontSize: '0.85rem', color: '#64748b' } }, "Active Player: #{entity.name}"),
+                ]),
+              ]),
+              h(:div, { style: { overflowY: 'auto', padding: '1rem' } }, [
+                h(:table, { style: { width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' } }, [
+                  h(:thead, [
+                    h(:tr, [
+                      h(:th, { attrs: { colspan: '2' }, style: { padding: '6px 8px', textAlign: 'left', borderBottom: '2px solid #cbd5e1', color: '#475569' } }, 'Available Cards'),
+                      *players.map do |p|
+                        is_current = (p == entity)
+                        h(:th, {
+                            style: {
+                              padding: '6px 8px',
+                              textAlign: 'center',
+                              borderBottom: '2px solid #cbd5e1',
+                              backgroundColor: is_current ? '#e0f2fe' : 'transparent',
+                              color: is_current ? '#0369a1' : '#475569',
+                              fontWeight: is_current ? 'bold' : '600',
+                            },
+                          }, p.name)
+                      end,
+                    ]),
+                  ]),
+                  h(:tbody, rows),
+                  h(:tfoot, [
+                    h(:tr, [
+                      h(:td, { attrs: { colspan: '2' }, style: { padding: '8px', fontWeight: 'bold', borderTop: '2px solid #cbd5e1', color: '#334155' } }, 'Cash on Hand:'),
+                      *players.map do |p|
+                        h(:td, {
+                            style: {
+                              padding: '8px',
+                              textAlign: 'center',
+                              borderTop: '2px solid #cbd5e1',
+                              fontWeight: 'bold',
+                              fontFamily: FONT_MONEY,
+                              color: COLOR_MONEY,
+                            },
+                          }, @game.format_currency(p.cash))
+                      end,
+                    ]),
+                  ]),
+                ]),
+              ]),
+            ]),
+          ])
+        end
+      end
+    end
+
     class DashboardCommandColumn < Snabberb::Component
       include Actionable
       include Lib::Settings
@@ -58,7 +389,7 @@ module View
       end
 
       def active_player
-        entity = active_entity
+        entity = current_entity
         return nil unless entity
 
         if entity.respond_to?(:player?) && entity.player?
@@ -116,7 +447,6 @@ module View
           end || []
 
           next false if c_actions.empty?
-
           next false if @game.respond_to?(:entity_can_use_company?) && !@game.entity_can_use_company?(entity, c)
 
           true
@@ -247,8 +577,8 @@ module View
                   end
 
         is_draft = step&.class&.name =~ /Draft/i ||
-                     step&.description =~ /Draft/i ||
-                     (@game.respond_to?(:round) && @game.round.class.name =~ /Draft/i)
+                   (step.respond_to?(:description) && step.description =~ /Draft/i) ||
+                   (@game.respond_to?(:round) && @game.round.class.name =~ /Draft/i)
 
         phase = :waiting
         if actions.include?('lay_tile')
@@ -281,7 +611,6 @@ module View
           phase = :choose
         elsif actions.include?('bid')
           phase = :bid
-
         elsif actions.include?('merge') || actions.include?('convert')
           phase = :merge
         elsif actions.include?('take_loan') || actions.include?('payoff_loan')
@@ -355,7 +684,6 @@ module View
             issue_shares: 'ISSUE SHARES',
             choose: (is_draft ? 'DRAFT' : 'CHOOSE'),
             bid: 'AUCTION',
-
             par: 'PAR PRICE',
             merge: 'MERGER',
             loan: 'LOAN',
@@ -496,7 +824,6 @@ module View
             zone_2_content << render_action_row('Revenue:', spinner_items)
           end
         elsif phase == :dividend
-
           raw_options = if step.respond_to?(:dividend_options)
                           step.dividend_options(entity)
                         elsif step.respond_to?(:dividend_types)
@@ -538,7 +865,7 @@ module View
           when :merge then advance_text = 'Done / Pass'
           when :loan then advance_text = 'Done / Pass'
           when :buy_shares then advance_text = 'Done / Pass'
-          when :choose, :bid then advance_text = (is_draft ? 'Pass / Blank' : 'Pass')
+          when :choose, :bid then advance_text = is_draft ? 'Pass / Blank' : 'Pass'
           end
         elsif phase == :run_routes && actions.include?('run_routes') && !@cmd_router_running
           advance_disabled = false
@@ -574,8 +901,7 @@ module View
         has_abilities = entity && (@game.companies || []).any? do |c|
           next false if c.respond_to?(:closed?) && c.closed?
 
-          is_owner = c.owner == entity ||
-                     (entity.respond_to?(:owner) && c.owner && c.owner == entity.owner)
+          is_owner = c.owner == entity || (entity.respond_to?(:owner) && c.owner && c.owner == entity.owner)
           next false unless is_owner
 
           abilities = (c.respond_to?(:all_abilities) ? c.all_abilities : []).dup
@@ -743,10 +1069,10 @@ module View
         end
 
         h(:div, { style: { display: 'flex', flexDirection: 'row', width: '100%', height: '100%', boxSizing: 'border-box', backgroundColor: '#fff', position: 'relative', zIndex: 99_999, overflow: 'visible' } }, [
-                      zone_1,
-                      zone_2,
-                      zone_3,
-                ])
+          zone_1,
+          zone_2,
+          zone_3,
+        ])
       end
 
       def render_merger_step(step, entity, actions)
@@ -808,12 +1134,7 @@ module View
           if mergeables.any?
             merge_boxes = mergeables.map do |target|
               click_handler = lambda {
-                kwargs = {}
-                if target.respond_to?(:minor?) && target.minor?
-                  kwargs[:minor] = target
-                else
-                  kwargs[:corporation] = target
-                end
+                kwargs = target.respond_to?(:minor?) && target.minor? ? { minor: target } : { corporation: target }
                 process_action(Engine::Action::Merge.new(entity, **kwargs))
               }
               render_railcard(target.name, %w[game-card action-buy clickable], click_handler)
@@ -853,7 +1174,6 @@ module View
                 action_class = actions.include?('corporate_buy_shares') ? Engine::Action::CorporateBuyShares : Engine::Action::BuyShares
                 process_action(action_class.new(entity, shares: bundle.respond_to?(:shares) ? bundle.shares : [bundle], share_price: bundle.respond_to?(:share_price) ? bundle.share_price : nil, percent: pct))
               }
-              corp = bundle.respond_to?(:corporation) ? bundle.corporation : entity
               render_railcard("Buy #{pct}% (#{@game.format_currency(price)})", %w[game-card action-buy clickable], click_handler)
             end
             components << render_action_row('Buy Treasury Share:', buy_boxes)
@@ -863,268 +1183,6 @@ module View
         end
 
         h(:div, { style: { display: 'flex', flexDirection: 'column', gap: '0.4rem', width: '100%' } }, components)
-      end
-
-      def render_bid(step, entity, _actions, target = nil)
-        target ||= if step.respond_to?(:auctioning) && step.auctioning
-                     step.auctioning
-                   elsif Lib::Storage['selected_bid_corp']
-                     target_id = Lib::Storage['selected_bid_corp']
-                     (@game.respond_to?(:companies) ? @game.companies.find { |c| c.id.to_s == target_id.to_s } : nil) ||
-                       @game.corporations.find { |c| c.id.to_s == target_id.to_s } ||
-                       (@game.respond_to?(:minors) ? @game.minors.find { |m| m.id.to_s == target_id.to_s } : nil)
-                   elsif step.respond_to?(:companies) && step.companies&.one?
-                     step.companies.first
-                   end
-
-        return render_action_row('Auction:', [h(:span, { style: { fontStyle: 'italic', color: '#666', fontSize: '0.85rem' } }, 'Select an available company to bid')]) unless target
-
-        current_bidder = step.respond_to?(:current_entity) && step.current_entity ? step.current_entity : entity
-        bidder_name = current_bidder&.name || 'Unknown'
-
-        high_bid_obj = if step.respond_to?(:highest_bid)
-                         step.highest_bid(target)
-                       elsif step.respond_to?(:high_bid)
-                         step.high_bid(target)
-                       end
-
-        high_bidder = if step.respond_to?(:high_bidder)
-                        step.high_bidder(target)
-                      elsif high_bid_obj.respond_to?(:entity)
-                        high_bid_obj.entity
-                      end
-
-        high_bid_amount = if high_bid_obj.respond_to?(:price)
-                            high_bid_obj.price
-                          elsif high_bid_obj.is_a?(Numeric)
-                            high_bid_obj
-                          end
-
-        high_bid_str = if high_bid_amount && high_bid_amount.positive?
-                         bidder_tag = high_bidder ? " (#{high_bidder.name})" : ''
-                         "#{@game.format_currency(high_bid_amount)}#{bidder_tag}"
-                       else
-                         'None'
-                       end
-
-        min_bid = if step.respond_to?(:min_bid)
-                    begin
-                      step.min_bid(target)
-                    rescue ArgumentError
-                      step.min_bid
-                    end
-                  elsif target.respond_to?(:min_bid)
-                    target.min_bid
-                  elsif target.respond_to?(:value)
-                    target.value
-                  else
-                    100
-                  end
-
-        min_increment = if step.respond_to?(:min_increment)
-                          step.min_increment
-                        elsif @game.respond_to?(:min_bid_increment)
-                          @game.min_bid_increment
-                        else
-                          5
-                        end
-
-        max_bid = if step.respond_to?(:max_bid)
-                    begin
-                      step.max_bid(current_bidder, target)
-                    rescue ArgumentError
-                      step.max_bid(current_bidder)
-                    end
-                  elsif current_bidder.respond_to?(:cash)
-                    current_bidder.cash
-                  else
-                    999_999
-                  end
-
-        storage_key = "cmd_bid_price_#{target.id}"
-        stored_val = Lib::Storage[storage_key]&.to_i
-        current_bid = stored_val && stored_val >= min_bid ? stored_val : min_bid
-
-        card_text = target.respond_to?(:sym) && target.sym ? target.sym : target.name
-        subtext = target.respond_to?(:value) && target.value ? @game.format_currency(target.value) : nil
-        tooltip = company?(target) ? build_company_tooltip(target) : nil
-        badge_label = subtext ? "#{card_text} #{subtext}" : card_text
-
-        wrapper_classes = tooltip ? %w[cmd-company-wrapper status-company-wrapper] : nil
-        target_badge = render_railcard(
-          badge_label,
-          ['game-card'],
-          nil,
-          tooltip,
-          nil,
-          "cmd_bid_target_#{target.id}",
-          wrapper_classes
-        )
-
-        cancel_btn = nil
-        if Lib::Storage['selected_bid_corp'] && !(step.respond_to?(:auctioning) && step.auctioning)
-          cancel_btn = h(:button, {
-                           style: {
-                             padding: '0 6px',
-                             height: '1.45rem',
-                             minHeight: '1.45rem',
-                             maxHeight: '1.45rem',
-                             fontSize: '0.75rem',
-                             backgroundColor: '#e0e0e0',
-                             border: '1px solid #999',
-                             borderRadius: '3px',
-                             cursor: 'pointer',
-                             display: 'inline-flex',
-                             alignItems: 'center',
-                             justifyContent: 'center',
-                             lineHeight: '1',
-                             boxSizing: 'border-box',
-                             margin: '0',
-                           },
-                           on: {
-                             click: lambda {
-                               Lib::Storage['selected_bid_corp'] = nil
-                               update
-                             },
-                           },
-                         }, 'Cancel')
-        end
-
-        row1_items = [
-          target_badge,
-          h(:span, { style: { fontSize: '0.82rem', color: '#333' } }, [
-            h(:b, 'High: '),
-            h(:span, { style: { fontFamily: FONT_MONEY, fontWeight: 'bold', color: COLOR_MONEY } }, high_bid_str),
-          ]),
-          cancel_btn,
-        ].compact
-
-        can_afford = current_bid <= max_bid
-
-        confirm_bid = lambda {
-          Lib::Storage[storage_key] = nil
-          Lib::Storage['selected_bid_corp'] = nil
-
-          bid_args = { price: current_bid }
-          if target.respond_to?(:corporation?) && target.corporation?
-            bid_args[:corporation] = target
-          elsif target.respond_to?(:company?) && target.company?
-            bid_args[:company] = target
-          elsif target.is_a?(Engine::Minor)
-            bid_args[:minor] = target
-          else
-            bid_args[:entity] = target
-          end
-
-          process_action(Engine::Action::Bid.new(current_bidder, **bid_args))
-        }
-
-        row2_items = [
-          h(:input, {
-              style: {
-                width: '4.5rem',
-                height: '1.45rem',
-                minHeight: '1.45rem',
-                maxHeight: '1.45rem',
-                fontSize: '0.85rem',
-                textAlign: 'center',
-                boxSizing: 'border-box',
-                border: '1px solid #999',
-                borderRadius: '3px',
-                fontFamily: FONT_MONEY,
-                fontWeight: 'bold',
-                color: COLOR_MONEY,
-                padding: '0 4px',
-                margin: '0',
-                lineHeight: '1.45rem',
-              },
-              attrs: { type: 'number', min: min_bid.to_s, max: max_bid.to_s, step: min_increment.to_s },
-              props: { value: current_bid.to_s },
-              on: {
-                input: lambda { |e|
-                  Lib::Storage[storage_key] = `#{e}.target.value`.to_i
-                  update
-                },
-              },
-            }),
-          h(:button, {
-              style: {
-                height: '1.45rem',
-                minHeight: '1.45rem',
-                maxHeight: '1.45rem',
-                padding: '0 8px',
-                fontSize: '0.82rem',
-                fontWeight: 'bold',
-                fontFamily: FONT_MONEY,
-                backgroundColor: can_afford ? '#28a745' : '#ccc',
-                color: '#fff',
-                border: 'none',
-                borderRadius: '3px',
-                cursor: can_afford ? 'pointer' : 'not-allowed',
-                display: 'inline-flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                lineHeight: '1',
-                boxSizing: 'border-box',
-                margin: '0',
-              },
-              attrs: { disabled: !can_afford },
-              on: { click: confirm_bid },
-            }, "Bid #{@game.format_currency(current_bid)}"),
-        ]
-
-        h(:div, { style: { display: 'flex', flexDirection: 'column', gap: '0.3rem', width: '100%' } }, [
-          render_action_row('Auction:', row1_items),
-          render_action_row('Your Bid:', row2_items),
-        ])
-      end
-
-      def player_bid_for(step, item, player)
-        return nil unless step && item && player
-
-        if step.respond_to?(:bids) && step.bids
-          bids_for_item = step.bids[item]
-          if bids_for_item.is_a?(Array)
-            found_bid = bids_for_item.find do |b|
-              b_entity = if b.respond_to?(:entity)
-                           b.entity
-                         else
-                           (b.is_a?(Hash) ? b[:entity] : nil)
-                         end
-              b_entity == player
-            end
-            if found_bid
-              if found_bid.respond_to?(:price)
-                return found_bid.price
-              else
-                return (found_bid.is_a?(Hash) ? found_bid[:price] : nil)
-              end
-            end
-          end
-        end
-
-        high_bid_obj = if step.respond_to?(:highest_bid)
-                         step.highest_bid(item)
-                       elsif step.respond_to?(:high_bid)
-                         step.high_bid(item)
-                       end
-        high_bidder = if step.respond_to?(:high_bidder)
-                        step.high_bidder(item)
-                      elsif high_bid_obj.respond_to?(:entity)
-                        high_bid_obj.entity
-                      end
-
-        if high_bidder == player
-          if high_bid_obj.respond_to?(:price)
-            return high_bid_obj.price
-          elsif high_bid_obj.is_a?(Numeric)
-            return high_bid_obj
-          end
-        end
-
-        nil
-      rescue StandardError
-        nil
       end
 
       def render_par_step(step, entity, corporation)
@@ -1176,13 +1234,8 @@ module View
 
           click_handler = lambda {
             slot = (@game.par_chart[price].index(nil) if @game.respond_to?(:par_chart) && @game.par_chart[price])
-
-            args = {
-              corporation: corporation,
-              share_price: price,
-            }
+            args = { corporation: corporation, share_price: price }
             args[:slot] = slot if slot
-
             process_action(Engine::Action::Par.new(entity, **args))
           }
 
@@ -1221,531 +1274,6 @@ module View
           }, [
           render_action_row('Select Par Price:', [corp_badge, *buttons]),
         ])
-      end
-
-      def render_draft_or_auction(step, entity, actions)
-        return render_bid(step, entity, actions) unless step
-
-        is_draft = step.class.name =~ /Draft/i ||
-                   step.description =~ /Draft/i ||
-                   (@game.respond_to?(:round) && @game.round.class.name =~ /Draft/i)
-
-        draft_items = []
-        raw_hand = []
-        raw_hand.concat(step.companies) if step.respond_to?(:companies) && step.companies&.any?
-        raw_hand.concat(step.minors) if step.respond_to?(:minors) && step.minors&.any?
-        raw_hand.concat(step.available) if step.respond_to?(:available) && step.available&.any?
-        raw_hand.concat(step.items) if step.respond_to?(:items) && step.items&.any?
-        raw_hand.concat(step.cards) if step.respond_to?(:cards) && step.cards&.any?
-
-        available_choices = if step.respond_to?(:choices_for)
-                              begin
-                                step.choices_for(entity)
-                              rescue ArgumentError
-                                step.choices_for
-                              rescue StandardError
-                                nil
-                              end
-                            elsif step.respond_to?(:choices)
-                              begin
-                                step.choices(entity)
-                              rescue ArgumentError
-                                step.choices
-                              rescue StandardError
-                                nil
-                              end
-                            end
-
-        choice_list = if available_choices.is_a?(Hash)
-                        available_choices.keys
-                      elsif available_choices.is_a?(Array)
-                        available_choices
-                      else
-                        []
-                      end
-        raw_hand.concat(choice_list) if choice_list.any?
-
-        has_blank_card = raw_hand.any? do |c|
-          c.is_a?(Engine::Player) || (c.respond_to?(:player?) && c.player?) || c.to_s =~ /Player/i
-        end
-
-        find_entity = lambda do |token|
-          return token if token.is_a?(Engine::Company) || token.is_a?(Engine::Minor)
-
-          if token.is_a?(String) || token.is_a?(Symbol)
-            (@game.respond_to?(:companies) ? @game.companies.find { |c| c.id.to_s == token.to_s || (c.respond_to?(:sym) && c.sym.to_s == token.to_s) } : nil) ||
-            (@game.respond_to?(:minors) ? @game.minors.find { |m| m.id.to_s == token.to_s || m.name.to_s == token.to_s } : nil)
-          end
-        end
-
-        raw_hand.each do |c|
-          ent = find_entity.call(c)
-          draft_items << ent if ent
-        end
-
-        if @game.respond_to?(:companies) && @game.companies
-          acquired_companies = @game.companies.select do |c|
-            c.respond_to?(:owner) && c.owner && c.owner.respond_to?(:player?) && c.owner.player? && (!c.respond_to?(:closed?) || !c.closed?)
-          end
-          draft_items.concat(acquired_companies)
-        end
-        if @game.respond_to?(:minors) && @game.minors
-          acquired_minors = @game.minors.select do |m|
-            m.respond_to?(:owner) && m.owner && m.owner.respond_to?(:player?) && m.owner.player? && (!m.respond_to?(:closed?) || !m.closed?)
-          end
-          draft_items.concat(acquired_minors)
-        end
-
-        if draft_items.empty?
-          draft_items = (@game.respond_to?(:companies) ? (@game.companies || []).dup : []) +
-                        (@game.respond_to?(:minors) ? (@game.minors || []).dup : [])
-        end
-
-        all_game_items = (@game.respond_to?(:companies) ? @game.companies : []) +
-                         (@game.respond_to?(:minors) ? @game.minors : [])
-        items = draft_items.compact.uniq.sort_by { |item| all_game_items.index(item) || 999 }
-
-        return render_bid(step, entity, actions) if items.empty? && !is_draft
-
-        players = @game.players || []
-        active_auction_item = step.respond_to?(:auctioning) ? step.auctioning : nil
-        selected_id = Lib::Storage['selected_bid_corp']
-        selected_item = active_auction_item || (selected_id ? items.find { |i| i.id.to_s == selected_id.to_s } : nil)
-
-        tbody_rows = items.map do |item|
-          is_active = (item == active_auction_item)
-          is_selected = (item == selected_item)
-          is_owned = item.respond_to?(:owner) && item.owner && item.owner.respond_to?(:player?) && item.owner.player?
-
-          item_price = if step.respond_to?(:min_bid)
-                         begin
-                           step.min_bid(item)
-                         rescue ArgumentError
-                           step.min_bid
-                         rescue StandardError
-                           (item.respond_to?(:value) ? item.value : 0)
-                         end
-                       elsif step.respond_to?(:buy_price)
-                         step.buy_price(item)
-                       elsif item.respond_to?(:value)
-                         item.value
-                       else
-                         0
-                       end
-
-          is_in_hand = raw_hand.empty? || raw_hand.any? do |c|
-            c == item ||
-              (item.respond_to?(:id) && (c == item.id || c == item.id.to_s)) ||
-              (item.respond_to?(:name) && c == item.name) ||
-              (item.respond_to?(:sym) && c == item.sym)
-          end
-
-          can_afford = (entity.respond_to?(:cash) ? entity.cash : 0) >= item_price
-
-          exec_choose = lambda {
-            if actions.include?('bid')
-              bid_args = { price: item_price }
-              if item.respond_to?(:company?) && item.company?
-                bid_args[:company] = item
-              elsif item.is_a?(Engine::Minor)
-                comp = @game.company_by_id(item.id) if @game.respond_to?(:company_by_id)
-                if comp
-                  bid_args[:company] = comp
-                else
-                  bid_args[:minor] = item
-                end
-              elsif item.respond_to?(:corporation?) && item.corporation?
-                bid_args[:corporation] = item
-              else
-                bid_args[:company] = item
-              end
-              process_action(Engine::Action::Bid.new(entity, **bid_args))
-            elsif actions.include?('buy_company')
-              process_action(Engine::Action::BuyCompany.new(entity, company: item, price: item_price))
-            elsif actions.include?('choose')
-              choice_val = if available_choices.is_a?(Hash)
-                             available_choices.keys.find { |k| k == item || (item.respond_to?(:id) && k == item.id) } || item.id
-                           else
-                             item.respond_to?(:id) ? item.id : item
-                           end
-              process_action(Engine::Action::Choose.new(entity, choice: choice_val))
-            end
-          }
-
-          can_choose_item = !is_owned && is_in_hand && can_afford &&
-                            (actions.include?('bid') || actions.include?('buy_company') || actions.include?('choose'))
-
-          card_sym = item.respond_to?(:sym) ? item.sym : item.name
-          tooltip = build_entity_tooltip(item)
-          subtext = item.respond_to?(:value) && item.value ? @game.format_currency(item.value) : nil
-          card_classes = ['game-card']
-          card_classes << 'action-buy' if can_choose_item || is_active
-          card_classes << 'clickable' if can_choose_item
-          card_label = subtext ? "#{card_sym} #{subtext}" : card_sym
-
-          click_handler = can_choose_item ? exec_choose : nil
-
-          wrapper_classes = tooltip ? %w[cmd-company-wrapper status-company-wrapper] : nil
-          wrapper_id = "cmd_auction_#{item.id}"
-          item_card_element = render_railcard(
-            card_label,
-            card_classes,
-            click_handler,
-            tooltip,
-            nil,
-            wrapper_id,
-            wrapper_classes
-          )
-
-          action_cells = []
-
-          if is_draft
-            choose_btn = if can_choose_item
-                           h(:button, {
-                               style: {
-                                 padding: '0 8px',
-                                 height: '1.35rem',
-                                 fontSize: '0.75rem',
-                                 fontWeight: 'bold',
-                                 fontFamily: FONT_MONEY,
-                                 backgroundColor: '#16a34a',
-                                 color: '#fff',
-                                 border: 'none',
-                                 borderRadius: '3px',
-                                 cursor: 'pointer',
-                                 whiteSpace: 'nowrap',
-                               },
-                               on: { click: exec_choose },
-                             }, "Choose #{@game.format_currency(item_price)}")
-                         end
-            action_cells << h(:td, {
-                                style: {
-                                  padding: '3px 4px',
-                                  textAlign: 'left',
-                                  borderBottom: '1px solid #e2e8f0',
-                                  width: '5.5rem',
-                                  minWidth: '5.5rem',
-                                  whiteSpace: 'nowrap',
-                                },
-                              }, [choose_btn].compact)
-          else
-            high_bid_obj = if step.respond_to?(:highest_bid)
-                             step.highest_bid(item)
-                           elsif step.respond_to?(:high_bid)
-                             step.high_bid(item)
-                           end
-            high_bidder = if step.respond_to?(:high_bidder)
-                            step.high_bidder(item)
-                          elsif high_bid_obj.respond_to?(:entity)
-                            high_bid_obj.entity
-                          end
-            high_amount = if high_bid_obj.respond_to?(:price)
-                            high_bid_obj.price
-                          elsif high_bid_obj.is_a?(Numeric)
-                            high_bid_obj
-                          end
-
-            can_buy = !is_owned && !(active_auction_item && !is_active) && actions.include?('buy_company') && can_afford
-            can_bid = !is_owned && !(active_auction_item && !is_active) && !can_buy && actions.include?('bid') && can_afford
-
-            buy_btn = if can_buy
-                        h(:button, {
-                            style: {
-                              padding: '0 5px',
-                              height: '1.35rem',
-                              fontSize: '0.75rem',
-                              fontWeight: 'bold',
-                              fontFamily: FONT_MONEY,
-                              backgroundColor: '#28a745',
-                              color: '#fff',
-                              border: 'none',
-                              borderRadius: '3px',
-                              cursor: 'pointer',
-                              whiteSpace: 'nowrap',
-                            },
-                            on: {
-                              click: lambda {
-                                process_action(Engine::Action::BuyCompany.new(entity, company: item, price: item_price))
-                              },
-                            },
-                          }, "Buy #{@game.format_currency(item_price)}")
-                      end
-
-            bid_btn = if can_bid
-                        h(:button, {
-                            style: {
-                              padding: '0 5px',
-                              height: '1.35rem',
-                              fontSize: '0.75rem',
-                              fontWeight: 'bold',
-                              backgroundColor: is_selected ? '#1d4ed8' : '#2563eb',
-                              color: '#fff',
-                              border: 'none',
-                              borderRadius: '3px',
-                              cursor: 'pointer',
-                              whiteSpace: 'nowrap',
-                            },
-                            on: {
-                              click: lambda {
-                                Lib::Storage['selected_bid_corp'] = item.id
-                                update
-                              },
-                            },
-                          }, is_selected ? 'Bidding' : 'Bid')
-                      end
-
-            action_cells << h(:td, {
-                                style: {
-                                  padding: '3px 4px',
-                                  textAlign: 'left',
-                                  borderBottom: '1px solid #e2e8f0',
-                                  width: '4.6rem',
-                                  minWidth: '4.6rem',
-                                  whiteSpace: 'nowrap',
-                                },
-                              }, [buy_btn].compact)
-            action_cells << h(:td, {
-                                style: {
-                                  padding: '3px 4px',
-                                  textAlign: 'left',
-                                  borderBottom: '1px solid #e2e8f0',
-                                  width: '3.2rem',
-                                  minWidth: '3.2rem',
-                                  whiteSpace: 'nowrap',
-                                },
-                              }, [bid_btn].compact)
-          end
-
-          row_cells = [
-            h(:td, {
-                style: {
-                  padding: '3px 4px 3px 6px',
-                  textAlign: 'left',
-                  borderBottom: '1px solid #e2e8f0',
-                  whiteSpace: 'nowrap',
-                  width: '1%',
-                },
-              }, [item_card_element]),
-            *action_cells,
-          ]
-
-          players.each do |p|
-            cell_content = nil
-            if is_owned
-              cell_content = if item.respond_to?(:owner) && item.owner == p
-                               h(:span, {
-                                   style: {
-                                     backgroundColor: '#16a34a',
-                                     color: '#ffffff',
-                                     padding: '2px 5px',
-                                     borderRadius: '3px',
-                                     fontWeight: 'bold',
-                                     fontSize: '0.72rem',
-                                     display: 'inline-block',
-                                     lineHeight: '1.2',
-                                   },
-                                 }, 'OWNED')
-                             else
-                               h(:span, { style: { color: '#cbd5e1' } }, '-')
-                             end
-            elsif !is_draft
-              p_bid = player_bid_for(step, item, p)
-              is_leader = (p == high_bidder && high_amount && high_amount.positive?)
-
-              cell_content = if is_leader
-                               h(:span, {
-                                   style: {
-                                     backgroundColor: '#f3e8ff',
-                                     color: COLOR_MONEY,
-                                     border: '1px solid #d8b4fe',
-                                     padding: '2px 5px',
-                                     borderRadius: '3px',
-                                     fontWeight: 'bold',
-                                     fontSize: '0.75rem',
-                                     fontFamily: FONT_MONEY,
-                                     display: 'inline-block',
-                                     lineHeight: '1.2',
-                                   },
-                                 }, @game.format_currency(high_amount))
-                             elsif p_bid && p_bid.positive?
-                               h(:span, {
-                                   style: {
-                                     color: '#9ca3af',
-                                     textDecoration: 'line-through',
-                                     fontSize: '0.75rem',
-                                     fontFamily: FONT_MONEY,
-                                   },
-                                 }, @game.format_currency(p_bid))
-                             else
-                               h(:span, { style: { color: '#cbd5e1' } }, '-')
-                             end
-            else
-              cell_content = h(:span, { style: { color: '#cbd5e1' } }, '-')
-            end
-
-            row_cells << h(:td, {
-                             style: {
-                               padding: '3px 4px',
-                               textAlign: 'center',
-                               borderBottom: '1px solid #e2e8f0',
-                               backgroundColor: is_selected ? '#f8faff' : 'transparent',
-                               width: '4.8rem',
-                               minWidth: '4.2rem',
-                               maxWidth: '5.5rem',
-                             },
-                           }, [cell_content])
-          end
-
-          row_bg = if is_active
-                     '#fffbeb'
-                   elsif is_selected
-                     '#eff6ff'
-                   else
-                     'transparent'
-                   end
-
-          h(:tr, { style: { backgroundColor: row_bg } }, row_cells)
-        end
-
-        if is_draft && (has_blank_card || actions.include?('pass'))
-          blank_badge = render_railcard(
-            'Blank Card',
-            %w[game-card action-buy clickable],
-            -> { process_action(Engine::Action::Pass.new(entity)) }
-          )
-
-          blank_pass_btn = h(:button, {
-                               style: {
-                                 padding: '0 8px',
-                                 height: '1.35rem',
-                                 fontSize: '0.75rem',
-                                 fontWeight: 'bold',
-                                 backgroundColor: '#64748b',
-                                 color: '#fff',
-                                 border: 'none',
-                                 borderRadius: '3px',
-                                 cursor: 'pointer',
-                                 whiteSpace: 'nowrap',
-                               },
-                               on: { click: -> { process_action(Engine::Action::Pass.new(entity)) } },
-                             }, 'Take Blank (Pass)')
-
-          blank_cells = [
-            h(:td, { style: { padding: '3px 4px 3px 6px', textAlign: 'left', borderBottom: '1px solid #e2e8f0', whiteSpace: 'nowrap', width: '1%' } }, [blank_badge]),
-            h(:td, { style: { padding: '3px 4px', textAlign: 'left', borderBottom: '1px solid #e2e8f0', width: '5.5rem', minWidth: '5.5rem', whiteSpace: 'nowrap' } }, [blank_pass_btn]),
-            *players.map { h(:td, { style: { padding: '3px 4px', textAlign: 'center', borderBottom: '1px solid #e2e8f0' } }, [h(:span, { style: { color: '#cbd5e1' } }, '-')]) },
-          ]
-          tbody_rows << h(:tr, { style: { backgroundColor: '#f8fafc' } }, blank_cells)
-        end
-
-        col_span_count = is_draft ? 2 : 3
-
-        table_element = h(:div, {
-                            style: {
-                              width: '100%',
-                              overflowX: 'auto',
-                              border: '1px solid #e2e8f0',
-                              borderRadius: '4px',
-                              backgroundColor: '#ffffff',
-                              boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
-                            },
-                          }, [
-          h(:table, {
-              style: {
-                width: '100%',
-                borderCollapse: 'collapse',
-                fontSize: '0.8rem',
-                fontFamily: 'inherit',
-              },
-            }, [
-            h(:thead, [
-              h(:tr, [
-                h(:th, {
-                    attrs: { colspan: col_span_count.to_s },
-                    style: {
-                      padding: '4px 6px',
-                      textAlign: 'left',
-                      borderBottom: '2px solid #cbd5e1',
-                      backgroundColor: '#f8fafc',
-                      color: '#475569',
-                      fontWeight: 'bold',
-                    },
-                  }, is_draft ? 'Draft Card' : 'Private / Minor'),
-                *players.map do |p|
-                  is_p_turn = (p == (step.respond_to?(:current_entity) ? step.current_entity : current_entity))
-                  h(:th, {
-                      style: {
-                        padding: '4px 4px',
-                        textAlign: 'center',
-                        borderBottom: '2px solid #cbd5e1',
-                        backgroundColor: is_p_turn ? '#e0f2fe' : '#f8fafc',
-                        color: is_p_turn ? '#0369a1' : '#475569',
-                        fontWeight: is_p_turn ? 'bold' : '600',
-                        width: '4.8rem',
-                        minWidth: '4.2rem',
-                        maxWidth: '5.5rem',
-                      },
-                    }, p.name)
-                end,
-              ]),
-            ]),
-            h(:tbody, tbody_rows),
-            h(:tfoot, [
-              h(:tr, [
-                h(:td, {
-                    attrs: { colspan: col_span_count.to_s },
-                    style: {
-                      padding: '4px 6px',
-                      fontWeight: 'bold',
-                      textAlign: 'left',
-                      borderTop: '2px solid #cbd5e1',
-                      color: '#334155',
-                      fontSize: '0.8rem',
-                    },
-                  }, 'Cash:'),
-                *players.map do |p|
-                  h(:td, {
-                      style: {
-                        padding: '4px 4px',
-                        textAlign: 'center',
-                        borderTop: '2px solid #cbd5e1',
-                        verticalAlign: 'middle',
-                        width: '4.8rem',
-                        minWidth: '4.2rem',
-                        maxWidth: '5.5rem',
-                      },
-                    }, [
-                    h(:span, {
-                        style: {
-                          fontWeight: 'bold',
-                          color: COLOR_MONEY,
-                          fontSize: '0.85rem',
-                          fontFamily: FONT_MONEY,
-                        },
-                      }, @game.format_currency(p.cash)),
-                  ])
-                end,
-              ]),
-            ]),
-          ]),
-        ])
-
-        bid_detail_row = if !is_draft && selected_item && (actions.include?('bid') || active_auction_item)
-                           render_bid(step, entity, actions, selected_item)
-                         end
-
-        h(:div, {
-            style: {
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '0.35rem',
-              width: '100%',
-              alignItems: 'flex-start',
-            },
-          }, [
-          table_element,
-          bid_detail_row,
-        ].compact)
       end
 
       def render_buyable_companies(step, entity)
@@ -1790,15 +1318,12 @@ module View
                       else
                         (c.respond_to?(:min_price) ? c.min_price : 1)
                       end
-
           max_price = if buy_company_step.respond_to?(:max_price)
                         buy_company_step.max_price(entity, c)
+                      elsif c.respond_to?(:max_price)
+                        c.max_price
                       else
-                        (if c.respond_to?(:max_price)
-                           c.max_price
-                         else
-                           (entity.respond_to?(:cash) ? entity.cash : 0)
-                         end)
+                        (entity.respond_to?(:cash) ? entity.cash : 0)
                       end
 
           company_click_handler = lambda {
@@ -1813,28 +1338,16 @@ module View
               max_price,
               default_price,
               lambda { |price_val|
-                process_action(Engine::Action::BuyCompany.new(
-                  entity,
-                  company: c,
-                  price: price_val
-                ))
+                process_action(Engine::Action::BuyCompany.new(entity, company: c, price: price_val))
               }
             )
           }
 
           card_text = (c.sym || c.name).to_s
           tooltip = build_company_tooltip(c)
-
           wrapper_classes = tooltip ? %w[cmd-company-wrapper status-company-wrapper] : nil
-          render_railcard(
-            card_text,
-            %w[game-card action-buy clickable],
-            company_click_handler,
-            tooltip,
-            nil,
-            nil,
-            wrapper_classes
-          )
+
+          render_railcard(card_text, %w[game-card action-buy clickable], company_click_handler, tooltip, nil, nil, wrapper_classes)
         end.compact
 
         return nil if company_boxes.empty?
@@ -1845,7 +1358,6 @@ module View
       def render_discard_trains(step, entity)
         return nil unless entity && step
 
-        train_boxes = []
         discardable = if step.respond_to?(:discardable_trains)
                         step.discardable_trains(entity)
                       elsif entity.respond_to?(:trains)
@@ -1854,14 +1366,9 @@ module View
                         []
                       end
 
-        (discardable || []).each do |train|
-          click_handler = lambda {
-            process_action(Engine::Action::DiscardTrain.new(
-              entity,
-              train: train
-            ))
-          }
-          train_boxes << render_railcard(train.name, %w[game-card action-sell clickable], click_handler)
+        train_boxes = (discardable || []).map do |train|
+          click_handler = -> { process_action(Engine::Action::DiscardTrain.new(entity, train: train)) }
+          render_railcard(train.name, %w[game-card action-sell clickable], click_handler)
         end
 
         return nil if train_boxes.empty?
@@ -1872,7 +1379,6 @@ module View
       def render_surrender_trains(actions, step, entity)
         return nil unless entity && step
 
-        train_boxes = []
         trains = if step.respond_to?(:scrappable_trains)
                    step.scrappable_trains(entity)
                  elsif step.respond_to?(:surrenderable_trains)
@@ -1893,13 +1399,8 @@ module View
                          Engine::Action::ScrapTrain
                        end
 
-        (trains || []).each do |train|
-          click_handler = lambda {
-            process_action(action_class.new(
-              entity,
-              train: train
-            ))
-          }
+        train_boxes = (trains || []).map do |train|
+          click_handler = -> { process_action(action_class.new(entity, train: train)) }
 
           btn_text = if step.respond_to?(:button_text)
                        step.button_text(train)
@@ -1936,7 +1437,7 @@ module View
           end
 
           surrender_label = cost_str.empty? ? train.name : "#{train.name} #{cost_str.strip}"
-          train_boxes << render_railcard(surrender_label, %w[game-card action-sell clickable], click_handler)
+          render_railcard(surrender_label, %w[game-card action-sell clickable], click_handler)
         end
 
         return nil if train_boxes.empty?
@@ -1954,8 +1455,8 @@ module View
                            end
 
         train_boxes = []
-
         depot = @game.depot
+
         if depot
           buyable_depot = if step.respond_to?(:buyable_trains)
                             step.buyable_trains(entity).select do |t|
@@ -1972,11 +1473,7 @@ module View
           unique_depot_trains = buyable_depot.uniq(&:name)
 
           unique_depot_trains.each do |train|
-            variants = if train.respond_to?(:names_to_prices) && train.names_to_prices && !train.names_to_prices.empty?
-                         train.names_to_prices
-                       else
-                         { train.name => train.price }
-                       end
+            variants = train.respond_to?(:names_to_prices) && train.names_to_prices && !train.names_to_prices.empty? ? train.names_to_prices : { train.name => train.price }
 
             variants.each do |variant_name, price|
               can_afford = (entity.respond_to?(:cash) ? entity.cash : 0) >= price ||
@@ -1986,17 +1483,11 @@ module View
               variant_param = (variant_str == train.name.to_s ? nil : variant_str)
 
               click_handler = lambda {
-                process_action(Engine::Action::BuyTrain.new(
-                  entity,
-                  train: train,
-                  price: price,
-                  variant: variant_param
-                ))
+                process_action(Engine::Action::BuyTrain.new(entity, train: train, price: price, variant: variant_param))
               }
               train_classes = %w[game-card action-buy]
               train_classes << 'clickable' if can_afford
-              train_label = "#{variant_str} (Bank: #{@game.format_currency(price)})"
-              train_boxes << render_railcard(train_label, train_classes, (can_afford ? click_handler : nil))
+              train_boxes << render_railcard("#{variant_str} (Bank: #{@game.format_currency(price)})", train_classes, (can_afford ? click_handler : nil))
             end
           end
         end
@@ -2006,11 +1497,7 @@ module View
 
         other_corps.each do |c|
           (c.trains || []).each do |t|
-            can_buy_train = if step.respond_to?(:can_buy_train?)
-                              step.can_buy_train?(entity, t)
-                            else
-                              true
-                            end
+            can_buy_train = step.respond_to?(:can_buy_train?) ? step.can_buy_train?(entity, t) : true
             next unless can_buy_train
 
             min_price = 1
@@ -2023,21 +1510,9 @@ module View
             train_click_handler = lambda {
               `var p = document.getElementById('railcard-portal'); if (p) { p.style.display = 'none'; p.innerHTML = ''; }`
               menu_title = "Buy #{t.name} from #{c.name} (#{min_price}-#{max_price}):"
-              default_price = min_price
-
-              show_price_dialog(
-                menu_title,
-                min_price,
-                max_price,
-                default_price,
-                lambda { |price_val|
-                  process_action(Engine::Action::BuyTrain.new(
-                    entity,
-                    train: t,
-                    price: price_val
-                  ))
-                }
-              )
+              show_price_dialog(menu_title, min_price, max_price, min_price, lambda { |price_val|
+                process_action(Engine::Action::BuyTrain.new(entity, train: t, price: price_val))
+              })
             }
 
             train_boxes << render_railcard("#{t.name} (#{c.id || c.name})", %w[game-card action-buy clickable], train_click_handler)
@@ -2090,12 +1565,9 @@ module View
             bundle = raw_bundle.respond_to?(:to_bundle) && !raw_bundle.respond_to?(:num_shares) ? raw_bundle.to_bundle : raw_bundle
             num = if bundle.respond_to?(:num_shares)
                     bundle.num_shares
-                  elsif bundle.respond_to?(:shares)
-                    bundle.shares.size
                   else
-                    1
+                    (bundle.respond_to?(:shares) ? bundle.shares.size : 1)
                   end
-
             price = if bundle.respond_to?(:price)
                       bundle.price
                     elsif bundle.respond_to?(:share_price) && bundle.share_price
@@ -2106,11 +1578,7 @@ module View
                       0
                     end
 
-            pct_str = if bundle.respond_to?(:percent) && bundle.percent
-                        "#{bundle.percent}%"
-                      else
-                        "#{num}S"
-                      end
+            pct_str = bundle.respond_to?(:percent) && bundle.percent ? "#{bundle.percent}%" : "#{num}S"
             price_str = "(#{@game.format_currency(price)})"
 
             click_handler = lambda {
@@ -2120,15 +1588,9 @@ module View
                 []
               end || []
               if actions.include?('issue_shares')
-                process_action(Engine::Action::IssueShares.new(
-                  entity,
-                  bundle: bundle
-                ))
+                process_action(Engine::Action::IssueShares.new(entity, bundle: bundle))
               elsif actions.include?('corporate_sell_shares')
-                process_action(Engine::Action::CorporateSellShares.new(
-                  entity,
-                  bundle: bundle
-                ))
+                process_action(Engine::Action::CorporateSellShares.new(entity, bundle: bundle))
               else
                 process_action(Engine::Action::SellShares.new(
                   entity,
@@ -2160,14 +1622,8 @@ module View
 
         if redeemable_bundles.any?
           redeem_buttons = redeemable_bundles.map do |bundle|
-            num = bundle.num_shares
-            price = bundle.price
-            pct_str = if bundle.respond_to?(:percent) && bundle.percent
-                        "#{bundle.percent}%"
-                      else
-                        "#{num}S"
-                      end
-            price_str = "(#{@game.format_currency(price)})"
+            pct_str = bundle.respond_to?(:percent) && bundle.percent ? "#{bundle.percent}%" : "#{bundle.num_shares}S"
+            price_str = "(#{@game.format_currency(bundle.price)})"
 
             click_handler = lambda {
               actions = begin
@@ -2213,33 +1669,90 @@ module View
                          elsif (step&.current_entity || current_entity)&.corporation?
                            step&.current_entity || current_entity
                          end
+
+          unless pending_corp
+            # 1. Check if the step tracks the transacted company/item
+            transacted_company = nil
+            %i[company last_company auctioning].each do |m|
+              if step&.respond_to?(m) && (val = step.send(m))
+                transacted_company = val if val.respond_to?(:abilities) || val.is_a?(Engine::Company)
+                break if transacted_company
+              end
+            end
+
+            # 2. Extract corporation from company's :shares ability (e.g. B&O in 1830)
+            if transacted_company
+              shares_ability = begin
+                transacted_company.abilities(:shares)
+              rescue StandardError
+                nil
+              end
+              if shares_ability&.respond_to?(:shares)
+                share = begin
+                  shares_ability.shares.first
+                rescue StandardError
+                  nil
+                end
+                pending_corp = share.corporation if share&.respond_to?(:corporation)
+              end
+            end
+
+            # 3. Check all companies owned by active player for an unparred :shares ability
+            unless pending_corp
+              actor = step&.current_entity || current_entity
+              player_actor = actor.respond_to?(:player?) && actor.player? ? actor : actor&.owner
+              if player_actor&.respond_to?(:companies)
+                player_actor.companies.each do |c|
+                  shares_ability = begin
+                    c.abilities(:shares)
+                  rescue StandardError
+                    nil
+                  end
+                  next unless shares_ability&.respond_to?(:shares)
+
+                  share = begin
+                    shares_ability.shares.first
+                  rescue StandardError
+                    nil
+                  end
+                  corp = share.corporation if share&.respond_to?(:corporation)
+                  if corp && !corp.ipoed
+                    pending_corp = corp
+                    break
+                  end
+                end
+              end
+            end
+          end
+
           return render_par_step(step, step&.current_entity || current_entity, pending_corp) if pending_corp
+
         end
+
+        is_draft_or_auction = (step&.respond_to?(:auctioning) && step&.auctioning) ||
+(!actions.include?('par') && (
+                                (step.class.name =~ /Waterfall|Draft|Auction|Initial/i) ||
+                                (step.respond_to?(:description) && step.description =~ /Draft/i) ||
+                                ((actions.include?('bid') || actions.include?('choose')) && !actions.include?('buy_shares'))
+                              ))
 
         case @game.round
         when Engine::Round::Stock
-          is_start_auction_step = (step&.respond_to?(:auctioning) && step&.auctioning) ||
-                                  (step.class.name =~ /Waterfall|Draft|Auction|Initial|Choose/i) ||
-                                  ((actions.include?('bid') || actions.include?('choose')) && !actions.include?('buy_shares') && !actions.include?('par'))
-
-          if is_start_auction_step
-            render_draft_or_auction(step, step&.current_entity || current_entity, actions)
+          if is_draft_or_auction
+            h(View::Game::Dashboard::DraftOverlay, game: @game)
           else
             Lib::Storage['selected_bid_corp'] = nil if Lib::Storage['selected_bid_corp']
             h(::View::Game::DashboardStock, game: @game)
           end
         when Engine::Round::Operating
           if actions.include?('merge') || actions.include?('convert') || actions.include?('take_loan') || actions.include?('payoff_loan')
-            components = []
-            components << render_merger_step(step, step&.current_entity || current_entity, actions)
-            h(:div, { style: { display: 'flex', flexDirection: 'column', gap: '0.15rem', width: '100%', alignItems: 'flex-start' } }, components.compact)
+            h(:div, { style: { display: 'flex', flexDirection: 'column', gap: '0.15rem', width: '100%', alignItems: 'flex-start' } }, [render_merger_step(step, step&.current_entity || current_entity, actions)].compact)
           elsif actions.include?('buy_shares') && step&.current_entity&.player?
             h(::View::Game::DashboardStock, game: @game)
-          elsif actions.include?('bid')
-            render_draft_or_auction(step, step&.current_entity || current_entity, actions)
+          elsif is_draft_or_auction
+            h(View::Game::Dashboard::DraftOverlay, game: @game)
           else
             components = []
-
             convert_track = step&.respond_to?(:conversion?) && step&.conversion?
             loans_rendered = false
 
@@ -2275,7 +1788,6 @@ module View
                 components << render_issue_shares(step, step&.current_entity || current_entity)
               end
               components << h(CorporateBuyShares) if actions.include?('buy_shares') && !actions.include?('run_routes')
-
             elsif actions.include?('corporate_sell_shares')
               components << h(CorporateSellShares)
             elsif actions.include?('swap_train')
@@ -2336,25 +1848,21 @@ module View
             h(:div, { style: { display: 'flex', flexDirection: 'column', gap: '0.15rem', width: '100%', alignItems: 'flex-start' } }, components.compact)
           end
         when Engine::Round::Choices
-          actions.include?('choose') ? render_draft_or_auction(step, step&.current_entity || current_entity, actions) : h(Round::Choices, game: @game)
+          actions.include?('choose') ? h(View::Game::Dashboard::DraftOverlay, game: @game) : h(Round::Choices, game: @game)
         when Engine::Round::Auction, Engine::Round::Draft
-          render_draft_or_auction(step, step&.current_entity || current_entity, actions)
-
+          h(View::Game::Dashboard::DraftOverlay, game: @game)
         when Engine::Round::Merger
           if !(%w[buy_train scrap_train reassign_trains] & actions).empty? && @game.train_actions_always_use_operating_round_view?
             h(Round::Operating, game: @game)
           elsif (%w[merge convert buy_shares corporate_buy_shares take_loan payoff_loan] & actions).any?
-            components = []
-            components << render_merger_step(step, step&.current_entity || current_entity, actions)
-            h(:div, { style: { display: 'flex', flexDirection: 'column', gap: '0.15rem', width: '100%', alignItems: 'flex-start' } }, components.compact)
+            h(:div, { style: { display: 'flex', flexDirection: 'column', gap: '0.15rem', width: '100%', alignItems: 'flex-start' } }, [render_merger_step(step, step&.current_entity || current_entity, actions)].compact)
           else
             h(Round::Merger, game: @game)
           end
         else
-          if actions.include?('choose') || actions.include?('bid')
-            render_draft_or_auction(step, step&.current_entity || current_entity, actions)
+          if is_draft_or_auction
+            h(View::Game::Dashboard::DraftOverlay, game: @game)
           elsif @game.round.stock?
-
             h(::View::Game::DashboardStock, game: @game)
           elsif @game.round.unordered?
             h(Round::Unordered, game: @game, user: nil)

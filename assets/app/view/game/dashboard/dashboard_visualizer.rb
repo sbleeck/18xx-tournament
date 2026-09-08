@@ -39,37 +39,37 @@ module View
         end
       end
 
-  def render_zoom_controls(panel_id, position_styles = {})
+      def render_zoom_controls(panel_id, position_styles = {})
         pid = panel_id.to_s
         h(:div, {
-          attrs: { class: 'panel-zoom-controls' },
-          style: {
-            position: 'absolute',
-            zIndex: 20,
-            display: 'flex',
-            gap: '3px',
-            backgroundColor: 'rgba(255,255,255,0.88)',
-            padding: '2px 4px',
-            borderRadius: '4px',
-            border: '1px solid #ccc',
-            boxShadow: '0 1px 3px rgba(0,0,0,0.15)',
-          }.merge(position_styles),
-        }, [
+            attrs: { class: 'panel-zoom-controls' },
+            style: {
+              position: 'absolute',
+              zIndex: 20,
+              display: 'flex',
+              gap: '3px',
+              backgroundColor: 'rgba(255,255,255,0.88)',
+              padding: '2px 4px',
+              borderRadius: '4px',
+              border: '1px solid #ccc',
+              boxShadow: '0 1px 3px rgba(0,0,0,0.15)',
+            }.merge(position_styles),
+          }, [
           h(:button, {
-            style: { width: '20px', height: '20px', lineHeight: '16px', textAlign: 'center', fontSize: '13px', fontWeight: 'bold', cursor: 'pointer', backgroundColor: '#fff', border: '1px solid #999', borderRadius: '3px', padding: '0', color: '#333' },
-            attrs: { title: 'Zoom In', type: 'button', onclick: "window.zoomPanel('#{pid}', 1.15); return false;" },
-            on: { click: -> { `window.zoomPanel('#{pid}', 1.15)` } },
-          }, '+'),
+              style: { width: '20px', height: '20px', lineHeight: '16px', textAlign: 'center', fontSize: '13px', fontWeight: 'bold', cursor: 'pointer', backgroundColor: '#fff', border: '1px solid #999', borderRadius: '3px', padding: '0', color: '#333' },
+              attrs: { title: 'Zoom In', type: 'button', onclick: "window.zoomPanel('#{pid}', 1.15); return false;" },
+              on: { click: -> { `window.zoomPanel('#{pid}', 1.15)` } },
+            }, '+'),
           h(:button, {
-            style: { width: '20px', height: '20px', lineHeight: '16px', textAlign: 'center', fontSize: '13px', fontWeight: 'bold', cursor: 'pointer', backgroundColor: '#fff', border: '1px solid #999', borderRadius: '3px', padding: '0', color: '#333' },
-            attrs: { title: 'Zoom Out', type: 'button', onclick: "window.zoomPanel('#{pid}', 0.85); return false;" },
-            on: { click: -> { `window.zoomPanel('#{pid}', 0.85)` } },
-          }, '−'),
+              style: { width: '20px', height: '20px', lineHeight: '16px', textAlign: 'center', fontSize: '13px', fontWeight: 'bold', cursor: 'pointer', backgroundColor: '#fff', border: '1px solid #999', borderRadius: '3px', padding: '0', color: '#333' },
+              attrs: { title: 'Zoom Out', type: 'button', onclick: "window.zoomPanel('#{pid}', 0.85); return false;" },
+              on: { click: -> { `window.zoomPanel('#{pid}', 0.85)` } },
+            }, '−'),
           h(:button, {
-            style: { width: '20px', height: '20px', lineHeight: '16px', textAlign: 'center', fontSize: '11px', fontWeight: 'bold', cursor: 'pointer', backgroundColor: '#fff', border: '1px solid #999', borderRadius: '3px', padding: '0', color: '#333' },
-            attrs: { title: 'Reset to Fit', type: 'button', onclick: "window.resetPanelZoom('#{pid}'); return false;" },
-            on: { click: -> { `window.resetPanelZoom('#{pid}')` } },
-          }, '⟲'),
+              style: { width: '20px', height: '20px', lineHeight: '16px', textAlign: 'center', fontSize: '11px', fontWeight: 'bold', cursor: 'pointer', backgroundColor: '#fff', border: '1px solid #999', borderRadius: '3px', padding: '0', color: '#333' },
+              attrs: { title: 'Reset to Fit', type: 'button', onclick: "window.resetPanelZoom('#{pid}'); return false;" },
+              on: { click: -> { `window.resetPanelZoom('#{pid}')` } },
+            }, '⟲'),
         ])
       end
 
@@ -121,11 +121,30 @@ module View
                         `document.getElementById('game') && Object.assign(document.getElementById('game').style, { overflow: 'hidden', width: '100vw', height: '100vh', maxWidth: '100vw', maxHeight: '100vh' })`
 
                         %x(window.init18xxResizers = function() {
+                          var savedResizers = {};
+                          try {
+                            savedResizers = JSON.parse(sessionStorage.getItem('18xx_viz_resizers')) || {};
+                            window.scalerUserZoom = JSON.parse(sessionStorage.getItem('18xx_viz_zoom')) || { 'map-panel-bot': 1.0, 'panel-market': 1.0 };
+                            window.scalerPanOffset = JSON.parse(sessionStorage.getItem('18xx_viz_pan')) || {
+                              'map-panel-bot': { x: 0, y: 0 },
+                              'panel-market': { x: 0, y: 0 }
+                            };
+                          } catch(e) {
+                            window.scalerUserZoom = { 'map-panel-bot': 1.0, 'panel-market': 1.0 };
+                            window.scalerPanOffset = { 'map-panel-bot': { x: 0, y: 0 }, 'panel-market': { x: 0, y: 0 } };
+                          }
+
                           var createResizer = function(resizerId, prevId, nextId, isVertical) {
                             var resizer = document.getElementById(resizerId);
                             var prev = document.getElementById(prevId);
                             var next = document.getElementById(nextId);
                             if(!resizer || !prev || !next) return;
+
+                            if (savedResizers[prevId]) {
+                              prev.style.flex = savedResizers[prevId];
+                              next.style.flex = '1 1 auto';
+                            }
+
                             var x = 0, y = 0, prevFlex = 0, nextFlex = 0;
                             var mouseDownHandler = function(e) {
                               x = e.clientX; y = e.clientY;
@@ -155,6 +174,11 @@ module View
                               document.removeEventListener('mousemove', mouseMoveHandler);
                               document.removeEventListener('mouseup', mouseUpHandler);
                               document.body.style.cursor = '';
+                              try {
+                                var s = JSON.parse(sessionStorage.getItem('18xx_viz_resizers')) || {};
+                                s[prevId] = prev.style.flex;
+                                sessionStorage.setItem('18xx_viz_resizers', JSON.stringify(s));
+                              } catch(e) {}
                             };
                             resizer.addEventListener('mousedown', mouseDownHandler);
                           };
@@ -164,11 +188,6 @@ module View
                           createResizer('resizer-h-ledger-market', 'panel-ledger', 'panel-market', true);
 
                           window.scalerScales = window.scalerScales || {};
-                          window.scalerUserZoom = window.scalerUserZoom || { 'map-panel-bot': 1.0, 'panel-market': 1.0 };
-                          window.scalerPanOffset = window.scalerPanOffset || {
-                            'map-panel-bot': { x: 0, y: 0 },
-                            'panel-market': { x: 0, y: 0 }
-                          };
 
                           window.applyPanelTransform = function(panelId) {
                             var panel = document.getElementById(panelId);
@@ -195,6 +214,7 @@ module View
                             window.scalerUserZoom = window.scalerUserZoom || {};
                             var cur = (window.scalerUserZoom && window.scalerUserZoom[panelId]) || 1.0;
                             window.scalerUserZoom[panelId] = Math.max(0.15, Math.min(4.0, cur * factor));
+                            try { sessionStorage.setItem('18xx_viz_zoom', JSON.stringify(window.scalerUserZoom)); } catch(e) {}
                             window.applyPanelTransform(panelId);
                           };
 
@@ -203,7 +223,67 @@ module View
                             window.scalerPanOffset = window.scalerPanOffset || {};
                             window.scalerUserZoom[panelId] = 1.0;
                             window.scalerPanOffset[panelId] = { x: 0, y: 0 };
+                            try {
+                              sessionStorage.setItem('18xx_viz_zoom', JSON.stringify(window.scalerUserZoom));
+                              sessionStorage.setItem('18xx_viz_pan', JSON.stringify(window.scalerPanOffset));
+                            } catch(e) {}
                             window.applyPanelTransform(panelId);
+                          };
+
+                          var createPanHandler = function(panelId) {
+                            var panel = document.getElementById(panelId);
+                            if (!panel) return;
+                            var wrapper = panel.querySelector('.scaler-content');
+                            if (!wrapper) return;
+
+                            wrapper.style.position = 'absolute';
+                            window.scalerPanOffset[panelId] = window.scalerPanOffset[panelId] || { x: 0, y: 0 };
+                            window.scalerUserZoom[panelId] = window.scalerUserZoom[panelId] || 1.0;
+
+                            var isPanning = false;
+                            var startX = 0, startY = 0;
+
+                            panel.style.cursor = 'grab';
+
+                            panel.addEventListener('mousedown', function(e) {
+                              if (e.button !== 0 || (e.target.closest && e.target.closest('.panel-zoom-controls'))) return;
+                              isPanning = true;
+                              var currentOffset = window.scalerPanOffset[panelId] || { x: 0, y: 0 };
+                              startX = e.clientX - currentOffset.x;
+                              startY = e.clientY - currentOffset.y;
+                              panel.style.cursor = 'grabbing';
+                            });
+
+                            document.addEventListener('mousemove', function(e) {
+                              if (!isPanning) return;
+                              window.scalerPanOffset[panelId] = {
+                                x: e.clientX - startX,
+                                y: e.clientY - startY
+                              };
+                              wrapper.style.left = window.scalerPanOffset[panelId].x + 'px';
+                              wrapper.style.top = window.scalerPanOffset[panelId].y + 'px';
+                            });
+
+                            document.addEventListener('mouseup', function() {
+                              if (!isPanning) return;
+                              isPanning = false;
+                              panel.style.cursor = 'grab';
+                              try { sessionStorage.setItem('18xx_viz_pan', JSON.stringify(window.scalerPanOffset)); } catch(e) {}
+                            });
+
+                            panel.addEventListener('dblclick', function(e) {
+                              if (e.target.closest && e.target.closest('.panel-zoom-controls')) return;
+                              window.resetPanelZoom(panelId);
+                            });
+
+                            panel.addEventListener('wheel', function(e) {
+                              e.preventDefault();
+                              var zoomDelta = e.deltaY < 0 ? 1.06 : 0.94;
+                              var currentZ = (window.scalerUserZoom && window.scalerUserZoom[panelId]) || 1.0;
+                              window.scalerUserZoom[panelId] = Math.max(0.15, Math.min(4.0, currentZ * zoomDelta));
+                              try { sessionStorage.setItem('18xx_viz_zoom', JSON.stringify(window.scalerUserZoom)); } catch(e) {}
+                              window.applyPanelTransform(panelId);
+                            }, { passive: false });
                           };
 
                           var createPanHandler = function(panelId) {
@@ -385,9 +465,9 @@ module View
                         setTimeout(window.init18xxResizers, 200);)
                       },
               destroy: lambda {
-                        `document.body.style.backgroundColor = ''`
-                        `document.getElementById('app') && Object.assign(document.getElementById('app').style, { overflow: '', padding: '', margin: '', maxWidth: '', width: '', height: '', backgroundColor: '' })`
-                        `document.getElementById('game') && Object.assign(document.getElementById('game').style, { overflow: '', width: '', height: '', maxWidth: '', maxHeight: '' })`
+                         `document.body.style.backgroundColor = ''`
+                         `document.getElementById('app') && Object.assign(document.getElementById('app').style, { overflow: '', padding: '', margin: '', maxWidth: '', width: '', height: '', backgroundColor: '' })`
+                         `document.getElementById('game') && Object.assign(document.getElementById('game').style, { overflow: '', width: '', height: '', maxWidth: '', maxHeight: '' })`
                        },
             },
             attrs: { id: 'viz-master-frame' },
@@ -443,7 +523,7 @@ module View
             # Status Table & Cash / Trains Ledger
             h(:div, { attrs: { id: 'panel-ledger' }, style: { flex: '1 1 auto', overflow: 'hidden', border: '1px solid #ccc', padding: '0.4rem', borderRadius: '4px', backgroundColor: '#fff', display: 'flex', flexDirection: 'column' } }, [
               h(:div, { attrs: { class: 'scaler-content' }, style: { display: 'flex', flexDirection: 'column', width: 'max-content', minWidth: '100%', transformOrigin: 'top left' } }, [
-                h(View::Game::DashboardGameStatus, game: @game)
+                h(View::Game::DashboardGameStatus, game: @game),
               ]),
             ]),
 
