@@ -23,8 +23,23 @@ module View
         @game.round.active_step&.current_entity
       end
 
+      def train_available_count(train, variant_name = nil)
+        return '∞' if train.respond_to?(:unlimited) && train.unlimited
+
+        if @game.depot.discarded.include?(train)
+          @game.depot.discarded.count { |t| t.name == train.name || t.sym == train.sym }
+        else
+          count = @game.depot.upcoming.count do |t|
+            t.name == train.name || t.sym == train.sym ||
+              (variant_name && t.respond_to?(:variants) && t.variants&.key?(variant_name))
+          end
+          count = 1 if count.zero? && train.owner == @game.depot
+          count
+        end
+      end
+
       def render
-     title_props = {
+        title_props = {
           attrs: { class: 'column-zone-market' },
           style: {
             padding: '0.3rem',
@@ -48,13 +63,13 @@ module View
         }
 
         h('div#bank.card.column-zone-market', [
-           h('div.title', title_props, 'The Bank'),
-           h(:div, body_props, [
-             render_financial_table,
-             render_bank_trains,
-             render_discarded_trains,
-           ].compact),
-         ])
+          h('div.title', title_props, 'The Bank'),
+          h(:div, body_props, [
+            render_financial_table,
+            render_bank_trains,
+            render_discarded_trains,
+          ].compact),
+        ])
       end
 
       def render_financial_table
@@ -63,9 +78,10 @@ module View
 
         if @game.game_end_check_values.include?(:bank)
           clean_bank_cash = @game.format_currency(@game.bank_cash)
-         trs << h(:tr, { style: { backgroundColor: 'var(--bg-market-zone)' } }, [
+          trs << h(:tr, { style: { backgroundColor: 'var(--bg-market-zone)' } }, [
             h('td.middle', { style: { fontFamily: FONT_STD, textAlign: 'center', width: '50%' } }, 'Cash'),
-            h('td.middle', { style: { fontFamily: FONT_MONEY, fontWeight: 'bold', color: COLOR_CASH, textAlign: 'center', width: '50%' } }, clean_bank_cash),
+            h('td.middle',
+              { style: { fontFamily: FONT_MONEY, fontWeight: 'bold', color: COLOR_CASH, textAlign: 'center', width: '50%' } }, clean_bank_cash),
           ])
         end
 
@@ -157,7 +173,7 @@ module View
       def render_bank_trains
         return nil unless @game.respond_to?(:depot) && @game.depot
 
-     step = @game.round.active_step
+        step = @game.round.active_step
         train_buyable_step = step&.current_actions&.include?('buy_train')
 
         active_trains = if train_buyable_step && active_entity&.corporation? && step.respond_to?(:buyable_trains)
@@ -190,33 +206,36 @@ module View
               can_afford = active_entity.cash >= price || active_entity.trains.empty?
 
               if can_afford
-                      card_classes << 'action-buy'
-                      card_classes << 'clickable'
-                      click_handler = lambda {
-                        variant_str = variant_name.to_s
-                        if @train_handler
-                          @train_handler.call(train, price, variant_str)
-                        else
-                          process_action(Engine::Action::BuyTrain.new(
-                            active_entity,
-                            train: train,
-                            price: price,
-                            variant: (variant_str == train.name.to_s ? nil : variant_str)
-                          ))
-                        end
-                      }
+                card_classes << 'action-buy'
+                card_classes << 'clickable'
+                click_handler = lambda {
+                  variant_str = variant_name.to_s
+                  if @train_handler
+                    @train_handler.call(train, price, variant_str)
+                  else
+                    process_action(Engine::Action::BuyTrain.new(
+                      active_entity,
+                      train: train,
+                      price: price,
+                      variant: (variant_str == train.name.to_s ? nil : variant_str)
+                    ))
                   end
-                end
+                }
+              end
+            end
 
             card_props = { attrs: { class: card_classes.join(' ') } }
             card_props[:on] = { click: click_handler } if click_handler
 
-            dom_id = "bank_train_#{train.id}_#{variant_name.to_s.gsub('/', '_')}"
+            available_count = train_available_count(train, variant_name)
+            dom_id = "bank_train_#{train.id}_#{variant_name.to_s.tr('/', '_')}"
 
             train_cards << h(:div, { attrs: { id: dom_id }, style: { display: 'inline-block', margin: '2px', textAlign: 'center', verticalAlign: 'top' } }, [
               h(:div, card_props, variant_name.to_s),
               h(:div,
                 { style: { fontFamily: FONT_CASH, color: COLOR_CASH, fontSize: '0.75rem', fontWeight: 'bold', marginTop: '2px' } }, @game.format_currency(price)),
+              h(:div,
+                { style: { fontFamily: FONT_STD, color: '#555555', fontSize: '0.72rem', marginTop: '1px' } }, "(#{available_count})"),
             ])
           end
         end
@@ -233,7 +252,7 @@ module View
           }, [
           h(:div, { style: { fontSize: '0.8rem', fontWeight: 'bold', marginBottom: '0.3rem', fontFamily: FONT_STD } },
             'Bank Depot:'),
-h(:div, { style: { display: 'flex', flexWrap: 'wrap', justifyContent: 'center' } }, train_cards),
+          h(:div, { style: { display: 'flex', flexWrap: 'wrap', justifyContent: 'center' } }, train_cards),
         ])
       end
 
@@ -283,7 +302,7 @@ h(:div, { style: { display: 'flex', flexWrap: 'wrap', justifyContent: 'center' }
             if can_afford
               card_classes << 'action-buy'
               card_classes << 'clickable'
-           click_handler = lambda {
+              click_handler = lambda {
                 if @train_handler
                   @train_handler.call(train, train.price, nil)
                 else
@@ -315,9 +334,11 @@ h(:div, { style: { display: 'flex', flexWrap: 'wrap', justifyContent: 'center' }
             h('td.center', { attrs: { id: "bank_train_#{train.id}" }, style: { padding: '0.4rem 0.6rem', verticalAlign: 'middle' } }, [
               h(:div, card_props, train.name),
             ]),
-            h('td.right', { style: { fontFamily: FONT_CASH, color: COLOR_CASH, padding: '0.4rem 0.6rem', fontWeight: 'bold' } },
-              price),
-            h('td.center', { style: { fontFamily: FONT_STD, padding: '0.4rem 0.6rem', verticalAlign: 'middle' } }, count_text),
+            h('td.right', { style: { fontFamily: FONT_CASH, color: COLOR_CASH, padding: '0.4rem 0.6rem', fontWeight: 'bold' } }, [
+              h(:div, price),
+              h(:div, { style: { fontFamily: FONT_STD, fontSize: '0.72rem', fontWeight: 'normal', color: '#555555' } },
+                "(#{count_text})"),
+            ]),
             h('td.left', { style: { fontFamily: FONT_STD, padding: '0.4rem 0.6rem', fontSize: '0.8rem', color: '#444444', verticalAlign: 'middle' } },
               effects.join(' | ')),
           ])
@@ -338,7 +359,6 @@ h(:div, { style: { display: 'flex', flexWrap: 'wrap', justifyContent: 'center' }
                 h(:tr, { style: { borderBottom: '2px solid #333333' } }, [
                   h('th.center', { style: { padding: '0.4rem 0.6rem' } }, 'Type'),
                   h('th.right', { style: { padding: '0.4rem 0.6rem' } }, 'Price'),
-                  h('th.center', { style: { padding: '0.4rem 0.6rem' } }, 'Available'),
                   h('th.left', { style: { padding: '0.4rem 0.6rem' } }, 'Effect'),
                 ]),
               ]),

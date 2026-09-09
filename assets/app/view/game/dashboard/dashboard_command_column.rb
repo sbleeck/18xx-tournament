@@ -266,7 +266,6 @@ module View
                 r_timeout = setting_for(:route_timeout).to_i
                 r_timeout = 10_000 if r_timeout.zero?
 
-                # Clear all routes first
                 @routes.each(&:reset!) if @routes&.any?
                 @game.reset_adjustable_trains!(entity, @routes) if @game.respond_to?(:reset_adjustable_trains!)
 
@@ -700,8 +699,8 @@ module View
                 zIndex: '1000000',
               },
             }, [
-h(:div, { attrs: { id: 'manual-route-overlay-dialog' }, style: dialog_style }, dialog_children),
-])
+            h(:div, { attrs: { id: 'manual-route-overlay-dialog' }, style: dialog_style }, dialog_children),
+          ])
         end
       end
 
@@ -1088,6 +1087,14 @@ h(:div, { attrs: { id: 'manual-route-overlay-dialog' }, style: dialog_style }, d
           (!entity.respond_to?(:corporation?) && !entity.respond_to?(:minor?) && (entity.respond_to?(:value) || entity.respond_to?(:desc)))
       end
 
+      def home_token_step?(step, actions)
+        actions.include?('place_token') && (
+          step&.class&.name =~ /HomeToken|Home/i ||
+          (step.respond_to?(:description) && step.description =~ /Home/i) ||
+          (step.respond_to?(:home_token?) && step.home_token?)
+        )
+      end
+
       def render_action_row(label, children)
         is_arr = `Array.isArray(#{children})`
         items = (is_arr ? children : [children]).compact
@@ -1107,6 +1114,104 @@ h(:div, { attrs: { id: 'manual-route-overlay-dialog' }, style: dialog_style }, d
           }, [
           h(:span, { style: { fontSize: '0.92rem', fontWeight: 'bold', color: '#333', minWidth: '6.5rem', textAlign: 'left', flexShrink: '0' } }, label),
           h(:div, { style: { display: 'flex', flexDirection: 'row', flexWrap: 'nowrap', alignItems: 'center', gap: '0.3rem', overflowX: 'auto', maxWidth: '100%' } }, items),
+        ])
+      end
+
+      def render_generic_choice(step, entity)
+        return nil unless step && entity
+
+        prompt = if step.respond_to?(:choice_name) && step.choice_name
+                   step.choice_name
+                 elsif step.respond_to?(:description) && step.description
+                   step.description
+                 else
+                   'Choice:'
+                 end
+
+        raw_choices = begin
+          if step.respond_to?(:choices_for)
+            begin
+              step.choices_for(entity)
+            rescue ArgumentError
+              step.choices_for
+            end
+          elsif step.respond_to?(:choices)
+            begin
+              step.choices(entity)
+            rescue ArgumentError
+              step.choices
+            end
+          end
+        rescue StandardError
+          nil
+        end
+
+        return nil unless raw_choices && !raw_choices.empty?
+
+        label = prompt.to_s.strip
+        label = "#{label}:" unless label.end_with?(':', '?')
+
+        button_style = {
+          padding: '0 12px',
+          height: '1.65rem',
+          fontSize: '0.85rem',
+          fontWeight: 'bold',
+          backgroundColor: '#f8fafc',
+          color: '#0f172a',
+          border: '1px solid #cbd5e1',
+          borderRadius: '4px',
+          cursor: 'pointer',
+          boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          lineHeight: '1',
+        }
+
+        buttons = if raw_choices.is_a?(Hash)
+                    raw_choices.map do |val, text|
+                      btn_click = -> { process_action(Engine::Action::Choose.new(entity, choice: val)) }
+                      h(:button, {
+                          style: button_style,
+                          on: { click: btn_click },
+                        }, text.to_s)
+                    end
+                  elsif raw_choices.is_a?(Array)
+                    raw_choices.map do |val|
+                      btn_click = -> { process_action(Engine::Action::Choose.new(entity, choice: val)) }
+                      h(:button, {
+                          style: button_style,
+                          on: { click: btn_click },
+                        }, val.to_s)
+                    end
+                  else
+                    []
+                  end
+
+        return nil if buttons.empty?
+
+        render_action_row(label, buttons)
+      end
+
+      def render_generic_fallback(step, entity, actions)
+        return nil unless step && entity
+
+        if step.respond_to?(:choices) || step.respond_to?(:choices_for)
+          choice_node = render_generic_choice(step, entity)
+          return choice_node if choice_node
+        end
+
+        unhandled = actions - %w[pass undo redo]
+        return nil if unhandled.empty?
+
+        desc = if step.respond_to?(:description) && step.description
+                 step.description
+               else
+                 "Pending: #{unhandled.join(', ')}"
+               end
+
+        render_action_row('Action Required:', [
+          h(:span, { style: { fontSize: '0.88rem', color: '#475569', fontStyle: 'italic' } }, desc),
         ])
       end
 
@@ -1284,9 +1389,13 @@ h(:div, { attrs: { id: 'manual-route-overlay-dialog' }, style: dialog_style }, d
                    (step.respond_to?(:description) && step.description =~ /Draft/i) ||
                    (@game.respond_to?(:round) && @game.round.class.name =~ /Draft/i)
 
+        is_home_token = home_token_step?(step, actions)
+
         phase = :waiting
         if actions.include?('lay_tile')
           phase = :build_track
+        elsif is_home_token
+          phase = :home_token
         elsif actions.include?('place_token')
           phase = :place_token
         elsif actions.include?('run_routes')
@@ -1295,6 +1404,8 @@ h(:div, { attrs: { id: 'manual-route-overlay-dialog' }, style: dialog_style }, d
           phase = :dividend
         elsif actions.include?('buy_train')
           phase = :buy_train
+        elsif actions.include?('buy_token')
+          phase = :buy_token
         elsif actions.include?('issue_shares') || actions.include?('reissue_shares') || actions.include?('reissue')
           phase = :issue_shares
         elsif actions.include?('redeem_shares') || actions.include?('redeem')
@@ -1379,7 +1490,9 @@ h(:div, { attrs: { id: 'manual-route-overlay-dialog' }, style: dialog_style }, d
           phase_labels = {
             waiting: 'WAITING',
             build_track: 'LAY TILE',
+            home_token: 'CHOOSE HOME',
             place_token: 'PLACE TOKEN',
+            buy_token: 'BUY TOKENS',
             run_routes: 'RUN ROUTES',
             dividend: 'DIVIDEND',
             buy_train: 'BUY TRAIN',
@@ -1575,7 +1688,7 @@ h(:div, { attrs: { id: 'manual-route-overlay-dialog' }, style: dialog_style }, d
           end
         end
 
-        has_abilities = entity && (@game.companies || []).any? do |c|
+        has_abilities = !actions.include?('choose') && entity && (@game.companies || []).any? do |c|
           next false if c.respond_to?(:closed?) && c.closed?
 
           is_owner = c.owner == entity || (entity.respond_to?(:owner) && c.owner && c.owner == entity.owner)
@@ -1717,14 +1830,12 @@ h(:div, { attrs: { id: 'manual-route-overlay-dialog' }, style: dialog_style }, d
           store(:last_routed_action_id, routed_token, skip: true)
           store(:cmd_router_running, true, skip: false)
 
-          # 1. Clear all prior routes and resets
           @routes.each(&:reset!) if @routes&.any?
           @game.reset_adjustable_trains!(entity, @routes) if @game.respond_to?(:reset_adjustable_trains!)
           @routes = []
           store(:routes, @routes, skip: true)
           store(:selected_route, nil, skip: true)
 
-          # 2. Run AutoRouter from a clean state (best guess)
           lambda {
             `setTimeout(function() {`
             begin
@@ -1771,11 +1882,10 @@ h(:div, { attrs: { id: 'manual-route-overlay-dialog' }, style: dialog_style }, d
           }.call
         end
 
-        close_manual_cb = -> { update }
         panel_bar = h(:div, { style: { display: 'flex', flexDirection: 'row', width: '100%', height: '100%', boxSizing: 'border-box', backgroundColor: '#fff', position: 'relative', zIndex: 99_999, overflow: 'visible' } }, [
-        zone_1,
-        zone_2,
-        zone_3,
+          zone_1,
+          zone_2,
+          zone_3,
         ].compact)
         if show_manual_routes
           h(:div, { style: { width: '100%', height: '100%', position: 'relative' } }, [
@@ -2193,6 +2303,106 @@ h(:div, { attrs: { id: 'manual-route-overlay-dialog' }, style: dialog_style }, d
         render_action_row('Surrender:', train_boxes)
       end
 
+      def render_home_token_step(_step, entity)
+        return nil unless entity
+
+        target_hexes = resolve_target_hexes(entity)
+        hex_info = target_hexes.any? ? " (#{target_hexes.join(', ')})" : ''
+
+        hover_events = {}
+        if target_hexes.any?
+          hover_events = {
+            mouseenter: lambda {
+              `window.highlightMapHexes && window.highlightMapHexes(#{target_hexes})`
+              nil
+            },
+            mouseleave: lambda {
+              `window.clearMapHexHighlights && window.clearMapHexHighlights()`
+              nil
+            },
+          }
+        end
+
+        instruction = h(:span, {
+                          style: {
+                            fontSize: '0.88rem',
+                            color: '#1e293b',
+                            fontWeight: '600',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '0.35rem',
+                            cursor: target_hexes.any? ? 'pointer' : 'default',
+                          },
+                          on: hover_events,
+                        }, [
+          h(:span, { style: { fontSize: '1rem' } }, '📍'),
+          h(:span, "Click a city slot#{hex_info} on the map to place home token."),
+        ])
+
+        render_action_row('Home City:', instruction)
+      end
+
+      def render_buy_tokens(step, entity)
+        return nil unless entity && step
+
+        tokens = if step.respond_to?(:buyable_tokens)
+                   step.buyable_tokens(entity) || []
+                 elsif step.respond_to?(:available_tokens)
+                   step.available_tokens(entity) || []
+                 elsif step.respond_to?(:tokens)
+                   step.tokens(entity) || []
+                 else
+                   []
+                 end
+
+        return nil if tokens.empty?
+
+        token_cost_fn = lambda do |num|
+          if step.respond_to?(:token_cost)
+            begin
+              step.token_cost(entity) * num
+            rescue ArgumentError
+              step.token_cost * num
+            end
+          elsif step.respond_to?(:price_for_tokens)
+            step.price_for_tokens(entity, num)
+          elsif tokens.first.respond_to?(:price) && tokens.first.price
+            tokens.first.price * num
+          else
+            0
+          end
+        end
+
+        buttons = tokens.map.with_index(1) do |token, num|
+          price = token_cost_fn.call(num)
+          price_str = price.positive? ? @game.format_currency(price) : 'Free'
+          can_afford = (entity.respond_to?(:cash) ? entity.cash : 0) >= price
+
+          click_handler = lambda {
+            process_action(Engine::Action::BuyToken.new(entity, token: token, price: price))
+          }
+
+          card_classes = %w[game-card action-buy]
+          card_classes << 'clickable' if can_afford
+          card = render_railcard(num.to_s, card_classes, (can_afford ? click_handler : nil))
+
+          h(:div, { style: { display: 'inline-flex', alignItems: 'center', gap: '0.3rem', margin: '0 0.2rem' } }, [
+            card,
+            h(:span, {
+                style: {
+                  fontFamily: FONT_MONEY,
+                  color: can_afford ? COLOR_MONEY : '#9ca3af',
+                  fontWeight: 'bold',
+                  fontSize: '0.85rem',
+                  whiteSpace: 'nowrap',
+                },
+              }, price_str),
+          ])
+        end
+
+        render_action_row('Number of Tokens to Buy:', buttons)
+      end
+
       def render_buyable_trains(step, entity)
         return nil unless entity && step
 
@@ -2334,7 +2544,6 @@ h(:div, { attrs: { id: 'manual-route-overlay-dialog' }, style: dialog_style }, d
                     end
 
             pct_str = bundle.respond_to?(:percent) && bundle.percent ? "#{bundle.percent}%" : "#{num}S"
-
             price_str = @game.format_currency(price)
 
             click_handler = lambda {
@@ -2550,15 +2759,17 @@ h(:div, { attrs: { id: 'manual-route-overlay-dialog' }, style: dialog_style }, d
 
         is_draft_or_auction = (step&.respond_to?(:auctioning) && step&.auctioning) ||
                               (!actions.include?('par') && (
-                                (step.class.name =~ /Waterfall|Draft|Auction|Initial/i) ||
-                                (step.respond_to?(:description) && step.description =~ /Draft/i) ||
-                                ((actions.include?('bid') || actions.include?('choose')) && !actions.include?('buy_shares'))
+                                (step&.class&.name =~ /Waterfall|Draft|Auction|Initial/i) ||
+                                (step&.respond_to?(:description) && step.description =~ /Draft|Auction/i) ||
+                                (@game.respond_to?(:round) && @game.round.class.name =~ /Draft|Auction/i)
                               ))
 
         case @game.round
         when Engine::Round::Stock
           if is_draft_or_auction
             h(View::Game::Dashboard::DraftOverlay, game: @game)
+          elsif actions.include?('choose')
+            render_generic_choice(step, step&.current_entity || current_entity)
           else
             Lib::Storage['selected_bid_corp'] = nil if Lib::Storage['selected_bid_corp']
             h(::View::Game::DashboardStock, game: @game)
@@ -2578,6 +2789,11 @@ h(:div, { attrs: { id: 'manual-route-overlay-dialog' }, style: dialog_style }, d
             convert_track = step&.respond_to?(:conversion?) && step&.conversion?
             loans_rendered = false
 
+            if actions.include?('choose')
+              choice_item = render_generic_choice(step, step&.current_entity || current_entity)
+              components << choice_item if choice_item
+            end
+
             components << h(SpecialBuy) if actions.include?('special_buy')
             components << h(TrackConversion) if actions.include?('run_routes') && convert_track
             components << h(Convert) if actions.include?('convert')
@@ -2585,8 +2801,13 @@ h(:div, { attrs: { id: 'manual-route-overlay-dialog' }, style: dialog_style }, d
             components << h(ReassignTrains) if actions.include?('reassign_trains')
             components << h(DoubleHeadTrains) if actions.include?('double_head_trains')
             components << h(CombinedTrains) if actions.include?('combined_trains')
-            components << h(Choose) if actions.include?('choose')
-            components << h(BuyToken, entity: step&.current_entity) if actions.include?('buy_token')
+            if home_token_step?(step, actions)
+              components << render_home_token_step(step, step&.current_entity || current_entity)
+            elsif actions.include?('place_token')
+              components << render_action_row('Place Token:', h(:span, { style: { fontSize: '0.85rem', color: '#475569', fontStyle: 'italic' } }, 'Click an open city slot on the map to place token.'))
+            end
+
+            components << render_buy_tokens(step, step&.current_entity || current_entity) if actions.include?('buy_token')
 
             components << render_issue_shares(step, step&.current_entity || current_entity) if (%w[issue_shares reissue_shares reissue redeem redeem_shares] & actions).any?
 
@@ -2667,10 +2888,20 @@ h(:div, { attrs: { id: 'manual-route-overlay-dialog' }, style: dialog_style }, d
             components << h(CorporateSellCompanies) if actions.include?('corporate_sell_company')
             components << h(CorporateBuyCompanies) if actions.include?('corporate_buy_company')
 
+            if components.compact.empty?
+              fallback_item = render_generic_fallback(step, step&.current_entity || current_entity, actions)
+              components << fallback_item if fallback_item
+            end
+
             h(:div, { style: { display: 'flex', flexDirection: 'column', gap: '0.15rem', width: '100%', alignItems: 'flex-start' } }, components.compact)
           end
         when Engine::Round::Choices
-          actions.include?('choose') ? h(View::Game::Dashboard::DraftOverlay, game: @game) : h(Round::Choices, game: @game)
+          if actions.include?('choose')
+            choice_item = render_generic_choice(step, step&.current_entity || current_entity)
+            choice_item ? h(:div, { style: { display: 'flex', flexDirection: 'column', gap: '0.15rem', width: '100%', alignItems: 'flex-start' } }, [choice_item]) : h(Round::Choices, game: @game)
+          else
+            h(Round::Choices, game: @game)
+          end
         when Engine::Round::Auction, Engine::Round::Draft
           h(View::Game::Dashboard::DraftOverlay, game: @game)
         when Engine::Round::Merger
@@ -2678,18 +2909,24 @@ h(:div, { attrs: { id: 'manual-route-overlay-dialog' }, style: dialog_style }, d
             h(Round::Operating, game: @game)
           elsif (%w[merge convert buy_shares corporate_buy_shares take_loan payoff_loan] & actions).any?
             h(:div, { style: { display: 'flex', flexDirection: 'column', gap: '0.15rem', width: '100%', alignItems: 'flex-start' } }, [render_merger_step(step, step&.current_entity || current_entity, actions)].compact)
+          elsif actions.include?('choose')
+            choice_item = render_generic_choice(step, step&.current_entity || current_entity)
+            choice_item ? h(:div, { style: { display: 'flex', flexDirection: 'column', gap: '0.15rem', width: '100%', alignItems: 'flex-start' } }, [choice_item]) : h(Round::Merger, game: @game)
           else
             h(Round::Merger, game: @game)
           end
         else
           if is_draft_or_auction
             h(View::Game::Dashboard::DraftOverlay, game: @game)
+          elsif actions.include?('choose')
+            choice_item = render_generic_choice(step, step&.current_entity || current_entity)
+            h(:div, { style: { display: 'flex', flexDirection: 'column', gap: '0.15rem', width: '100%', alignItems: 'flex-start' } }, [choice_item].compact)
           elsif @game.round.stock?
             h(::View::Game::DashboardStock, game: @game)
           elsif @game.round.unordered?
             h(Round::Unordered, game: @game, user: nil)
           else
-            h(:div)
+            render_generic_fallback(step, step&.current_entity || current_entity, actions) || h(:div)
           end
         end
       end

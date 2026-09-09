@@ -26,6 +26,7 @@ require 'view/game/dashboard/dashboard_card_animation'
 require 'view/game/dashboard/dashboard_money_animation'
 require 'view/game/dashboard/dashboard_card_animation'
 require 'view/game/dashboard/railcard_helper'
+require 'view/game/dashboard/par_prompt_overlay'
 
 FLOATED = 2
 UNFLOATED = 1
@@ -846,17 +847,111 @@ module View
           end
         end
 
-        # --- Pool Shares Content ---
-        pool_share_text = if corporation.minor? || n_market_shares.zero?
+        corp_actions = if is_active_row
+                         actions = if @game.round.respond_to?(:actions_for)
+                                     begin
+                                       @game.round.actions_for(corporation)
+                                     rescue StandardError
+                                       []
+                                     end
+                                   else
+                                     []
+                                   end
+                         actions = step.current_actions || [] if actions.empty? && step.respond_to?(:current_actions)
+                         actions
+                       else
+                         []
+                       end
+
+        # --- Pool Shares Content (Redeem) ---
+        can_redeem = false
+        redeemable_bundles = []
+
+        if is_active_row && ((%w[redeem_shares redeem corporate_buy_shares buy_shares] & corp_actions).any? || step.respond_to?(:redeemable_shares) || step.respond_to?(:redeemable_bundles))
+          redeemable_bundles = begin
+            if step.respond_to?(:redeemable_shares)
+              begin
+                step.redeemable_shares(corporation)
+              rescue ArgumentError
+                step.redeemable_shares
+              end
+            elsif step.respond_to?(:redeemable_bundles)
+              begin
+                step.redeemable_bundles(corporation)
+              rescue ArgumentError
+                step.redeemable_bundles
+              end
+            elsif @game.respond_to?(:redeemable_shares)
+              @game.redeemable_shares(corporation)
+            elsif (%w[redeem redeem_shares corporate_buy_shares] & corp_actions).any? && step.respond_to?(:buyable_shares)
+              begin
+                step.buyable_shares(corporation)
+              rescue ArgumentError
+                step.buyable_shares
+              end
+            else
+              []
+            end
+          rescue StandardError
+            []
+          end || []
+
+          redeemable_bundles = redeemable_bundles.map do |raw_b|
+            raw_b.respond_to?(:to_bundle) && !raw_b.respond_to?(:num_shares) ? raw_b.to_bundle : raw_b
+          end.select do |b|
+            b_corp = if b.respond_to?(:corporation)
+                       b.corporation
+                     elsif b.respond_to?(:shares) && b.shares.first&.respond_to?(:corporation)
+                       b.shares.first.corporation
+                     end
+            b_corp.nil? || b_corp == corporation
+          end
+
+          can_redeem = redeemable_bundles.any?
+        end
+
+        pool_share_text = if corporation.minor? || (n_market_shares.zero? && !can_redeem)
                             ''
                           else
                             is_receivership = corporation.respond_to?(:receivership?) && corporation.receivership?
-                            "#{'*' if is_receivership}#{n_market_shares * 10}%"
+                            pct = n_market_shares.positive? ? (n_market_shares * 10) : (redeemable_bundles.first&.percent || 10)
+                            "#{'*' if is_receivership}#{pct}%"
                           end
         pool_click_handler = nil
         valid_pool_shares = []
 
-        if step.respond_to?(:can_buy?) && active_player
+        if can_redeem
+          affordable_bundles = redeemable_bundles.select do |bundle|
+            num = if bundle.respond_to?(:num_shares)
+                    bundle.num_shares
+                  else
+                    (bundle.respond_to?(:shares) ? bundle.shares.size : 1)
+                  end
+            price = if bundle.respond_to?(:price)
+                      bundle.price
+                    elsif bundle.respond_to?(:share_price) && bundle.share_price
+                      bundle.share_price.price * num
+                    elsif corporation.respond_to?(:share_price) && corporation.share_price
+                      corporation.share_price.price * num
+                    else
+                      0
+                    end
+            (corporation.respond_to?(:cash) ? corporation.cash : 0) >= price
+          end
+
+          if affordable_bundles.any?
+            pool_click_handler = if affordable_bundles.size > 1
+                                   lambda {
+                                     Lib::Storage['redeem_menu_corp'] = corporation.id
+                                     update
+                                   }
+                                 else
+                                   lambda { |_event|
+                                     exec_redeem_share_bundle(corporation, affordable_bundles.first, corp_actions)
+                                   }
+                                 end
+          end
+        elsif step.respond_to?(:can_buy?) && active_player
           pool_shares = step.respond_to?(:pool_shares) ? step.pool_shares(corporation) : (@game.share_pool.shares_by_corporation[corporation] || [])
           valid_pool_shares = pool_shares.select do |s|
             (s.respond_to?(:buyable) ? s.buyable : true) && step.can_buy?(active_player, s.to_bundle)
@@ -880,12 +975,49 @@ module View
         pool_cell_children = []
         unless pool_share_text.empty?
           card_classes = ['game-card']
-          if pool_click_handler
+
+          if can_redeem || pool_click_handler
             card_classes << 'action-buy'
-            card_classes << 'clickable'
+            card_classes << 'clickable' if pool_click_handler
           end
 
           dropdowns = []
+          if Lib::Storage['redeem_menu_corp'] == corporation.id && can_redeem && !redeemable_bundles.empty?
+            options = redeemable_bundles.map do |bundle|
+              num = if bundle.respond_to?(:num_shares)
+                      bundle.num_shares
+                    else
+                      (bundle.respond_to?(:shares) ? bundle.shares.size : 1)
+                    end
+              pct_str = bundle.respond_to?(:percent) && bundle.percent ? "#{bundle.percent}%" : "#{num}S"
+              price = if bundle.respond_to?(:price)
+                        bundle.price
+                      elsif bundle.respond_to?(:share_price) && bundle.share_price
+                        bundle.share_price.price * num
+                      elsif corporation.respond_to?(:share_price) && corporation.share_price
+                        corporation.share_price.price * num
+                      else
+                        0
+                      end
+              price_str = @game.format_currency(price)
+              can_afford = (corporation.respond_to?(:cash) ? corporation.cash : 0) >= price
+              {
+                label: "Redeem #{pct_str} (#{price_str})",
+                action: lambda { |_event|
+                  return unless can_afford
+
+                  Lib::Storage['redeem_menu_corp'] = nil
+                  exec_redeem_share_bundle(corporation, bundle, corp_actions)
+                },
+              }
+            end
+            cancel_handler = lambda {
+              Lib::Storage['redeem_menu_corp'] = nil
+              update
+            }
+            dropdowns << render_choice_menu('Redeem from Pool:', options, cancel_handler)
+          end
+
           if Lib::Storage['buy_pool_menu_corp'] == corporation.id && !valid_pool_shares.empty?
             options = valid_pool_shares.map do |share|
               {
@@ -928,143 +1060,187 @@ module View
                 ]
 
         # --- IPO Shares Content ---
-        ipo_share_text = n_ipo_shares.zero? ? '' : "#{n_ipo_shares * 10}%"
-        ipo_click_handler = nil
-        valid_ipo_shares = []
-
-        player_actions = if active_player && @game.round.respond_to?(:actions_for)
-                           begin
-                             @game.round.actions_for(active_player)
-                           rescue StandardError
-                             []
-                           end
-                         elsif step.respond_to?(:actions)
-                           begin
-                             step.actions(active_player) || []
-                           rescue StandardError
-                             []
-                           end
-                         elsif step.respond_to?(:current_actions)
-                           step.current_actions || []
-                         else
-                           []
-                         end || []
-        is_corp = corporation.respond_to?(:corporation?) && corporation.corporation?
-
-        can_par = is_corp && active_player && player_actions.include?('par') &&
-                  @game.respond_to?(:can_par?) && @game.can_par?(corporation, active_player)
-
-        can_bid = active_player && player_actions.include?('bid') && (
-          if step.respond_to?(:can_bid?)
-            begin
-              step.can_bid?(active_player, corporation)
-            rescue ArgumentError
-              step.can_bid?(corporation)
-            end
-          elsif is_corp && @game.respond_to?(:can_par?)
-            @game.can_par?(corporation, active_player)
-          else
-            corporation.respond_to?(:ipoed) ? !corporation.ipoed : true
-          end
-        )
-
-        par_prices = []
-        if can_par
-          par_prices = if step.respond_to?(:get_par_prices_with_help)
-                         step.get_par_prices_with_help(active_player, corporation).sort_by(&:price)
-                       elsif step.respond_to?(:get_par_prices)
-                         step.get_par_prices(active_player, corporation).sort_by(&:price)
-                       elsif @game.respond_to?(:par_prices)
-                         @game.par_prices(corporation).sort_by(&:price)
-                       else
-                         @game.stock_market.par_prices.sort_by(&:price)
-                       end
-          # Exclude par prices that have already filled all available slots (e.g. 1837 2-corp limit)
-          if @game.respond_to?(:par_chart)
-            par_prices = par_prices.reject do |sp|
-              slots = @game.par_chart[sp]
-              slots && slots.none?(&:nil?)
-            end
-          end
-
-          unless par_prices.empty?
-            ipo_click_handler = lambda {
-              Lib::Storage['par_menu_corp'] = corporation.id
-              update
-            }
-          end
-        elsif can_bid
-          ipo_click_handler = lambda {
-            store(:selected_corporation, corporation)
-            store(:selected_company, corporation)
-            Lib::Storage['selected_bid_corp'] = corporation.id
-            update
-          }
-        elsif step.respond_to?(:can_buy?) && active_player
-          ipo_shares = corporation.respond_to?(:ipo_shares) ? corporation.ipo_shares : []
-          valid_ipo_shares = ipo_shares.select do |s|
-            (s.respond_to?(:buyable) ? s.buyable : true) && step.can_buy?(active_player, s.to_bundle)
-          end
-
-          unless valid_ipo_shares.empty?
-            ipo_click_handler = if valid_ipo_shares.uniq { |s| s.to_bundle.percent }.size > 1
-                                  lambda {
-                                    Lib::Storage['buy_ipo_menu_corp'] = corporation.id
-                                    update
-                                  }
-                                else
-                                  lambda { |_event|
-                                    source_selector = "#ipo_shares_#{corporation.id} .game-card"
-                                    exec_buy_shares(source_selector, active_player, valid_ipo_shares.first.to_bundle, corporation.id)
-                                  }
-                                end
-          end
-        end
-        can_issue = is_active_row && step&.current_actions&.include?('issue_shares')
         issuable_bundles = []
-
-        if can_issue
+        if is_active_row && ((%w[issue_shares reissue_shares reissue corporate_sell_shares sell_shares] & corp_actions).any? || step.respond_to?(:issuable_shares) || step.respond_to?(:issuable_bundles))
           issuable_bundles = begin
             if step.respond_to?(:issuable_shares)
-              step.issuable_shares(corporation)
+              begin
+                step.issuable_shares(corporation)
+              rescue ArgumentError
+                step.issuable_shares
+              end
             elsif step.respond_to?(:issuable_bundles)
-              step.issuable_bundles(corporation)
+              begin
+                step.issuable_bundles(corporation)
+              rescue ArgumentError
+                step.issuable_bundles
+              end
             elsif @game.respond_to?(:issuable_shares)
               @game.issuable_shares(corporation)
             elsif step.respond_to?(:bundles_for_corporation)
-              step.bundles_for_corporation(corporation, corporation)
+              begin
+                step.bundles_for_corporation(corporation, corporation)
+              rescue ArgumentError
+                step.bundles_for_corporation(corporation)
+              end
+            elsif step.respond_to?(:bundles)
+              step.bundles(corporation)
             else
               []
             end
           rescue StandardError
             []
           end || []
+        end
+        can_issue = is_active_row && issuable_bundles.any?
 
-          if issuable_bundles.any?
-            ipo_click_handler = if issuable_bundles.size > 1
-                                  lambda {
-                                    Lib::Storage['issue_menu_corp'] = corporation.id
-                                    update
-                                  }
-                                else
-                                  lambda { |_event|
-                                    process_action(Engine::Action::IssueShares.new(
-                                      corporation,
-                                      bundle: issuable_bundles.first
-                                    ))
-                                  }
-                                end
+        ipo_share_text = if n_ipo_shares.positive?
+                           "#{n_ipo_shares * 10}%"
+                         elsif can_issue && issuable_bundles.any?
+                           pct = issuable_bundles.first.respond_to?(:percent) ? issuable_bundles.first.percent : 10
+                           "#{pct}%"
+                         else
+                           ''
+                         end
+        ipo_click_handler = nil
+        valid_ipo_shares = []
+
+        if can_issue
+          ipo_click_handler = if issuable_bundles.size > 1
+                                lambda {
+                                  Lib::Storage['issue_menu_corp'] = corporation.id
+                                  update
+                                }
+                              else
+                                lambda { |_event|
+                                  exec_issue_share_bundle(corporation, issuable_bundles.first, corp_actions)
+                                }
+                              end
+        else
+          player_actions = if active_player && @game.round.respond_to?(:actions_for)
+                             begin
+                               @game.round.actions_for(active_player)
+                             rescue StandardError
+                               []
+                             end
+                           elsif step.respond_to?(:actions)
+                             begin
+                               step.actions(active_player) || []
+                             rescue StandardError
+                               []
+                             end
+                           elsif step.respond_to?(:current_actions)
+                             step.current_actions || []
+                           else
+                             []
+                           end || []
+          is_corp = corporation.respond_to?(:corporation?) && corporation.corporation?
+
+          can_par = is_corp && active_player && player_actions.include?('par') &&
+                    @game.respond_to?(:can_par?) && @game.can_par?(corporation, active_player)
+
+          can_bid = active_player && player_actions.include?('bid') && (
+            if step.respond_to?(:can_bid?)
+              begin
+                step.can_bid?(active_player, corporation)
+              rescue ArgumentError
+                step.can_bid?(corporation)
+              end
+            elsif is_corp && @game.respond_to?(:can_par?)
+              @game.can_par?(corporation, active_player)
+            else
+              corporation.respond_to?(:ipoed) ? !corporation.ipoed : true
+            end
+          )
+
+          par_prices = []
+          if can_par
+            par_prices = if step.respond_to?(:get_par_prices_with_help)
+                           step.get_par_prices_with_help(active_player, corporation).sort_by(&:price)
+                         elsif step.respond_to?(:get_par_prices)
+                           step.get_par_prices(active_player, corporation).sort_by(&:price)
+                         elsif @game.respond_to?(:par_prices)
+                           @game.par_prices(corporation).sort_by(&:price)
+                         else
+                           @game.stock_market.par_prices.sort_by(&:price)
+                         end
+            if @game.respond_to?(:par_chart)
+              par_prices = par_prices.reject do |sp|
+                slots = @game.par_chart[sp]
+                slots && slots.none?(&:nil?)
+              end
+            end
+
+            unless par_prices.empty?
+              ipo_click_handler = lambda {
+                Lib::Storage['par_menu_corp'] = corporation.id
+                update
+              }
+            end
+          elsif can_bid
+            ipo_click_handler = lambda {
+              store(:selected_corporation, corporation)
+              store(:selected_company, corporation)
+              Lib::Storage['selected_bid_corp'] = corporation.id
+              update
+            }
+          elsif step.respond_to?(:can_buy?) && active_player
+            ipo_shares = corporation.respond_to?(:ipo_shares) ? corporation.ipo_shares : []
+            valid_ipo_shares = ipo_shares.select do |s|
+              (s.respond_to?(:buyable) ? s.buyable : true) && step.can_buy?(active_player, s.to_bundle)
+            end
+
+            unless valid_ipo_shares.empty?
+              ipo_click_handler = if valid_ipo_shares.uniq { |s| s.to_bundle.percent }.size > 1
+                                    lambda {
+                                      Lib::Storage['buy_ipo_menu_corp'] = corporation.id
+                                      update
+                                    }
+                                  else
+                                    lambda { |_event|
+                                      source_selector = "#ipo_shares_#{corporation.id} .game-card"
+                                      exec_buy_shares(source_selector, active_player, valid_ipo_shares.first.to_bundle, corporation.id)
+                                    }
+                                  end
+            end
           end
         end
 
         ipo_cell_children = []
         unless ipo_share_text.empty?
           card_classes = ['game-card']
-          card_classes << 'action-buy' if ipo_click_handler || can_issue
-
-          card_classes << 'clickable' if ipo_click_handler
+          if can_issue
+            card_classes << 'action-sell'
+            card_classes << 'clickable' if ipo_click_handler
+          elsif ipo_click_handler
+            card_classes << 'action-buy'
+            card_classes << 'clickable'
+          end
 
           dropdowns = []
+
+          if Lib::Storage['issue_menu_corp'] == corporation.id && can_issue && !issuable_bundles.empty?
+            options = issuable_bundles.map do |bundle|
+              num = if bundle.respond_to?(:num_shares)
+                      bundle.num_shares
+                    else
+                      (bundle.respond_to?(:shares) ? bundle.shares.size : 1)
+                    end
+              pct_str = bundle.respond_to?(:percent) && bundle.percent ? "#{bundle.percent}%" : "#{num}S"
+              {
+                label: "Issue #{pct_str}",
+                action: lambda { |_event|
+                  Lib::Storage['issue_menu_corp'] = nil
+                  exec_issue_share_bundle(corporation, bundle, corp_actions)
+                },
+              }
+            end
+            cancel_handler = lambda {
+              Lib::Storage['issue_menu_corp'] = nil
+              update
+            }
+            dropdowns << render_choice_menu('Issue shares:', options, cancel_handler)
+          end
 
           if Lib::Storage['buy_ipo_menu_corp'] == corporation.id && !valid_ipo_shares.empty?
             options = valid_ipo_shares.map do |share|
@@ -1088,8 +1264,7 @@ module View
               Lib::Storage['par_menu_corp'] = nil
               update
             }
-            dropdowns << render_par_matrix_menu(corporation, par_prices, cancel_handler)
-          end
+            dropdowns << h(::View::Game::Dashboard::ParPromptOverlay, game: @game, step: step, entity: active_player, corporation: corporation, on_cancel: cancel_handler) end
 
           ipo_cell_children << render_railcard(ipo_share_text, card_classes, ipo_click_handler, nil, dropdowns)
         end
@@ -1515,6 +1690,63 @@ module View
          ])
       end
 
+      def exec_issue_share_bundle(corporation, bundle, corp_actions = nil)
+        actions = corp_actions || (if @game.round.respond_to?(:actions_for)
+                                     begin
+                                       @game.round.actions_for(corporation)
+                                     rescue StandardError
+                                       []
+                                     end
+                                   else
+                                     []
+                                   end) || []
+        sh_price = bundle.respond_to?(:share_price) ? bundle.share_price : corporation.share_price
+        shares_arr = bundle.respond_to?(:shares) ? bundle.shares : [bundle]
+        pct = bundle.respond_to?(:percent) ? bundle.percent : 10
+
+        if actions.include?('issue_shares')
+          process_action(Engine::Action::IssueShares.new(corporation, bundle: bundle))
+        elsif actions.include?('reissue_shares') && defined?(Engine::Action::ReissueShares)
+          process_action(Engine::Action::ReissueShares.new(corporation, bundle: bundle))
+        elsif actions.include?('reissue') && defined?(Engine::Action::Reissue)
+          process_action(Engine::Action::Reissue.new(corporation, bundle: bundle))
+        elsif actions.include?('corporate_sell_shares')
+          process_action(Engine::Action::CorporateSellShares.new(corporation, bundle: bundle))
+        else
+          process_action(Engine::Action::SellShares.new(corporation, shares: shares_arr, share_price: sh_price, percent: pct))
+        end
+      end
+
+      def exec_redeem_share_bundle(corporation, bundle, corp_actions = nil)
+        actions = corp_actions || (if @game.round.respond_to?(:actions_for)
+                                     begin
+                                       @game.round.actions_for(corporation)
+                                     rescue StandardError
+                                       []
+                                     end
+                                   else
+                                     []
+                                   end) || []
+        num = if bundle.respond_to?(:num_shares)
+                bundle.num_shares
+              else
+                (bundle.respond_to?(:shares) ? bundle.shares.size : 1)
+              end
+        sh_price = bundle.respond_to?(:share_price) && bundle.share_price ? bundle.share_price : corporation.share_price
+        shares_arr = bundle.respond_to?(:shares) ? bundle.shares : [bundle]
+        pct = bundle.respond_to?(:percent) ? bundle.percent : (num * 10)
+
+        if actions.include?('redeem_shares')
+          process_action(Engine::Action::RedeemShares.new(corporation, bundle: bundle))
+        elsif actions.include?('redeem') && defined?(Engine::Action::Redeem)
+          process_action(Engine::Action::Redeem.new(corporation, bundle: bundle))
+        elsif actions.include?('corporate_buy_shares')
+          process_action(Engine::Action::CorporateBuyShares.new(corporation, shares: shares_arr, share_price: sh_price, percent: pct))
+        else
+          process_action(Engine::Action::BuyShares.new(corporation, shares: shares_arr, share_price: sh_price, percent: pct))
+        end
+      end
+
       def render_player_cash
         h(:tr, tr_default_props, [
           h('th.left', 'Cash'),
@@ -1694,109 +1926,6 @@ module View
               boxShadow: '0px 4px 10px rgba(0,0,0,0.3)',
             },
           }, menu_elements)
-      end
-
-      def render_par_matrix_menu(corporation, par_prices, cancel_handler)
-        shares_range = (2..10).to_a
-
-        headers = [h(:th, { style: { padding: '5px', border: '1px solid #999', backgroundColor: COLOR_INACTIVE } },
-                     'Par \ Shares')]
-        shares_range.each do |n|
-          headers << h(:th, { style: { padding: '5px', border: '1px solid #999', backgroundColor: COLOR_INACTIVE } }, n.to_s)
-        end
-
-        rows = []
-        par_prices.each do |par_node|
-          par_price = par_node.price
-
-          # Calculate required float shares, defaulting to float_percent logic if standard method isn't present
-          float_shares = if @game.respond_to?(:total_shares_to_float)
-                           @game.total_shares_to_float(corporation, par_price)
-                         else
-                           (corporation.float_percent || 60) / (corporation.share_percent || 10)
-                         end
-
-          cells = [h(:th, { style: { padding: '5px', border: '1px solid #999', backgroundColor: COLOR_INACTIVE } },
-                     @game.format_currency(par_price))]
-
-          shares_range.each do |n|
-            cost = n * par_price
-            can_afford = active_player.cash >= cost
-            is_float = n == float_shares
-
-            bg_color = can_afford ? '#c8e6c9' : '#f5f5f5'
-            fg_color = can_afford ? '#000000' : '#888888'
-            border_style = is_float ? '3px solid #ff0000' : '1px solid #999'
-
-            cell_props = {
-              style: {
-                padding: '5px',
-                border: border_style,
-                backgroundColor: bg_color,
-                color: fg_color,
-                cursor: can_afford ? 'pointer' : 'not-allowed',
-                textAlign: 'center',
-                fontWeight: is_float ? 'bold' : 'normal',
-              },
-              on: {},
-            }
-
-            if can_afford
-              cell_props[:on][:click] = lambda {
-                Lib::Storage['par_menu_corp'] = nil
-                slot = (@game.par_chart[par_node].index(nil) if @game.respond_to?(:par_chart) && @game.par_chart[par_node])
-
-                process_action(Engine::Action::Par.new(
-                  active_player,
-                  corporation: corporation,
-                  share_price: par_node,
-                  slot: slot
-                ))
-              }
-            end
-
-            cells << h(:td, cell_props, @game.format_currency(cost))
-          end
-          rows << h(:tr, cells)
-        end
-
-        table = h(:table, { style: { borderCollapse: 'collapse', marginTop: '10px' } }, [
-          h(:thead, [h(:tr, headers)]),
-          h(:tbody, rows),
-        ])
-
-        h(:div, {
-            style: {
-              position: 'absolute',
-              top: '105%',
-              left: '50%',
-              transform: 'translateX(-50%)',
-              backgroundColor: '#ffffff',
-              border: '2px solid #333333',
-              borderRadius: '4px',
-              padding: '1rem',
-              zIndex: '100000', # Raised from 9999 to guarantee it floats above all grid layers
-              boxShadow: '0px 8px 24px rgba(0,0,0,0.4)', # Deeper shadow to indicate foreground focus
-            },
-          }, [
-          h(:div, { style: { fontSize: '1rem', fontWeight: 'bold', marginBottom: '0.5rem', color: '#333' } },
-            "Select Par Price for #{corporation.name}"),
-          table,
-          h(:button, {
-              style: {
-                display: 'block',
-                width: '100%',
-                cursor: 'pointer',
-                fontSize: '0.85rem',
-                padding: '5px',
-                backgroundColor: '#e0e0e0',
-                border: '1px solid #999',
-                borderRadius: '3px',
-                marginTop: '10px',
-              },
-              on: { click: cancel_handler },
-            }, 'Cancel'),
-        ])
       end
 
       private

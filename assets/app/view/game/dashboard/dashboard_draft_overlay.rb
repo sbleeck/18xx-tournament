@@ -207,7 +207,6 @@ module View
         needs :game, store: true
 
         def resolve_pending_par(step, entity, actions)
-          # 1. Standard Step inspection across all engine implementations
           pending = nil
           %i[corporation_pending_par corporation par_corporation parring target_corporation].each do |m|
             next unless step.respond_to?(m)
@@ -217,14 +216,12 @@ module View
             break if pending
           end
 
-          # 2. Check steps with a single corporation target or active entity corporation
           if !pending && step.respond_to?(:corporations) && step.corporations&.one?
             pending = step.corporations.first
           elsif !pending && entity.respond_to?(:corporation?) && entity.corporation?
             pending = entity
           end
 
-          # 3. Resolve from transacted company or recent action abilities (e.g., B&O in 1830)
           unless pending
             transacted_company = nil
             %i[company last_company auctioning].each do |m|
@@ -271,7 +268,6 @@ module View
             end
           end
 
-          # 4. Check all companies owned by active player for an unparred :shares ability
           if !pending && @game.respond_to?(:corporations)
             player_actor = entity.respond_to?(:player?) && entity.player? ? entity : entity&.owner
             if player_actor&.respond_to?(:companies)
@@ -297,7 +293,6 @@ module View
             end
           end
 
-          # Verify that 'par' is indeed an active legal action
           has_par = actions.include?('par')
           if !has_par && pending && @game.round.respond_to?(:actions_for)
             corp_actions = begin
@@ -541,8 +536,39 @@ module View
 
             can_afford = (entity.respond_to?(:cash) ? entity.cash : 0) >= item_price
 
-            exec_choose = lambda {
-              if actions.include?('bid')
+            # Determine eligibility and appropriate verb (Bid, Buy, Choose)
+            is_actionable = !pending_corp && !is_owned && can_afford
+            action_mode = nil
+            btn_verb = 'Choose'
+
+            if is_actionable
+              if step.respond_to?(:auctioning) && step.auctioning
+                # Active auction taking place (e.g. 1844 sequential auctions)
+                if step.auctioning == item && actions.include?('bid')
+                  action_mode = :bid
+                  btn_verb = step.respond_to?(:bid_str) ? step.bid_str(item) : 'Bid'
+                end
+              elsif actions.include?('bid') && step.respond_to?(:may_bid?) && step.may_bid?(item)
+                action_mode = :bid
+                btn_verb = step.respond_to?(:bid_str) ? step.bid_str(item) : 'Bid'
+              elsif actions.include?('buy_company') || (actions.include?('bid') && step.respond_to?(:may_purchase?) && step.may_purchase?(item))
+                action_mode = actions.include?('buy_company') ? :buy_company : :bid
+                btn_verb = step.respond_to?(:buy_str) ? step.buy_str(item) : 'Buy'
+              elsif actions.include?('choose') && (step.respond_to?(:may_choose?) ? step.may_choose?(item) : true)
+                action_mode = :choose
+                btn_verb = 'Choose'
+              elsif actions.include?('bid')
+                # Fallback auction bid
+                action_mode = :bid
+                btn_verb = 'Bid'
+              end
+            end
+
+            can_choose_item = !action_mode.nil?
+
+            exec_action = lambda {
+              case action_mode
+              when :bid
                 bid_args = { price: item_price }
                 if item.respond_to?(:company?) && item.company?
                   bid_args[:company] = item
@@ -555,9 +581,9 @@ module View
                   bid_args[:company] = item
                 end
                 process_action(Engine::Action::Bid.new(entity, **bid_args))
-              elsif actions.include?('buy_company')
+              when :buy_company
                 process_action(Engine::Action::BuyCompany.new(entity, company: item, price: item_price))
-              elsif actions.include?('choose')
+              when :choose
                 choice_val = if available_choices.is_a?(Hash)
                                available_choices.keys.find { |k| k == item || (item.respond_to?(:id) && k == item.id) } || item.id
                              else
@@ -567,8 +593,6 @@ module View
               end
             }
 
-            can_choose_item = !pending_corp && !is_owned && can_afford && (actions.include?('bid') || actions.include?('buy_company') || actions.include?('choose'))
-
             card_sym = item.respond_to?(:sym) ? item.sym : item.name
             tooltip = build_entity_tooltip(item)
             subtext = item.respond_to?(:value) && item.value ? @game.format_currency(item.value) : nil
@@ -576,7 +600,7 @@ module View
             card_classes << 'action-buy clickable' if can_choose_item
             card_label = subtext ? "#{card_sym} #{subtext}" : card_sym
 
-            item_card = render_railcard(card_label, card_classes, (can_choose_item ? exec_choose : nil), tooltip)
+            item_card = render_railcard(card_label, card_classes, (can_choose_item ? exec_action : nil), tooltip)
 
             choose_btn = if can_choose_item
                            h(:button, {
@@ -586,24 +610,24 @@ module View
                                  fontSize: '0.82rem',
                                  fontWeight: 'bold',
                                  fontFamily: FONT_MONEY,
-                                 backgroundColor: '#16a34a',
+                                 backgroundColor: action_mode == :bid ? '#0284c7' : '#16a34a',
                                  color: '#fff',
                                  border: 'none',
                                  borderRadius: '4px',
                                  cursor: 'pointer',
                                },
-                               on: { click: exec_choose },
-                             }, "Choose #{@game.format_currency(item_price)}")
+                               on: { click: exec_action },
+                             }, "#{btn_verb} #{@game.format_currency(item_price)}")
                          end
 
             btn_cell_children = choose_btn ? [choose_btn] : []
 
             row_cells = [
-              h(:td, { style: { padding: '6px 8px', borderBottom: '1px solid #e2e8f0', width: '1%', whiteSpace: 'nowrap' } }, [item_card]),
-              h(:td, { style: { padding: '6px 8px', borderBottom: '1px solid #e2e8f0', width: '8rem', whiteSpace: 'nowrap' } }, btn_cell_children),
+              h(:td, { style: { padding: '6px 8px', borderBottom: '1px solid #cbd5e1', borderRight: '1px solid #e2e8f0', width: '1%', whiteSpace: 'nowrap' } }, [item_card]),
+              h(:td, { style: { padding: '6px 8px', borderBottom: '1px solid #cbd5e1', borderRight: '2px solid #cbd5e1', width: '8.5rem', whiteSpace: 'nowrap' } }, btn_cell_children),
             ]
 
-            players.each do |p|
+            players.each_with_index do |p, idx|
               cell_content = if is_owned && item.owner == p
                                h(:span, {
                                    style: {
@@ -640,7 +664,16 @@ module View
                                  h(:span, { style: { color: '#cbd5e1' } }, '-')
                                end
                              end
-              row_cells << h(:td, { style: { padding: '6px 8px', textAlign: 'center', borderBottom: '1px solid #e2e8f0' } }, [cell_content])
+
+              player_border = idx == players.length - 1 ? 'none' : '1px solid #e2e8f0'
+              row_cells << h(:td, {
+                               style: {
+                                 padding: '6px 8px',
+                                 textAlign: 'center',
+                                 borderBottom: '1px solid #cbd5e1',
+                                 borderRight: player_border,
+                               },
+                             }, [cell_content])
             end
 
             row_bg = if can_choose_item
@@ -667,30 +700,6 @@ module View
             end
 
             h(:tr, { style: { backgroundColor: row_bg, opacity: is_owned ? '0.88' : '1' }, on: row_events }, row_cells)
-          end
-
-          if can_pass
-            pass_row_btn = h(:button, {
-                               style: {
-                                 padding: '0 10px',
-                                 height: '1.6rem',
-                                 fontSize: '0.82rem',
-                                 fontWeight: 'bold',
-                                 backgroundColor: '#fd7e14',
-                                 color: '#fff',
-                                 border: 'none',
-                                 borderRadius: '4px',
-                                 cursor: 'pointer',
-                               },
-                               on: { click: exec_pass },
-                             }, 'Pass')
-
-            pass_cells = [
-              h(:td, { style: { padding: '6px 8px', borderBottom: '1px solid #e2e8f0', width: '1%', whiteSpace: 'nowrap', fontWeight: 'bold', color: '#64748b' } }, 'Pass Turn'),
-              h(:td, { style: { padding: '6px 8px', borderBottom: '1px solid #e2e8f0', width: '8rem', whiteSpace: 'nowrap' } }, [pass_row_btn]),
-              *players.map { h(:td, { style: { padding: '6px 8px', textAlign: 'center', borderBottom: '1px solid #e2e8f0' } }, [h(:span, { style: { color: '#cbd5e1' } }, '-')]) },
-            ]
-            rows << h(:tr, { style: { backgroundColor: '#fff7ed' } }, pass_cells)
           end
 
           is_minimized = Lib::Storage['draft_overlay_minimized'] || false
@@ -947,17 +956,19 @@ module View
                            nil
                          else
                            h(:div, { style: { overflowY: 'auto', padding: '1rem' } }, [
-                             h(:table, { style: { width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' } }, [
+                             h(:table, { style: { width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem', border: '1px solid #cbd5e1' } }, [
                                h(:thead, [
                                  h(:tr, [
-                                   h(:th, { attrs: { colspan: '2' }, style: { padding: '6px 8px', textAlign: 'left', borderBottom: '2px solid #cbd5e1', color: '#475569' } }, 'Available Cards'),
-                                   *players.map do |p|
+                                   h(:th, { attrs: { colspan: '2' }, style: { padding: '6px 8px', textAlign: 'left', borderBottom: '2px solid #cbd5e1', borderRight: '2px solid #cbd5e1', color: '#475569' } }, 'Available Cards'),
+                                   *players.map.with_index do |p, idx|
                                      is_current = (p == entity)
+                                     player_border = idx == players.length - 1 ? 'none' : '1px solid #cbd5e1'
                                      h(:th, {
                                          style: {
                                            padding: '6px 8px',
                                            textAlign: 'center',
                                            borderBottom: '2px solid #cbd5e1',
+                                           borderRight: player_border,
                                            backgroundColor: is_current ? '#e0f2fe' : 'transparent',
                                            color: is_current ? '#0369a1' : '#475569',
                                            fontWeight: is_current ? 'bold' : '600',
@@ -969,13 +980,15 @@ module View
                                h(:tbody, rows),
                                h(:tfoot, [
                                  h(:tr, [
-                                   h(:td, { attrs: { colspan: '2' }, style: { padding: '8px', fontWeight: 'bold', borderTop: '2px solid #cbd5e1', color: '#334155' } }, 'Cash on Hand:'),
-                                   *players.map do |p|
+                                   h(:td, { attrs: { colspan: '2' }, style: { padding: '8px', fontWeight: 'bold', borderTop: '2px solid #cbd5e1', borderRight: '2px solid #cbd5e1', color: '#334155' } }, 'Cash on Hand:'),
+                                   *players.map.with_index do |p, idx|
+                                     player_border = idx == players.length - 1 ? 'none' : '1px solid #cbd5e1'
                                      h(:td, {
                                          style: {
                                            padding: '8px',
                                            textAlign: 'center',
                                            borderTop: '2px solid #cbd5e1',
+                                           borderRight: player_border,
                                            fontWeight: 'bold',
                                            fontFamily: FONT_MONEY,
                                            color: COLOR_MONEY,
@@ -1007,10 +1020,7 @@ module View
                 },
               }, [
               h(:div, [
-                h(:div, { style: { display: 'flex', alignItems: 'center', gap: '0.5rem' } }, [
-                  h(:h2, { style: { margin: '0', fontSize: '1.25rem', color: '#0f172a' } }, 'Private Distribution Draft'),
-                  h(:span, { style: { fontSize: '0.75rem', color: '#94a3b8', fontStyle: 'italic' } }, '(drag to move)'),
-                ]),
+                h(:h2, { style: { margin: '0', fontSize: '1.25rem', color: '#0f172a' } }, 'Private Distribution Draft'),
                 h(:span, { style: { fontSize: '0.85rem', color: '#64748b' } }, "Active Player: #{entity.name}"),
               ]),
               h(:div, { style: { display: 'flex', alignItems: 'center', gap: '0.4rem' } }, header_controls),
