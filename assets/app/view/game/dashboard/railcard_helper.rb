@@ -20,15 +20,20 @@ module View
 
         def resolve_target_hexes(target)
           return [] unless target
+          return [] if target.is_a?(Engine::Train) || target.respond_to?(:rusts_on)
 
           hexes = []
           abilities = []
           abilities.concat(target.all_abilities) if target.respond_to?(:all_abilities) && target.all_abilities
           abilities.concat(Array(target.abilities)) if target.respond_to?(:abilities) && target.abilities
 
-          if @game.respond_to?(:abilities)
+          if @game.respond_to?(:abilities) && target.respond_to?(:all_abilities)
             %i[blocks_hexes teleport tile_lay hex_bonus assign_hexes reservation close].each do |type|
-              ab = @game.abilities(target, type)
+              ab = begin
+                @game.abilities(target, type)
+              rescue StandardError, NoMethodError
+                nil
+              end
               abilities.concat(Array(ab)) if ab
             end
           end
