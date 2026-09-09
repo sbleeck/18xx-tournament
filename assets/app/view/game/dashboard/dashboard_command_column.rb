@@ -1886,7 +1886,11 @@ h(:div, { attrs: { id: 'manual-route-overlay-dialog' }, style: dialog_style }, d
                 action_class = actions.include?('corporate_buy_shares') ? Engine::Action::CorporateBuyShares : Engine::Action::BuyShares
                 process_action(action_class.new(entity, shares: bundle.respond_to?(:shares) ? bundle.shares : [bundle], share_price: bundle.respond_to?(:share_price) ? bundle.share_price : nil, percent: pct))
               }
-              render_railcard("Buy #{pct}% (#{@game.format_currency(price)})", %w[game-card action-buy clickable], click_handler)
+              card = render_railcard("#{pct}%", %w[game-card action-buy clickable], click_handler)
+              h(:div, { style: { display: 'inline-flex', alignItems: 'center', gap: '0.3rem', margin: '0 0.2rem' } }, [
+                card,
+                h(:span, { style: { fontFamily: FONT_MONEY, color: COLOR_MONEY, fontWeight: 'bold', fontSize: '0.85rem', whiteSpace: 'nowrap' } }, @game.format_currency(price)),
+              ])
             end
             components << render_action_row('Buy Treasury Share:', buy_boxes)
           else
@@ -2173,8 +2177,15 @@ h(:div, { attrs: { id: 'manual-route-overlay-dialog' }, style: dialog_style }, d
             cost_str = "(#{@game.format_currency(cost)})" if cost && !cost.zero?
           end
 
-          surrender_label = cost_str.empty? ? train.name : "#{train.name} #{cost_str.strip}"
-          render_railcard(surrender_label, %w[game-card action-sell clickable], click_handler)
+          card = render_railcard(train.name, %w[game-card action-sell clickable], click_handler)
+          if cost_str.empty?
+            card
+          else
+            h(:div, { style: { display: 'inline-flex', alignItems: 'center', gap: '0.3rem', margin: '0 0.2rem' } }, [
+              card,
+              h(:span, { style: { fontFamily: FONT_MONEY, color: '#dc2626', fontWeight: 'bold', fontSize: '0.85rem', whiteSpace: 'nowrap' } }, cost_str),
+            ])
+          end
         end
 
         return nil if train_boxes.empty?
@@ -2223,8 +2234,11 @@ h(:div, { attrs: { id: 'manual-route-overlay-dialog' }, style: dialog_style }, d
                 process_action(Engine::Action::BuyTrain.new(entity, train: train, price: price, variant: variant_param))
               }
               train_classes = %w[game-card action-buy]
-              train_classes << 'clickable' if can_afford
-              train_boxes << render_railcard("#{variant_str} (Bank: #{@game.format_currency(price)})", train_classes, (can_afford ? click_handler : nil))
+              card = render_railcard(variant_str, train_classes, (can_afford ? click_handler : nil))
+              train_boxes << h(:div, { style: { display: 'inline-flex', alignItems: 'center', gap: '0.3rem', margin: '0 0.2rem' } }, [
+                card,
+                h(:span, { style: { fontFamily: FONT_MONEY, color: can_afford ? COLOR_MONEY : '#9ca3af', fontWeight: 'bold', fontSize: '0.85rem', whiteSpace: 'nowrap' } }, @game.format_currency(price)),
+              ])
             end
           end
         end
@@ -2251,8 +2265,11 @@ h(:div, { attrs: { id: 'manual-route-overlay-dialog' }, style: dialog_style }, d
                 process_action(Engine::Action::BuyTrain.new(entity, train: t, price: price_val))
               })
             }
-
-            train_boxes << render_railcard("#{t.name} (#{c.id || c.name})", %w[game-card action-buy clickable], train_click_handler)
+            card = render_railcard(t.name, %w[game-card action-buy clickable], train_click_handler)
+            train_boxes << h(:div, { style: { display: 'inline-flex', alignItems: 'center', gap: '0.3rem', margin: '0 0.2rem' } }, [
+              card,
+              h(:span, { style: { fontSize: '0.82rem', color: '#475569', fontWeight: 'bold', whiteSpace: 'nowrap' } }, "(#{c.id || c.name})"),
+            ])
           end
         end
 
@@ -2317,7 +2334,8 @@ h(:div, { attrs: { id: 'manual-route-overlay-dialog' }, style: dialog_style }, d
                     end
 
             pct_str = bundle.respond_to?(:percent) && bundle.percent ? "#{bundle.percent}%" : "#{num}S"
-            price_str = "(#{@game.format_currency(price)})"
+
+            price_str = @game.format_currency(price)
 
             click_handler = lambda {
               actions = begin
@@ -2343,8 +2361,13 @@ h(:div, { attrs: { id: 'manual-route-overlay-dialog' }, style: dialog_style }, d
               end
             }
 
-            render_railcard("#{pct_str} #{price_str}", %w[game-card action-sell clickable], click_handler)
+            card = render_railcard(pct_str, %w[game-card action-sell clickable], click_handler)
+            h(:div, { style: { display: 'inline-flex', alignItems: 'center', gap: '0.3rem', margin: '0 0.2rem' } }, [
+              card,
+              h(:span, { style: { fontFamily: FONT_MONEY, color: COLOR_MONEY, fontWeight: 'bold', fontSize: '0.85rem', whiteSpace: 'nowrap' } }, price_str),
+            ])
           end
+
           rows << render_action_row('Issue:', issue_buttons)
         elsif ((@game.round.actions_for(entity) || []) & %w[issue_shares reissue_shares reissue]).any?
           rows << render_action_row('Issue:', [
@@ -2398,7 +2421,8 @@ h(:div, { attrs: { id: 'manual-route-overlay-dialog' }, style: dialog_style }, d
                     else
                       0
                     end
-            price_str = "(#{@game.format_currency(price)})"
+
+            price_str = @game.format_currency(price)
             can_afford = (entity.respond_to?(:cash) ? entity.cash : 0) >= price
 
             click_handler = lambda {
@@ -2430,8 +2454,13 @@ h(:div, { attrs: { id: 'manual-route-overlay-dialog' }, style: dialog_style }, d
 
             card_classes = %w[game-card action-buy]
             card_classes << 'clickable' if can_afford
-            render_railcard("#{pct_str} #{price_str}", card_classes, (can_afford ? click_handler : nil))
+            card = render_railcard(pct_str, card_classes, (can_afford ? click_handler : nil))
+            h(:div, { style: { display: 'inline-flex', alignItems: 'center', gap: '0.3rem', margin: '0 0.2rem' } }, [
+              card,
+              h(:span, { style: { fontFamily: FONT_MONEY, color: can_afford ? COLOR_MONEY : '#9ca3af', fontWeight: 'bold', fontSize: '0.85rem', whiteSpace: 'nowrap' } }, price_str),
+            ])
           end
+
           rows << render_action_row('Redeem:', redeem_buttons)
         elsif ((@game.round.actions_for(entity) || []) & %w[redeem redeem_shares]).any?
           rows << render_action_row('Redeem:', [
