@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 # rubocop:disable Layout/LineLength
+require 'view/game/corporation'
 
 module View
   module Game
@@ -187,58 +188,6 @@ module View
         def render_corp_tooltip(corporation)
           return nil unless corporation
 
-          owner_name = corporation.owner ? corporation.owner.name : 'Unowned / Bank'
-          corp_type = if corporation.minor?
-                        'Minor Corporation'
-                      elsif corporation.respond_to?(:type) && corporation.type == :national
-                        'National Railway'
-                      else
-                        'Major Corporation'
-                      end
-
-          is_minor = corporation.respond_to?(:minor?) && corporation.minor?
-          is_unopened = !is_minor && corporation.respond_to?(:floated?) && !corporation.floated?
-          status_label = if is_minor
-                           corporation.owner ? 'Operating' : 'Available'
-                         elsif is_unopened
-                           corporation.respond_to?(:ipoed) && corporation.ipoed ? 'Unfloated (Parred)' : 'Unopened'
-                         else
-                           'Operating'
-                         end
-          market_price_str = corporation.share_price ? @game.format_currency(corporation.share_price.price) : 'Not on Market'
-          par_price_str = corporation.respond_to?(:par_price) && corporation.par_price ? @game.format_currency(corporation.par_price.price) : 'Not Parred'
-
-          cash_str = is_unopened ? '0' : @game.format_currency(corporation.cash || 0)
-
-          details = []
-          details << "Status: #{status_label}"
-          details << "President / Owner: #{owner_name}"
-          details << "Treasury: #{cash_str}"
-          details << "Market Price: #{market_price_str} | Par: #{par_price_str}"
-
-          if corporation.respond_to?(:float_percent) && corporation.float_percent
-            shares_needed = corporation.respond_to?(:percent_to_float) ? "#{corporation.percent_to_float}% remaining" : ''
-            details << "Float Rule: #{corporation.float_percent}% #{'(' + shares_needed + ')' if is_unopened && !shares_needed.empty?}"
-          end
-
-          if corporation.respond_to?(:tokens) && corporation.tokens.any?
-            token_costs = corporation.tokens.map { |t| t.price ? @game.format_currency(t.price) : 'Free' }.join(', ')
-            details << "Tokens: #{corporation.tokens.size} (#{token_costs})"
-          end
-
-          if corporation.respond_to?(:coordinates) && corporation.coordinates
-            home_hex = Array(corporation.coordinates).join(', ')
-            details << "Home Hex: #{home_hex}"
-          end
-
-          abilities_text = []
-          if corporation.respond_to?(:abilities) && corporation.abilities&.any?
-            corporation.abilities.each do |a|
-              desc = a.respond_to?(:description) ? a.description : nil
-              abilities_text << desc if desc && !desc.empty?
-            end
-          end
-
           target_hexes = resolve_target_hexes(corporation)
 
           h(:div, {
@@ -248,49 +197,15 @@ module View
               },
               style: {
                 display: 'none',
-                position: 'fixed',
-                top: '50%',
-                left: '50%',
-                transform: 'translate(-50%, -50%)',
-                width: '320px',
-                backgroundColor: '#ffffff',
-                border: '2px solid #333333',
-                borderRadius: '6px',
-                padding: '10px',
-                boxShadow: '0 8px 24px rgba(0,0,0,0.35)',
-                zIndex: '99999',
-                pointerEvents: 'none',
-                color: '#000000',
-                textAlign: 'left',
-                boxSizing: 'border-box',
-                whiteSpace: 'normal',
-                fontWeight: 'normal',
               },
             }, [
-            h(:div, {
-                style: {
-                  backgroundColor: corporation.color || '#4c1d95',
-                  color: corporation.text_color || '#ffffff',
-                  fontWeight: 'bold',
-                  fontSize: '0.85rem',
-                  textAlign: 'center',
-                  padding: '3px 6px',
-                  marginBottom: '6px',
-                  textTransform: 'uppercase',
-                  borderRadius: '3px',
-                  border: '1px solid #333',
-                },
-              }, corp_type),
-            h(:div, { style: { fontWeight: 'bold', fontSize: '1rem', textAlign: 'center', marginBottom: '6px', color: '#111' } }, "#{corporation.name} (#{corporation.id})"),
-            h(:div, { style: { borderTop: '1px solid #ddd', paddingTop: '6px', marginBottom: '6px' } },
-              details.map { |d| h(:div, { style: { fontSize: '0.78rem', marginBottom: '3px', color: '#222' } }, "• #{d}") }),
-            (if abilities_text.any?
-               h(:div, { style: { borderTop: '1px solid #ddd', paddingTop: '4px', marginTop: '4px' } }, [
-                 h(:div, { style: { fontSize: '0.78rem', fontWeight: 'bold', color: '#b91c1c', marginBottom: '2px' } }, 'Special Abilities / Details:'),
-                 *abilities_text.map { |ab| h(:div, { style: { fontSize: '0.75rem', color: '#333', lineHeight: '1.2' } }, ab) },
-               ])
-             end),
-          ].compact)
+              h(Corporation,
+                corporation: corporation,
+                game: @game,
+                display: 'block',
+                selectable: false,
+                interactive: false),
+            ])
         end
 
         def build_entity_tooltip(entity)

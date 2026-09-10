@@ -1484,7 +1484,6 @@ module View
         if @game.round.stock?
           zone_1 = h(:div, { style: { flex: '0 0 20%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '0.5rem', borderRight: '1px solid #ccc', boxSizing: 'border-box' } }, [
             h(:div, { style: { fontSize: '1.8rem', fontWeight: 'bold', color: '#000000', textAlign: 'center', wordBreak: 'break-word' } }, player_name),
-            h(:div, { style: { fontSize: '1.1rem', fontWeight: 'bold', color: '#666', marginTop: '0.25rem' } }, 'STOCK ROUND'),
           ])
         else
           phase_labels = {
@@ -1524,7 +1523,6 @@ module View
             logo_element,
             h(:div, { style: { display: 'flex', flexDirection: 'column', justifyContent: 'center', overflow: 'hidden' } }, [
               h(:div, { style: { fontSize: '1.5rem', fontWeight: 'bold', color: '#000000', lineHeight: '1.2', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' } }, player_name),
-              h(:div, { style: { fontSize: '1.5rem', fontWeight: 'bold', color: '#000000', lineHeight: '1.2', textTransform: 'uppercase', marginTop: '0.2rem' } }, phase_text),
             ]),
           ])
         end
@@ -2336,10 +2334,10 @@ module View
                           on: hover_events,
                         }, [
           h(:span, { style: { fontSize: '1rem' } }, '📍'),
-          h(:span, "Click a city slot#{hex_info} on the map to place home token."),
+          h(:span, "Lay token#{hex_info}"),
         ])
 
-        render_action_row('Home City:', instruction)
+        render_action_row('Home Token:', instruction)
       end
 
       def render_buy_tokens(step, entity)
@@ -2801,10 +2799,13 @@ module View
             components << h(ReassignTrains) if actions.include?('reassign_trains')
             components << h(DoubleHeadTrains) if actions.include?('double_head_trains')
             components << h(CombinedTrains) if actions.include?('combined_trains')
+            if actions.include?('lay_tile')
+              components << render_action_row('Lay Tile:', h(:span, { style: { fontSize: '0.88rem', color: '#1e293b', fontWeight: '600' } }, ''))
+            end
             if home_token_step?(step, actions)
               components << render_home_token_step(step, step&.current_entity || current_entity)
             elsif actions.include?('place_token')
-              components << render_action_row('Place Token:', h(:span, { style: { fontSize: '0.85rem', color: '#475569', fontStyle: 'italic' } }, 'Click an open city slot on the map to place token.'))
+              components << render_action_row('Place Token:', h(:span, { style: { fontSize: '0.85rem', color: '#475569', fontStyle: 'italic' } }, ''))
             end
 
             components << render_buy_tokens(step, step&.current_entity || current_entity) if actions.include?('buy_token')

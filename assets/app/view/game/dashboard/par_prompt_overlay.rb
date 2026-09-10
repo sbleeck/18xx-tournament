@@ -133,7 +133,7 @@ module View
           par_nodes = par_nodes.sort_by do |node|
             price = node.is_a?(Array) ? node[0] : node
             price.respond_to?(:price) ? price.price : price
-          end
+          end.reverse
 
           if @game.respond_to?(:par_chart)
             par_nodes = par_nodes.reject do |node|

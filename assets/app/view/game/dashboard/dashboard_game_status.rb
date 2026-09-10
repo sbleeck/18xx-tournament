@@ -233,8 +233,6 @@ module View
         end
       end
 
-
-
       def render_corporations
         current_round = @game.turn_round_num
         corps = sorted_corporations
@@ -1136,10 +1134,37 @@ module View
                            else
                              []
                            end || []
-          is_corp = corporation.respond_to?(:corporation?) && corporation.corporation?
+          is_corp = corporation.respond_to?(:corporation?) &&
+                     corporation.corporation? &&
+                     (!corporation.respond_to?(:minor?) || !corporation.minor?) &&
+                     (!corporation.respond_to?(:ipoed) || !corporation.ipoed)
 
-          can_par = is_corp && active_player && player_actions.include?('par') &&
-                    @game.respond_to?(:can_par?) && @game.can_par?(corporation, active_player)
+          corp_available = if corporation.respond_to?(:available?)
+                             corporation.available?
+                           elsif @game.respond_to?(:corporation_available?)
+                             @game.corporation_available?(corporation)
+                           else
+                             true
+                           end
+
+          game_can_par = !@game.respond_to?(:can_par?) || @game.can_par?(corporation, active_player)
+
+          step_can_par = if step.respond_to?(:can_par?)
+                           begin
+                             step.can_par?(corporation, active_player)
+                           rescue ArgumentError
+                             step.can_par?(active_player, corporation)
+                           end
+                         else
+                           true
+                         end
+
+          can_par = is_corp &&
+                    active_player &&
+                    player_actions.include?('par') &&
+                    corp_available &&
+                    game_can_par &&
+                    step_can_par
 
           can_bid = active_player && player_actions.include?('bid') && (
             if step.respond_to?(:can_bid?)
@@ -1171,6 +1196,48 @@ module View
                 slots = @game.par_chart[sp]
                 slots && slots.none?(&:nil?)
               end
+            end
+
+            # Resolve presidency certificate share multiplier
+            pres_share = if corporation.respond_to?(:presidents_share) && corporation.presidents_share
+                           corporation.presidents_share
+                         elsif corporation.respond_to?(:shares) && corporation.shares&.first
+                           corporation.shares.first
+                         end
+
+            shares_multiplier = if pres_share.respond_to?(:multiplier) && pres_share.multiplier
+                                  pres_share.multiplier
+                                elsif pres_share.respond_to?(:percent) && corporation.respond_to?(:share_percent) && corporation.share_percent&.positive?
+                                  (pres_share.percent / corporation.share_percent).to_i
+                                elsif pres_share.respond_to?(:percent)
+                                  (pres_share.percent / 10).to_i
+                                else
+                                  2
+                                end
+
+            if step.respond_to?(:par_shares)
+              bundle = begin
+                step.par_shares(corporation)
+              rescue ArgumentError
+                step.par_shares(active_player, corporation)
+              end
+              if bundle
+                shares_multiplier = if bundle.respond_to?(:num_shares)
+                                      bundle.num_shares
+                                    elsif bundle.respond_to?(:shares) && bundle.shares
+                                      bundle.shares.size
+                                    else
+                                      shares_multiplier
+                                    end
+              end
+            end
+            shares_multiplier = 1 if shares_multiplier.to_i <= 0
+
+            # Filter prices strictly to what the active player can physically afford
+            player_cash = active_player.respond_to?(:cash) ? (active_player.cash || 0) : 0
+            par_prices = par_prices.select do |sp|
+              price_val = sp.respond_to?(:price) ? sp.price : sp.to_i
+              player_cash >= (price_val * shares_multiplier)
             end
 
             unless par_prices.empty?
