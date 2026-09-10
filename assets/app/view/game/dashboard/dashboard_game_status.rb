@@ -233,6 +233,8 @@ module View
         end
       end
 
+
+
       def render_corporations
         current_round = @game.turn_round_num
         corps = sorted_corporations
@@ -1259,12 +1261,6 @@ module View
             }
             dropdowns << render_choice_menu('Buy from IPO:', options, cancel_handler)
           end
-          if Lib::Storage['par_menu_corp'] == corporation.id && can_par && !par_prices.empty?
-            cancel_handler = lambda {
-              Lib::Storage['par_menu_corp'] = nil
-              update
-            }
-            dropdowns << h(::View::Game::Dashboard::ParPromptOverlay, game: @game, step: step, entity: active_player, corporation: corporation, on_cancel: cancel_handler) end
 
           ipo_cell_children << render_railcard(ipo_share_text, card_classes, ipo_click_handler, nil, dropdowns)
         end

@@ -2,10 +2,11 @@
 
 # backtick_javascript: true
 
+# rubocop:disable Layout/LineLength
+
 require 'view/game/actionable'
 require 'lib/settings'
 require 'lib/storage'
-require 'view/game/history_and_undo'
 require 'view/game/dashboard/railcard_helper'
 
 module View
@@ -142,39 +143,94 @@ module View
             end
           end
 
-          corp_badge = render_railcard(actual_corp.name, ['game-card'])
+          corp_bg = actual_corp.color || '#0f172a'
+          corp_fg = actual_corp.text_color || '#ffffff'
+          full_corp_name = actual_corp.respond_to?(:full_name) && actual_corp.full_name ? actual_corp.full_name : actual_corp.name
+
+          logo_src = begin
+            setting_for(:simple_logos, @game) ? actual_corp.simple_logo : actual_corp.logo
+          rescue StandardError
+            nil
+          end
+
+          logo_element = if logo_src
+                           h(:img, {
+                               attrs: { src: logo_src, alt: actual_corp.name },
+                               style: {
+                                 width: '38px',
+                                 height: '38px',
+                                 objectFit: 'contain',
+                                 borderRadius: '6px',
+                                 backgroundColor: '#ffffff',
+                                 padding: '2px',
+                                 boxShadow: '0 1px 3px rgba(0,0,0,0.25)',
+                                 flexShrink: '0',
+                               },
+                             })
+                         else
+                           h(:div, {
+                               style: {
+                                 width: '38px',
+                                 height: '38px',
+                                 display: 'flex',
+                                 alignItems: 'center',
+                                 justifyContent: 'center',
+                                 backgroundColor: '#ffffff',
+                                 color: corp_bg,
+                                 fontWeight: '800',
+                                 fontSize: '1.15rem',
+                                 borderRadius: '6px',
+                                 boxShadow: '0 1px 3px rgba(0,0,0,0.25)',
+                                 flexShrink: '0',
+                               },
+                             }, actual_corp.name)
+                         end
+
           shares_range = (2..10).to_a
 
           headers = [
             h(:th, {
                 style: {
-                  padding: '8px 12px',
+                  padding: '8px 10px',
                   border: '1px solid #cbd5e1',
-                  backgroundColor: COLOR_INACTIVE,
-                  color: '#1e293b',
-                  fontWeight: 'bold',
+                  backgroundColor: '#cbd5e1',
+                  color: '#0f172a',
+                  fontWeight: '800',
                   textAlign: 'center',
                   fontFamily: FONT_STD,
+                  fontSize: '0.85rem',
+                  minWidth: '5.6rem',
                 },
-              }, 'Par \ Shares'),
+              }, 'Par Price'),
           ]
+
+          share_percent = actual_corp.respond_to?(:share_percent) && actual_corp.share_percent ? actual_corp.share_percent : 10
 
           shares_range.each do |n|
             headers << h(:th, {
                            style: {
-                             padding: '8px 10px',
+                             padding: '8px 4px',
                              border: '1px solid #cbd5e1',
                              backgroundColor: COLOR_INACTIVE,
                              color: '#1e293b',
                              fontWeight: 'bold',
                              textAlign: 'center',
-                             minWidth: '3.2rem',
+                             minWidth: '3.4rem',
                              fontFamily: FONT_STD,
+                             fontSize: '0.85rem',
                            },
-                         }, "#{n}S")
+                         }, "#{n * share_percent}%")
           end
 
           actor_cash = par_actor.respond_to?(:cash) ? par_actor.cash : 0
+
+          pres_multiplier = if actual_corp.respond_to?(:presidents_percent) && actual_corp.respond_to?(:share_percent)
+                              (actual_corp.presidents_percent / actual_corp.share_percent).to_i
+                            elsif actual_corp.respond_to?(:shares) && actual_corp.shares.first&.president
+                              actual_corp.shares.first.num_shares || 2
+                            else
+                              2
+                            end
 
           matrix_rows = par_nodes.map do |node|
             price_obj = node.is_a?(Array) ? node[0] : node
@@ -190,19 +246,50 @@ module View
             price_label = @game.format_currency(price_val)
             price_label += " (#{help})" if help
 
+            par_cost = price_val * pres_multiplier
+            can_par = actor_cash >= par_cost
+
+            par_click_handler = if can_par
+                                  lambda {
+                                    Lib::Storage['par_menu_corp'] = nil
+                                    @on_cancel&.call
+                                    slot = (@game.par_chart[price_obj].index(nil) if @game.respond_to?(:par_chart) && @game.par_chart[price_obj])
+                                    args = { corporation: actual_corp, share_price: price_obj }
+                                    args[:slot] = slot if slot
+                                    process_action(Engine::Action::Par.new(par_actor, **args))
+                                  }
+                                end
+
             row_cells = [
-              h(:th, {
+              h(:td, {
                   style: {
-                    padding: '8px 12px',
+                    padding: '3px 4px',
                     border: '1px solid #cbd5e1',
-                    backgroundColor: '#f8fafc',
-                    color: '#0f172a',
-                    fontWeight: 'bold',
-                    fontFamily: FONT_MONEY,
-                    textAlign: 'right',
-                    whiteSpace: 'nowrap',
+                    backgroundColor: '#f1f5f9',
+                    textAlign: 'center',
                   },
-                }, price_label),
+                }, [
+                h(:button, {
+                    attrs: { disabled: !can_par },
+                    style: {
+                      width: '100%',
+                      boxSizing: 'border-box',
+                      padding: '5px 8px',
+                      border: can_par ? '2px solid #16a34a' : '1px solid #cbd5e1',
+                      borderRadius: '4px',
+                      backgroundColor: can_par ? '#dcfce7' : '#e2e8f0',
+                      color: can_par ? '#14532d' : '#94a3b8',
+                      fontWeight: '800',
+                      fontFamily: FONT_MONEY,
+                      fontSize: '0.95rem',
+                      textAlign: 'center',
+                      whiteSpace: 'nowrap',
+                      cursor: can_par ? 'pointer' : 'not-allowed',
+                      boxShadow: can_par ? '0 1px 3px rgba(22, 163, 74, 0.25)' : 'none',
+                    },
+                    on: can_par ? { click: par_click_handler } : {},
+                  }, price_label),
+              ]),
             ]
 
             shares_range.each do |n|
@@ -210,35 +297,23 @@ module View
               can_afford = actor_cash >= cost
               is_float = (n == float_shares)
 
-              bg_color = can_afford ? '#dcfce7' : '#f8fafc'
-              fg_color = can_afford ? '#14532d' : '#94a3b8'
-              border_style = is_float ? '2px solid #dc2626' : '1px solid #e2e8f0'
+              bg_color = can_afford ? '#86efac' : '#f8fafc'
+              fg_color = can_afford ? '#000000' : '#94a3b8'
+              border_style = is_float ? '2px solid #dc2626' : '1px solid #cbd5e1'
 
               cell_props = {
                 style: {
-                  padding: '8px 6px',
+                  padding: '6px 4px',
                   border: border_style,
                   backgroundColor: bg_color,
                   color: fg_color,
-                  cursor: can_afford ? 'pointer' : 'not-allowed',
+                  cursor: 'default',
                   textAlign: 'center',
-                  fontWeight: is_float ? 'bold' : '600',
+                  fontWeight: 'bold',
                   fontFamily: FONT_MONEY,
                   fontSize: '0.88rem',
-                  transition: 'transform 0.08s ease, background-color 0.1s ease',
                 },
-                on: {},
               }
-
-              if can_afford
-                cell_props[:on][:click] = lambda {
-                  @on_cancel&.call
-                  slot = (@game.par_chart[price_obj].index(nil) if @game.respond_to?(:par_chart) && @game.par_chart[price_obj])
-                  args = { corporation: actual_corp, share_price: price_obj }
-                  args[:slot] = slot if slot
-                  process_action(Engine::Action::Par.new(par_actor, **args))
-                }
-              end
 
               row_cells << h(:td, cell_props, @game.format_currency(cost))
             end
@@ -257,29 +332,32 @@ module View
             h(:tbody, matrix_rows),
           ])
 
-          last_action = @game.respond_to?(:raw_actions) && @game.raw_actions ? @game.raw_actions.last : nil
-          last_action_id = if last_action.is_a?(Hash)
-                             last_action['id'] || last_action[:id] || 0
-                           elsif last_action.respond_to?(:id)
-                             last_action.id
-                           elsif @game_data && @game_data['actions']
-                             @game_data['actions'].last&.fetch('id', 0) || 0
-                           else
-                             0
-                           end
-
-          is_minimized = Lib::Storage['par_overlay_minimized'] || false
+          is_minimized = Lib::Storage['par_prompt_overlay_minimized'] || false
 
           saved_left = %x((function() {
             try {
-              var l = sessionStorage.getItem('par_overlay_left');
-              return (l && l !== 'undefined' && l !== 'null' && !isNaN(parseFloat(l))) ? parseFloat(l) : null;
+              var l = sessionStorage.getItem('par_prompt_overlay_left');
+              if (l && l !== 'undefined' && l !== 'null' && !isNaN(parseFloat(l))) {
+                var val = parseFloat(l);
+                if (val >= 10 && val <= (window.innerWidth - 120)) {
+                  return val;
+                }
+              }
+              sessionStorage.removeItem('par_prompt_overlay_left');
+              return null;
             } catch(e) { return null; }
           })())
           saved_top = %x((function() {
             try {
-              var t = sessionStorage.getItem('par_overlay_top');
-              return (t && t !== 'undefined' && t !== 'null' && !isNaN(parseFloat(t))) ? parseFloat(t) : null;
+              var t = sessionStorage.getItem('par_prompt_overlay_top');
+              if (t && t !== 'undefined' && t !== 'null' && !isNaN(parseFloat(t))) {
+                var val = parseFloat(t);
+                if (val >= 0 && val <= (window.innerHeight - 80)) {
+                  return val;
+                }
+              }
+              sessionStorage.removeItem('par_prompt_overlay_top');
+              return null;
             } catch(e) { return null; }
           })())
 
@@ -350,8 +428,8 @@ module View
               var finalRect = modal.getBoundingClientRect();
               if (finalRect && !isNaN(finalRect.left) && !isNaN(finalRect.top)) {
                 try {
-                  sessionStorage.setItem('par_overlay_left', finalRect.left);
-                  sessionStorage.setItem('par_overlay_top', finalRect.top);
+                  sessionStorage.setItem('par_prompt_overlay_left', finalRect.left);
+                  sessionStorage.setItem('par_prompt_overlay_top', finalRect.top);
                 } catch(err) {}
               }
             }
@@ -366,8 +444,8 @@ module View
           reset_pos = lambda do
             %x(
             try {
-              sessionStorage.removeItem('par_overlay_left');
-              sessionStorage.removeItem('par_overlay_top');
+              sessionStorage.removeItem('par_prompt_overlay_left');
+              sessionStorage.removeItem('par_prompt_overlay_top');
             } catch(e) {}
             var modal = document.getElementById('par-prompt-overlay-dialog');
             if (modal) {
@@ -381,24 +459,23 @@ module View
           end
 
           toggle_minimize = lambda do
-            Lib::Storage['par_overlay_minimized'] = !is_minimized
+            Lib::Storage['par_prompt_overlay_minimized'] = !is_minimized
             update
           end
 
           dialog_style = {
-            width: '90%',
-            maxWidth: '820px',
+            width: '780px',
+            maxWidth: '96vw',
             backgroundColor: '#ffffff',
             borderRadius: '8px',
             boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(0, 0, 0, 0.1)',
             display: 'flex',
             flexDirection: 'column',
             overflow: 'hidden',
-            border: '1px solid #cbd5e1',
+            border: "2px solid #{corp_bg}",
             pointerEvents: 'auto',
             position: 'fixed',
             margin: '0',
-            zIndex: '100050',
           }
 
           if saved_left && saved_top
@@ -413,102 +490,63 @@ module View
 
           dialog_style[:maxHeight] = is_minimized ? 'auto' : '88vh'
 
+          cancel_action = lambda {
+            Lib::Storage['par_menu_corp'] = nil
+            @on_cancel&.call
+            update
+          }
+
           header_controls = [
-            (if @on_cancel
-               h(:button, {
-                   attrs: { title: 'Cancel par selection' },
-                   style: {
-                     padding: '0 10px',
-                     height: '1.5rem',
-                     fontSize: '0.78rem',
-                     fontWeight: 'bold',
-                     backgroundColor: '#64748b',
-                     color: '#ffffff',
-                     border: 'none',
-                     borderRadius: '4px',
-                     cursor: 'pointer',
-                     display: 'inline-flex',
-                     alignItems: 'center',
-                     justifyContent: 'center',
-                   },
-                   on: { click: -> { @on_cancel.call } },
-                 }, 'Cancel')
-             end),
-            h(:div, { attrs: { class: 'par-prompt-undo-wrapper' } }, [
-              h(:style, {}, '
-                .par-prompt-undo-wrapper #history,
-                .par-prompt-undo-wrapper .history,
-                .par-prompt-undo-wrapper input,
-                .par-prompt-undo-wrapper button:not(#undo):not(#redo) {
-                  display: none !important;
-                }
-                .par-prompt-undo-wrapper,
-                .par-prompt-undo-wrapper * {
-                  box-sizing: border-box !important;
-                }
-                .par-prompt-undo-wrapper,
-                .par-prompt-undo-wrapper div,
-                .par-prompt-undo-wrapper #history_and_undo,
-                .par-prompt-undo-wrapper .history_and_undo {
-                  display: inline-flex !important;
-                  flex-direction: row !important;
-                  flex-wrap: nowrap !important;
-                  align-items: center !important;
-                  justify-content: center !important;
-                  gap: 0.3rem !important;
-                  margin: 0 !important;
-                  padding: 0 !important;
-                  border: none !important;
-                  background: transparent !important;
-                  box-shadow: none !important;
-                }
-                .par-prompt-undo-wrapper button#undo,
-                .par-prompt-undo-wrapper button#redo {
-                  display: inline-flex !important;
-                  height: 1.5rem !important;
-                  min-height: 1.5rem !important;
-                  max-height: 1.5rem !important;
-                  padding: 0 8px !important;
-                  font-size: 0.78rem !important;
-                  font-weight: 600 !important;
-                  background-color: #f1f5f9 !important;
-                  color: #475569 !important;
-                  border: 1px solid #cbd5e1 !important;
-                  border-radius: 4px !important;
-                  cursor: pointer !important;
-                  margin: 0 !important;
-                  line-height: 1 !important;
-                  box-shadow: 0 1px 2px rgba(0,0,0,0.05) !important;
-                }
-              '),
-              h(HistoryAndUndo, last_action_id: last_action_id),
-            ]),
             h(:button, {
-                attrs: { title: is_minimized ? 'Expand overlay' : 'Minimize overlay' },
+                attrs: { title: 'Cancel par selection' },
                 style: {
-                  padding: '0 8px',
-                  height: '1.5rem',
+                  boxSizing: 'border-box',
+                  height: '26px',
+                  padding: '0 10px',
                   fontSize: '0.78rem',
-                  fontWeight: '600',
-                  backgroundColor: '#f1f5f9',
-                  color: '#475569',
-                  border: '1px solid #cbd5e1',
+                  fontWeight: 'bold',
+                  backgroundColor: '#dc2626',
+                  color: '#ffffff',
+                  border: '1px solid rgba(0, 0, 0, 0.25)',
                   borderRadius: '4px',
                   cursor: 'pointer',
                   display: 'inline-flex',
                   alignItems: 'center',
                   justifyContent: 'center',
+                  lineHeight: '1',
+                  margin: '0',
+                  boxShadow: '0 1px 2px rgba(0,0,0,0.15)',
+                },
+                on: { click: cancel_action },
+              }, 'Cancel'),
+            h(:button, {
+                attrs: { title: is_minimized ? 'Expand overlay' : 'Minimize overlay' },
+                style: {
+                  boxSizing: 'border-box',
+                  height: '26px',
+                  padding: '0 8px',
+                  fontSize: '0.78rem',
+                  fontWeight: '600',
+                  backgroundColor: '#f8fafc',
+                  color: '#1e293b',
+                  border: '1px solid rgba(0, 0, 0, 0.2)',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  lineHeight: '1',
+                  margin: '0',
+                  boxShadow: '0 1px 2px rgba(0,0,0,0.1)',
                 },
                 on: { click: toggle_minimize },
               }, is_minimized ? 'Expand' : 'Minimize'),
-          ].compact
+          ]
 
           body_content = if is_minimized
                            nil
                          else
-                           h(:div, { style: { overflowY: 'auto', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.6rem' } }, [
-                             h(:div, { style: { fontSize: '0.85rem', color: '#475569' } },
-                               "Select par price for #{actual_corp.name}. Red cell border indicates float threshold:"),
+                           h(:div, { style: { overflowY: 'auto', overflowX: 'hidden', padding: '0.75rem', display: 'flex', flexDirection: 'column' } }, [
                              table_elem,
                            ])
                          end
@@ -517,9 +555,10 @@ module View
             h(:div, {
                 attrs: { id: 'par-prompt-overlay-header' },
                 style: {
-                  padding: '0.7rem 1.2rem',
-                  borderBottom: is_minimized ? 'none' : '1px solid #e2e8f0',
-                  backgroundColor: '#f8fafc',
+                  padding: '0.6rem 1rem',
+                  borderBottom: is_minimized ? 'none' : '2px solid rgba(0,0,0,0.15)',
+                  backgroundColor: corp_bg,
+                  color: corp_fg,
                   display: 'flex',
                   justifyContent: 'space-between',
                   alignItems: 'center',
@@ -531,11 +570,40 @@ module View
                   dblclick: reset_pos,
                 },
               }, [
-              h(:div, { style: { display: 'flex', alignItems: 'center', gap: '0.8rem' } }, [
-                h(:h2, { style: { margin: '0', fontSize: '1.25rem', color: '#0f172a' } }, 'Establish Par Price'),
-                corp_badge,
+              h(:div, { style: { display: 'flex', alignItems: 'center', gap: '0.75rem', minWidth: '0' } }, [
+                logo_element,
+                h(:div, { style: { display: 'flex', flexDirection: 'column', minWidth: '0' } }, [
+                  h(:h2, {
+                      style: {
+                        margin: '0',
+                        fontSize: '1.25rem',
+                        fontWeight: 'bold',
+                        color: corp_fg,
+                        lineHeight: '1.2',
+                        whiteSpace: 'nowrap',
+                      },
+                    }, full_corp_name),
+                  h(:span, {
+                      style: {
+                        fontSize: '0.78rem',
+                        color: corp_fg,
+                        opacity: '0.85',
+                        fontWeight: '600',
+                        lineHeight: '1',
+                        marginTop: '2px',
+                      },
+                    }, "Establish Par Price (#{actual_corp.name})"),
+                ]),
               ]),
-              h(:div, { style: { display: 'flex', alignItems: 'center', gap: '0.4rem' } }, header_controls),
+              h(:div, {
+                  style: {
+                    display: 'flex',
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: '0.4rem',
+                    flexShrink: '0',
+                  },
+                }, header_controls),
             ]),
           ]
           dialog_children << body_content if body_content
@@ -550,7 +618,7 @@ module View
                 bottom: '0',
                 backgroundColor: 'transparent',
                 pointerEvents: 'none',
-                zIndex: '100050',
+                zIndex: '100060',
               },
             }, [
               h(:div, {
@@ -563,3 +631,5 @@ module View
     end
   end
 end
+
+# rubocop:enable Layout/LineLength

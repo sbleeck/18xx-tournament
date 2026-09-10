@@ -8,6 +8,7 @@ require 'view/game/actionable'
 require 'lib/settings'
 require 'view/game/history_and_undo'
 require 'view/game/dashboard/railcard_helper'
+require 'view/game/dashboard/par_prompt_overlay'
 
 class String
   def player?
@@ -26,176 +27,6 @@ end
 module View
   module Game
     module Dashboard
-      class ParPromptOverlay < Snabberb::Component
-        include Actionable
-        include Lib::Settings
-        include View::Game::Dashboard::RailcardHelper
-
-        FONT_MONEY = '"Courier New", Courier, monospace'
-        COLOR_MONEY = '#4c1d95'
-
-        needs :game, store: true
-        needs :step
-        needs :entity
-        needs :corporation
-
-        def render
-          par_nodes = if @step.respond_to?(:get_par_prices_with_help)
-                        @step.get_par_prices_with_help(@entity, @corporation)
-                      elsif @step.respond_to?(:get_par_prices)
-                        @step.get_par_prices(@entity, @corporation)
-                      elsif @step.respond_to?(:par_prices)
-                        begin
-                          @step.par_prices(@entity, @corporation)
-                        rescue ArgumentError
-                          @step.par_prices(@corporation)
-                        end
-                      elsif @game.respond_to?(:par_prices)
-                        @game.par_prices(@corporation)
-                      else
-                        @game.stock_market.par_prices
-                      end
-
-          if @game.respond_to?(:par_chart)
-            par_nodes = par_nodes.reject do |node|
-              p_obj = node.is_a?(Array) ? node.first : node
-              slots = @game.par_chart[p_obj]
-              slots && slots.none?(&:nil?)
-            end
-          end
-
-          corp_badge = render_railcard(@corporation.name, ['game-card'])
-
-          buttons = par_nodes.map do |node|
-            price = node.is_a?(Array) ? node[0] : node
-            help = node.is_a?(Array) ? node[1] : nil
-            price_val = price.respond_to?(:price) ? price.price : price
-
-            price_str = @game.format_currency(price_val)
-            label = help ? "#{price_str} (#{help})" : price_str
-
-            multiplier = if @corporation.respond_to?(:presidents_percent) && @corporation.respond_to?(:share_percent)
-                           (@corporation.presidents_percent / @corporation.share_percent).to_i
-                         elsif @corporation.respond_to?(:shares) && @corporation.shares.first&.president
-                           @corporation.shares.first.num_shares || 2
-                         else
-                           2
-                         end
-            cost = price_val * multiplier
-            cash = if @entity.respond_to?(:cash)
-                     @entity.cash
-                   else
-                     (@entity.respond_to?(:owner) && @entity.owner&.respond_to?(:cash) ? @entity.owner.cash : 0)
-                   end
-            can_afford = cash >= cost
-
-            click_handler = lambda {
-              slot = (@game.par_chart[price].index(nil) if @game.respond_to?(:par_chart) && @game.par_chart[price])
-              args = { corporation: @corporation, share_price: price }
-              args[:slot] = slot if slot
-              par_actor = if @entity.respond_to?(:player?) && @entity.player?
-                            @entity
-                          else
-                            (@entity.respond_to?(:owner) ? @entity.owner : @entity)
-                          end
-              process_action(Engine::Action::Par.new(par_actor, **args))
-            }
-
-            h(:button, {
-                attrs: { disabled: !can_afford },
-                style: {
-                  height: '2.1rem',
-                  padding: '0 14px',
-                  fontSize: '0.95rem',
-                  fontWeight: 'bold',
-                  fontFamily: FONT_MONEY,
-                  backgroundColor: can_afford ? '#f0fdf4' : '#f1f5f9',
-                  color: can_afford ? '#15803d' : '#94a3b8',
-                  border: can_afford ? '2px solid #16a34a' : '1px solid #cbd5e1',
-                  borderRadius: '6px',
-                  cursor: can_afford ? 'pointer' : 'not-allowed',
-                  opacity: can_afford ? '1' : '0.6',
-                  whiteSpace: 'nowrap',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  boxShadow: can_afford ? '0 2px 4px rgba(22, 163, 74, 0.25)' : 'none',
-                },
-                on: can_afford ? { click: click_handler } : {},
-              }, label)
-          end
-
-          h(:div, {
-              attrs: { id: 'draft-par-modal-container' },
-              style: {
-                position: 'fixed',
-                top: '0',
-                left: '0',
-                right: '0',
-                bottom: '0',
-                backgroundColor: 'rgba(15, 23, 42, 0.55)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                zIndex: '100050',
-                pointerEvents: 'auto',
-              },
-            }, [
-            h(:div, {
-                attrs: { id: 'draft-par-modal-card' },
-                style: {
-                  width: '90%',
-                  maxWidth: '540px',
-                  backgroundColor: '#ffffff',
-                  borderRadius: '10px',
-                  boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.45)',
-                  border: '2px solid #16a34a',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  overflow: 'hidden',
-                },
-              }, [
-              h(:div, {
-                  style: {
-                    padding: '0.9rem 1.2rem',
-                    backgroundColor: '#f0fdf4',
-                    borderBottom: '1px solid #bbf7d0',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                  },
-                }, [
-                h(:div, { style: { display: 'flex', alignItems: 'center', gap: '0.6rem' } }, [
-                  h(:span, { style: { fontSize: '1rem', fontWeight: 'bold', color: '#166534' } }, 'Set Par Price'),
-                  corp_badge,
-                ]),
-                h(:span, { style: { fontSize: '0.82rem', fontWeight: '600', color: '#15803d' } }, "Player: #{@entity.name}"),
-              ]),
-              h(:div, {
-                  style: {
-                    padding: '1.2rem',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: '0.8rem',
-                    alignItems: 'center',
-                  },
-                }, [
-                h(:div, { style: { fontSize: '0.88rem', color: '#475569', textAlign: 'center' } }, 'Select the opening share price for this corporation:'),
-                h(:div, {
-                    style: {
-                      display: 'flex',
-                      flexWrap: 'wrap',
-                      gap: '0.5rem',
-                      justifyContent: 'center',
-                      width: '100%',
-                    },
-                  }, buttons),
-              ]),
-            ]),
-          ])
-        end
-      end
-
       class DraftOverlay < Snabberb::Component
         include Actionable
         include Lib::Settings
@@ -1034,9 +865,16 @@ module View
                 style: dialog_style,
               }, dialog_children),
           ]
-
           if pending_corp
-            container_children << h(ParPromptOverlay, game: @game, step: step, entity: entity, corporation: pending_corp)
+            cancel_handler = lambda {
+              process_action(Engine::Action::Undo.new(entity)) if actions.include?('undo')
+            }
+            container_children << h(ParPromptOverlay,
+                                    game: @game,
+                                    step: step,
+                                    entity: entity,
+                                    corporation: pending_corp,
+                                    on_cancel: cancel_handler)
           end
 
           h(:div, {

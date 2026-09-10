@@ -9,6 +9,7 @@ require 'view/game/dashboard/dashboard_entity_order'
 require 'view/game/dashboard/dashboard_game_status'
 require 'view/game/dashboard/dashboard_stock_market'
 require 'view/game/history_and_undo'
+require 'view/game/dashboard/par_prompt_overlay'
 
 module View
   module Game
@@ -37,6 +38,29 @@ module View
         else
           entity.owner
         end
+      end
+
+      def render_par_overlay
+        corp_id = Lib::Storage['par_menu_corp']
+        return nil unless corp_id
+
+        corporation = @game.corporation_by_id(corp_id) || (@game.corporations.find { |c| c.id.to_s == corp_id.to_s } if @game.respond_to?(:corporations))
+        return nil unless corporation
+
+        step = @game.round.active_step
+        return nil unless step
+
+        cancel_handler = lambda {
+          Lib::Storage['par_menu_corp'] = nil
+          update
+        }
+
+        h(::View::Game::Dashboard::ParPromptOverlay,
+          game: @game,
+          step: step,
+          entity: active_player || active_entity,
+          corporation: corporation,
+          on_cancel: cancel_handler)
       end
 
       def render_zoom_controls(panel_id, position_styles = {})
@@ -615,7 +639,8 @@ module View
               ]),
             ]),
           ]),
-        ])
+          render_par_overlay,
+        ].compact)
       end
     end
   end
