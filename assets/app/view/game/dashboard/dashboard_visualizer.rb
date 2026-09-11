@@ -267,10 +267,8 @@ module View
                             var isPanning = false;
                             var startX = 0, startY = 0;
 
-                            panel.style.cursor = 'grab';
-
                             panel.addEventListener('mousedown', function(e) {
-                              if (e.button !== 0 || (e.target.closest && e.target.closest('.panel-zoom-controls'))) return;
+                              if (!e.altKey || e.button !== 0 || (e.target.closest && e.target.closest('.panel-zoom-controls'))) return;
                               isPanning = true;
                               var currentOffset = window.scalerPanOffset[panelId] || { x: 0, y: 0 };
                               startX = e.clientX - currentOffset.x;
@@ -291,13 +289,12 @@ module View
                             document.addEventListener('mouseup', function() {
                               if (!isPanning) return;
                               isPanning = false;
-                              panel.style.cursor = 'grab';
+                              panel.style.cursor = '';
                               try { sessionStorage.setItem('18xx_viz_pan', JSON.stringify(window.scalerPanOffset)); } catch(e) {}
                             });
 
-
                             panel.addEventListener('wheel', function(e) {
-                              if (!e.ctrlKey) return;
+                              if (!e.altKey) return;
                               e.preventDefault();
 
                               var rect = panel.getBoundingClientRect();
@@ -332,7 +329,7 @@ module View
                           createPanHandler('map-panel-bot');
                           createPanHandler('panel-market');
 
-                       var styleTag = document.getElementById('dashboard-map-svg-styles');
+                          var styleTag = document.getElementById('dashboard-map-svg-styles');
                           if (!styleTag) {
                             styleTag = document.createElement('style');
                             styleTag.id = 'dashboard-map-svg-styles';
@@ -358,23 +355,40 @@ module View
                             if (!hexIds) return;
                             var ids = Array.isArray(hexIds) ? hexIds : [hexIds];
                             if (!ids.length) return;
-                            var mapPanel = document.getElementById('map-panel-bot');
-                            if (!mapPanel) return;
+                            var mapPanel = document.getElementById('map-panel-bot') || document;
                             for (var i = 0; i < ids.length; i++) {
-                              var hid = String(ids[i]);
-                              var targets = mapPanel.querySelectorAll('#hex-' + hid + ', #' + hid + ', [data-hex="' + hid + '"], .hex-' + hid);
-                              for (var j = 0; j < targets.length; j++) {
-                                targets[j].classList.add('map-hex-highlight');
+                              var raw = String(ids[i]);
+                              var variants = [raw, raw.toUpperCase(), raw.toLowerCase()];
+                              for (var v = 0; v < variants.length; v++) {
+                                var hid = variants[v];
+                                var targets = mapPanel.querySelectorAll('#hex-' + hid + ', [data-hex="' + hid + '"], .hex-' + hid);
+                                for (var j = 0; j < targets.length; j++) {
+                                  targets[j].classList.add('map-hex-highlight');
+                                  var poly = targets[j].querySelector('.hex-highlight-poly');
+                                  if (poly) {
+                                    poly.setAttribute('stroke', '#ff0055');
+                                    poly.setAttribute('stroke-width', '8');
+                                    poly.setAttribute('fill', '#ff0055');
+                                    poly.setAttribute('fill-opacity', '0.25');
+                                  }
+                                }
                               }
                             }
                           };
 
                           window.clearMapHexHighlights = function() {
-                            var mapPanel = document.getElementById('map-panel-bot');
-                            if (!mapPanel) return;
+                            var mapPanel = document.getElementById('map-panel-bot') || document;
                             var highlighted = mapPanel.querySelectorAll('.map-hex-highlight');
                             for (var i = 0; i < highlighted.length; i++) {
                               highlighted[i].classList.remove('map-hex-highlight');
+                              var poly = highlighted[i].querySelector('.hex-highlight-poly');
+                              if (poly) {
+                                var origStroke = poly.getAttribute('data-orig-stroke') || 'transparent';
+                                var origWidth = poly.getAttribute('data-orig-width') || '0';
+                                poly.setAttribute('stroke', origStroke);
+                                poly.setAttribute('stroke-width', origWidth);
+                                poly.setAttribute('fill-opacity', '0');
+                              }
                             }
                           };
 

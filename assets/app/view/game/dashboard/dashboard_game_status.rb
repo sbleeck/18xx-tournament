@@ -1454,9 +1454,38 @@ module View
                   *extra,
                 ]
         corporation_row_content << render_companies(corporation, 'var(--bg-corporate-zone)') if @show_privates
-        corporation_row_content << h('td.padded_number.column-zone-corporate.money-value',
-                                     { hook: Lib::MoneyAnimation.hook }, clean_rev)
+        last_run = corporation.operating_history.values.last
+        div = last_run.respond_to?(:dividend) ? last_run.dividend : (last_run[:dividend] if last_run.is_a?(Hash))
+        div_kind = (div.respond_to?(:kind) ? div.kind : div).to_s.downcase
 
+        held = if last_run.respond_to?(:withheld?)
+                 last_run.withheld?
+               elsif last_run.respond_to?(:withhold?)
+                 last_run.withhold?
+               else
+                 div_kind.start_with?('withhold', 'held', 'hold')
+               end
+
+        half_held = if last_run.respond_to?(:half?)
+                      last_run.half?
+                    else
+                      div_kind.start_with?('half', 'split')
+                    end
+
+        held = false if clean_rev.empty?
+        half_held = false if clean_rev.empty? || held
+
+        font_color = if held
+                       '#dc2626' # Red
+                     elsif half_held
+                       '#d97706' # Amber / Orange
+                     end
+
+        rev_class = "td.padded_number.column-zone-corporate#{font_color ? '' : '.money-value'}"
+        rev_props = { hook: Lib::MoneyAnimation.hook }
+        rev_props[:style] = { color: font_color, fontFamily: 'var(--font-money)', fontWeight: 'bold', fontVariantNumeric: 'tabular-nums' } if font_color
+
+        corporation_row_content << h(rev_class, rev_props, clean_rev)
         row_content = []
         row_content.concat(players_row_content)
         row_content.concat(pool_row_content)
@@ -1486,32 +1515,81 @@ module View
           nil
         end
 
-        token_icons = unplaced.map do |_token|
-          style = {
-            width: '20px',
-            height: '20px',
-            margin: '2px',
-            borderRadius: '50%',
-            boxSizing: 'border-box',
-            display: 'inline-block',
-            border: '1px solid #333',
+        tooltip_style = <<~CSS
+          .unplaced-token-wrapper { position: relative; display: inline-flex; align-items: center; justify-content: center; cursor: help; margin: 2px; }
+          .unplaced-token-wrapper[title]:not([title=""]):hover::after {
+            content: attr(title);
+            position: absolute;
+            bottom: calc(100% + 4px);
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(15, 23, 42, 0.95);
+            color: #ffffff;
+            font-family: var(--font-money, monospace);
+            font-size: 1.44rem;
+            font-weight: bold;
+            line-height: 1;
+            padding: 4px 10px;
+            border-radius: 5px;
+            white-space: nowrap;
+            pointer-events: none;
+            z-index: 99999;
+            box-shadow: 0 3px 6px rgba(0,0,0,0.35);
+          }
+        CSS
+
+        token_icons = unplaced.map do |token|
+          raw_cost = if token.respond_to?(:price) && !token.price.nil?
+                       token.price
+                     elsif token.respond_to?(:cost) && !token.cost.nil?
+                       token.cost
+                     elsif token.instance_variable_defined?(:@price) && !token.instance_variable_get(:@price).nil?
+                       token.instance_variable_get(:@price)
+                     elsif corporation.respond_to?(:token_price)
+                       begin; corporation.token_price(token); rescue StandardError; nil; end
+                     elsif @game.respond_to?(:token_cost)
+                       begin; @game.token_cost(token); rescue StandardError; nil; end
+                     end
+
+          cost = raw_cost ? raw_cost.to_s : ''
+          wrapper_props = {
+            attrs: { class: 'unplaced-token-wrapper', title: cost },
           }
 
           if logo_src
-            style[:backgroundColor] = corporation.color || '#fff'
-            h(:img, { attrs: { src: logo_src }, style: style })
+            img_style = {
+              width: '20px',
+              height: '20px',
+              borderRadius: '50%',
+              boxSizing: 'border-box',
+              display: 'block',
+              border: '1px solid #333',
+              backgroundColor: corporation.color || '#fff',
+              pointerEvents: 'none',
+            }
+            h(:div, wrapper_props, [h(:img, { attrs: { src: logo_src }, style: img_style })])
           else
-            style[:lineHeight] = '18px'
-            style[:textAlign] = 'center'
-            style[:backgroundColor] = corporation.color || '#4169e1'
-            style[:color] = corporation.text_color || '#fff'
-            style[:fontSize] = '0.55rem'
-            style[:fontWeight] = 'bold'
-            h(:div, { style: style }, corporation.id.to_s[0..2])
+            div_style = {
+              width: '20px',
+              height: '20px',
+              borderRadius: '50%',
+              boxSizing: 'border-box',
+              display: 'block',
+              border: '1px solid #333',
+              lineHeight: '18px',
+              textAlign: 'center',
+              backgroundColor: corporation.color || '#4169e1',
+              color: corporation.text_color || '#fff',
+              fontSize: '0.55rem',
+              fontWeight: 'bold',
+              pointerEvents: 'none',
+            }
+            h(:div, wrapper_props, [h(:div, { style: div_style }, corporation.id.to_s[0..2])])
           end
         end
 
-        h(:div, { style: { display: 'flex', flexDirection: 'row', justifyContent: 'center', flexWrap: 'wrap' } }, token_icons)
+        h(:div, { style: { display: 'flex', flexDirection: 'row', justifyContent: 'center', flexWrap: 'wrap' } },
+          [h(:style, tooltip_style), *token_icons])
       end
 
       def render_corp_tokens(corporation)
