@@ -10,6 +10,18 @@ module Engine
   end
 end
 
+module Engine
+  class Minor
+    def par_via_exchange
+      nil
+    end
+
+    def needs_token_to_par
+      false
+    end
+  end
+end
+
 require 'lib/settings'
 require 'lib/storage'
 require 'view/link'
@@ -1147,24 +1159,16 @@ module View
                              true
                            end
 
-          game_can_par = !@game.respond_to?(:can_par?) || @game.can_par?(corporation, active_player)
-
-          step_can_par = if step.respond_to?(:can_par?)
-                           begin
-                             step.can_par?(corporation, active_player)
-                           rescue ArgumentError
-                             step.can_par?(active_player, corporation)
-                           end
-                         else
-                           true
-                         end
-
           can_par = is_corp &&
-                    active_player &&
-                    player_actions.include?('par') &&
-                    corp_available &&
-                    game_can_par &&
-                    step_can_par
+                     active_player &&
+                     player_actions.include?('par') &&
+                     corp_available &&
+                     (!@game.respond_to?(:can_par?) || @game.can_par?(corporation, active_player)) &&
+                     (!step.respond_to?(:can_par?) || begin
+                       step.can_par?(corporation, active_player)
+                     rescue ArgumentError
+                       step.can_par?(active_player, corporation)
+                     end)
 
           can_bid = active_player && player_actions.include?('bid') && (
             if step.respond_to?(:can_bid?)
@@ -1342,19 +1346,26 @@ module View
 
         train_buyable_step = step&.current_actions&.include?('buy_train')
         train_discardable_step = step&.current_actions&.include?('discard_train')
-
+        step_buyable_trains = if train_buyable_step && active_entity && step.respond_to?(:buyable_trains)
+                                step.buyable_trains(active_entity)
+                              end
         train_cards = corporation.trains.map do |t|
           card_classes = ['game-card']
           train_click_handler = nil
           menu_dropdown = nil
 
-          # Only highlight if owned by the same player AND it's not the active company's own train
-          owned_by_same_player = active_player && corporation.owner == active_player
-          not_own_train = active_entity && corporation != active_entity
+          # Check if the train is authoritatively buyable by active_entity
+          is_buyable_other_train = if step_buyable_trains
+                                     step_buyable_trains.include?(t)
+                                   elsif train_buyable_step
+                                     owned_by_same_player = active_player && corporation.owner == active_player
+                                     not_own_train = active_entity && corporation != active_entity
+                                     owned_by_same_player && not_own_train && (!step.respond_to?(:can_buy_train?) || step.can_buy_train?(active_entity, t))
+                                   else
+                                     false
+                                   end
 
-          if train_buyable_step && not_own_train && owned_by_same_player && step.respond_to?(:can_buy_train?) && step.can_buy_train?(
-                  active_entity, t
-                )
+          if is_buyable_other_train
             card_classes << 'action-buy'
             card_classes << 'clickable'
 

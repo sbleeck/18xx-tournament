@@ -2404,32 +2404,24 @@ module View
       def render_buyable_trains(step, entity)
         return nil unless entity && step
 
-        operating_player = if entity.respond_to?(:player?) && entity.player?
-                             entity
-                           elsif entity.respond_to?(:owner) && entity.owner
-                             entity.owner
-                           end
-
         train_boxes = []
         depot = @game.depot
 
-        if depot
-          buyable_depot = if step.respond_to?(:buyable_trains)
-                            step.buyable_trains(entity).select do |t|
-                              (t.respond_to?(:from_depot?) && t.from_depot?) ||
-                                t.owner == depot ||
-                                depot.upcoming.include?(t) ||
-                                depot.discarded.include?(t)
-                            end
-                          else
-                            [depot.upcoming.first, *depot.discarded].compact
-                          end
+        available = if step.respond_to?(:buyable_trains)
+                      step.buyable_trains(entity).group_by(&:owner)
+                    else
+                      {}
+                    end
 
-          buyable_depot = [depot.upcoming.first].compact if buyable_depot.empty?
-          unique_depot_trains = buyable_depot.uniq(&:name)
+        if depot
+          buyable_depot = available.delete(depot) || []
+          buyable_depot = [depot.upcoming.first].compact if buyable_depot.empty? && !step.respond_to?(:buyable_trains)
+          unique_depot_trains = buyable_depot.uniq { |t| [depot.discarded.include?(t) ? :pool : :bank, t.name] }
 
           unique_depot_trains.each do |train|
             variants = train.respond_to?(:names_to_prices) && train.names_to_prices && !train.names_to_prices.empty? ? train.names_to_prices : { train.name => train.price }
+            is_pool = depot.discarded.include?(train)
+            source_tag = is_pool ? "'Pool'" : "'Bank'"
 
             variants.each do |variant_name, price|
               can_afford = (entity.respond_to?(:cash) ? entity.cash : 0) >= price ||
@@ -2443,22 +2435,25 @@ module View
               }
               train_classes = %w[game-card action-buy]
               card = render_railcard(variant_str, train_classes, (can_afford ? click_handler : nil))
+              price_str = @game.format_currency(price)
               train_boxes << h(:div, { style: { display: 'inline-flex', alignItems: 'center', gap: '0.3rem', margin: '0 0.2rem' } }, [
                 card,
-                h(:span, { style: { fontFamily: FONT_MONEY, color: can_afford ? COLOR_MONEY : '#9ca3af', fontWeight: 'bold', fontSize: '0.85rem', whiteSpace: 'nowrap' } }, @game.format_currency(price)),
+                h(:span, { style: { fontFamily: FONT_MONEY, color: can_afford ? COLOR_MONEY : '#9ca3af', fontWeight: 'bold', fontSize: '0.85rem', whiteSpace: 'nowrap' } }, "(#{source_tag} #{price_str})"),
               ])
             end
           end
         end
 
-        other_corps = (@game.corporations + (@game.respond_to?(:minors) ? (@game.minors || []) : [])).reject { |c| c == entity }
-        other_corps = other_corps.select { |c| c.owner && c.owner == operating_player } if operating_player
+        corp_owner = lambda do |corp|
+          step.respond_to?(:corp_owner) ? step.corp_owner(corp) : corp.owner
+        end
 
-        other_corps.each do |c|
-          (c.trains || []).each do |t|
-            can_buy_train = step.respond_to?(:can_buy_train?) ? step.can_buy_train?(entity, t) : true
-            next unless can_buy_train
+        available_other = available.select do |owner, _|
+          owner && owner != depot && corp_owner.call(owner) == corp_owner.call(entity)
+        end
 
+        available_other.each do |c, trains|
+          trains.uniq(&:name).each do |t|
             min_price = 1
             max_price = if step.respond_to?(:max_price)
                           step.max_price(entity, t)

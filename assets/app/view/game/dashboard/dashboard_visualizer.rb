@@ -295,71 +295,36 @@ module View
                               try { sessionStorage.setItem('18xx_viz_pan', JSON.stringify(window.scalerPanOffset)); } catch(e) {}
                             });
 
-                            panel.addEventListener('dblclick', function(e) {
-                              if (e.target.closest && e.target.closest('.panel-zoom-controls')) return;
-                              window.resetPanelZoom(panelId);
-                            });
 
                             panel.addEventListener('wheel', function(e) {
+                              if (!e.ctrlKey) return;
                               e.preventDefault();
-                              var zoomDelta = e.deltaY < 0 ? 1.06 : 0.94;
+
+                              var rect = panel.getBoundingClientRect();
+                              var mouseX = e.clientX - rect.left;
+                              var mouseY = e.clientY - rect.top;
+
                               var currentZ = (window.scalerUserZoom && window.scalerUserZoom[panelId]) || 1.0;
-                              window.scalerUserZoom[panelId] = Math.max(0.15, Math.min(4.0, currentZ * zoomDelta));
-                              try { sessionStorage.setItem('18xx_viz_zoom', JSON.stringify(window.scalerUserZoom)); } catch(e) {}
-                              window.applyPanelTransform(panelId);
-                            }, { passive: false });
-                          };
+                              var baseScale = (window.scalerScales && window.scalerScales[panelId]) || 1.0;
+                              var oldEffScale = baseScale * currentZ;
 
-                          var createPanHandler = function(panelId) {
-                            var panel = document.getElementById(panelId);
-                            if (!panel) return;
-                            var wrapper = panel.querySelector('.scaler-content');
-                            if (!wrapper) return;
+                              var zoomDelta = e.deltaY < 0 ? 1.06 : 0.94;
+                              var newZ = Math.max(0.15, Math.min(4.0, currentZ * zoomDelta));
+                              var newEffScale = baseScale * newZ;
 
-                            wrapper.style.position = 'absolute';
-                            window.scalerPanOffset[panelId] = window.scalerPanOffset[panelId] || { x: 0, y: 0 };
-                            window.scalerUserZoom[panelId] = window.scalerUserZoom[panelId] || 1.0;
-
-                            var isPanning = false;
-                            var startX = 0, startY = 0;
-
-                            panel.style.cursor = 'grab';
-
-                            panel.addEventListener('mousedown', function(e) {
-                              if (e.button !== 0 || (e.target.closest && e.target.closest('.panel-zoom-controls'))) return;
-                              isPanning = true;
                               var currentOffset = window.scalerPanOffset[panelId] || { x: 0, y: 0 };
-                              startX = e.clientX - currentOffset.x;
-                              startY = e.clientY - currentOffset.y;
-                              panel.style.cursor = 'grabbing';
-                            });
 
-                            document.addEventListener('mousemove', function(e) {
-                              if (!isPanning) return;
-                              window.scalerPanOffset[panelId] = {
-                                x: e.clientX - startX,
-                                y: e.clientY - startY
-                              };
-                              wrapper.style.left = window.scalerPanOffset[panelId].x + 'px';
-                              wrapper.style.top = window.scalerPanOffset[panelId].y + 'px';
-                            });
+                              var newOffsetX = mouseX - ((mouseX - currentOffset.x) / oldEffScale) * newEffScale;
+                              var newOffsetY = mouseY - ((mouseY - currentOffset.y) / oldEffScale) * newEffScale;
 
-                            document.addEventListener('mouseup', function() {
-                              if (!isPanning) return;
-                              isPanning = false;
-                              panel.style.cursor = 'grab';
-                            });
+                              window.scalerUserZoom[panelId] = newZ;
+                              window.scalerPanOffset[panelId] = { x: newOffsetX, y: newOffsetY };
 
-                            panel.addEventListener('dblclick', function(e) {
-                              if (e.target.closest && e.target.closest('.panel-zoom-controls')) return;
-                              window.resetPanelZoom(panelId);
-                            });
+                              try {
+                                sessionStorage.setItem('18xx_viz_zoom', JSON.stringify(window.scalerUserZoom));
+                                sessionStorage.setItem('18xx_viz_pan', JSON.stringify(window.scalerPanOffset));
+                              } catch(err) {}
 
-                            panel.addEventListener('wheel', function(e) {
-                              e.preventDefault();
-                              var zoomDelta = e.deltaY < 0 ? 1.06 : 0.94;
-                              var currentZ = (window.scalerUserZoom && window.scalerUserZoom[panelId]) || 1.0;
-                              window.scalerUserZoom[panelId] = Math.max(0.15, Math.min(4.0, currentZ * zoomDelta));
                               window.applyPanelTransform(panelId);
                             }, { passive: false });
                           };
@@ -388,47 +353,6 @@ module View
                                                '  fill-opacity: 0.25 !important; ' +
                                                '  animation: map-hex-pulse 1.2s infinite ease-in-out !important; ' +
                                                '}';
-
-                          window.highlightMapHexes = function(hexIds) {
-                            if (!hexIds) return;
-                            var ids = Array.isArray(hexIds) ? hexIds : [hexIds];
-                            if (!ids.length) return;
-                            var mapPanel = document.getElementById('map-panel-bot') || document;
-                            for (var i = 0; i < ids.length; i++) {
-                              var raw = String(ids[i]);
-                              var variants = [raw, raw.toUpperCase(), raw.toLowerCase()];
-                              for (var v = 0; v < variants.length; v++) {
-                                var hid = variants[v];
-                                var targets = mapPanel.querySelectorAll('#hex-' + hid + ', [data-hex="' + hid + '"], .hex-' + hid);
-                                for (var j = 0; j < targets.length; j++) {
-                                  targets[j].classList.add('map-hex-highlight');
-                                  var poly = targets[j].querySelector('.hex-highlight-poly');
-                                  if (poly) {
-                                    poly.setAttribute('stroke', '#ff0055');
-                                    poly.setAttribute('stroke-width', '8');
-                                    poly.setAttribute('fill', '#ff0055');
-                                    poly.setAttribute('fill-opacity', '0.25');
-                                  }
-                                }
-                              }
-                            }
-                          };
-
-                          window.clearMapHexHighlights = function() {
-                            var mapPanel = document.getElementById('map-panel-bot') || document;
-                            var highlighted = mapPanel.querySelectorAll('.map-hex-highlight');
-                            for (var i = 0; i < highlighted.length; i++) {
-                              highlighted[i].classList.remove('map-hex-highlight');
-                              var poly = highlighted[i].querySelector('.hex-highlight-poly');
-                              if (poly) {
-                                var origStroke = poly.getAttribute('data-orig-stroke') || 'transparent';
-                                var origWidth = poly.getAttribute('data-orig-width') || '0';
-                                poly.setAttribute('stroke', origStroke);
-                                poly.setAttribute('stroke-width', origWidth);
-                                poly.setAttribute('fill-opacity', '0');
-                              }
-                            }
-                          };
 
                           window.highlightMapHexes = function(hexIds) {
                             if (!hexIds) return;

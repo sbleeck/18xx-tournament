@@ -285,7 +285,9 @@ module View
             border_color = '#9333ea' # Vivid purple highlight for private company affected hexes
           elsif clickable
             if track_action_active
-              border_color = '#dc3545' # Red for active track building
+              if step.upgradeable_tiles(entity_or_entities, hex).any?
+                border_color = '#dc3545' # Red for active track building
+              end
             elsif token_action_active
               has_tokenable_slots = hex.tile && ((hex.tile.respond_to?(:cities) && hex.tile.cities.any?) || (hex.tile.respond_to?(:towns) && hex.tile.towns.any?))
               border_color = '#28a745' if has_tokenable_slots # Green strictly on valid token targets
@@ -332,8 +334,6 @@ module View
                 'data-hex': hex.id.to_s,
               },
             }, hex_children)
-
-        
         end
         @hexes.compact!
 
