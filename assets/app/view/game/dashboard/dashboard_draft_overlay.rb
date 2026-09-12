@@ -22,6 +22,12 @@ module Engine
       false
     end
   end
+
+  class Company
+    def company?
+      true
+    end
+  end
 end
 
 module View
@@ -135,50 +141,6 @@ module View
           end
 
           has_par ? pending : nil
-        end
-
-        def resolve_target_hexes(target)
-          return [] unless target
-
-          hexes = []
-
-          abilities = []
-          abilities.concat(target.all_abilities) if target.respond_to?(:all_abilities) && target.all_abilities
-          abilities.concat(Array(target.abilities)) if target.respond_to?(:abilities) && target.abilities
-
-          if @game.respond_to?(:abilities)
-            %i[blocks_hexes teleport tile_lay hex_bonus assign_hexes reservation close].each do |type|
-              ab = @game.abilities(target, type)
-              abilities.concat(Array(ab)) if ab
-            end
-          end
-
-          abilities.compact.uniq.each do |a|
-            if a.respond_to?(:hexes) && a.hexes
-              hexes.concat(Array(a.hexes))
-            elsif a.respond_to?(:hex) && a.hex
-              hexes << a.hex
-            end
-          end
-
-          hexes.concat(Array(target.coordinates)) if target.respond_to?(:coordinates) && target.coordinates
-
-          if target.respond_to?(:corporation?) && target.corporation?
-            placed_tokens = []
-            if target.respond_to?(:tokens) && target.tokens
-              placed_tokens = target.tokens.select do |t|
-                t.respond_to?(:used) && t.used && ((t.respond_to?(:city) && t.city&.hex) || (t.respond_to?(:hex) && t.hex))
-              end.map { |t| (t.city&.hex || t.hex).id }
-            end
-
-            if placed_tokens.any?
-              hexes.concat(placed_tokens)
-            elsif target.respond_to?(:coordinates) && target.coordinates
-              hexes.concat(Array(target.coordinates))
-            end
-          end
-
-          hexes.compact.map(&:to_s).uniq
         end
 
         def current_entity
@@ -348,29 +310,57 @@ module View
 
           rows = items.map do |item|
             is_owned = item.respond_to?(:owner) && item.owner && item.owner.respond_to?(:player?) && item.owner.player?
-
             item_price = if step.respond_to?(:min_bid)
                            begin
                              step.min_bid(item)
                            rescue ArgumentError
                              step.min_bid
                            rescue StandardError
-                             (item.respond_to?(:value) ? item.value : 0)
+                             nil
                            end
                          elsif step.respond_to?(:buy_price)
-                           step.buy_price(item)
-                         elsif item.respond_to?(:value)
-                           item.value
-                         else
-                           0
+                           begin
+                             step.buy_price(item)
+                           rescue StandardError
+                             nil
+                           end
+                         elsif step.respond_to?(:price)
+                           begin
+                             step.price(item)
+                           rescue StandardError
+                             nil
+                           end
                          end
+
+            item_price ||= if item.respond_to?(:min_bid) && item.min_bid&.positive?
+                             item.min_bid
+                           elsif item.respond_to?(:discount) && item.discount && !item.discount.zero?
+                             (item.respond_to?(:value) ? item.value : 0) - item.discount
+                           elsif item.respond_to?(:min_price) && item.min_price&.positive?
+                             item.min_price
+                           elsif item.respond_to?(:price) && item.price&.positive?
+                             item.price
+                           elsif item.respond_to?(:value) && item.value&.positive?
+                             item.value
+                           else
+                             0
+                           end
 
             can_afford = (entity.respond_to?(:cash) ? entity.cash : 0) >= item_price
 
             # Determine eligibility and appropriate verb (Bid, Buy, Choose)
             is_actionable = !pending_corp && !is_owned && can_afford
             action_mode = nil
-            btn_verb = 'Choose'
+
+            is_draft = step.class.name.to_s =~ /draft/i ||
+                       begin
+                         @game.round.class.name.to_s =~ /draft/i
+                       rescue StandardError
+                         false
+                       end ||
+                       (step.respond_to?(:draft?) && step.draft?)
+
+            btn_verb = is_draft ? 'Choose' : 'Bid'
 
             if is_actionable
               if step.respond_to?(:auctioning) && step.auctioning
@@ -381,7 +371,12 @@ module View
                 end
               elsif actions.include?('bid') && step.respond_to?(:may_bid?) && step.may_bid?(item)
                 action_mode = :bid
-                btn_verb = step.respond_to?(:bid_str) ? step.bid_str(item) : 'Bid'
+
+                btn_verb = if is_draft
+                             'Choose'
+                           else
+                             (step.respond_to?(:bid_str) ? step.bid_str(item) : 'Bid')
+                           end
               elsif actions.include?('buy_company') || (actions.include?('bid') && step.respond_to?(:may_purchase?) && step.may_purchase?(item))
                 action_mode = actions.include?('buy_company') ? :buy_company : :bid
                 btn_verb = step.respond_to?(:buy_str) ? step.buy_str(item) : 'Buy'
@@ -391,7 +386,8 @@ module View
               elsif actions.include?('bid')
                 # Fallback auction bid
                 action_mode = :bid
-                btn_verb = 'Bid'
+
+                btn_verb = is_draft ? 'Choose' : 'Bid'
               end
             end
 
@@ -425,15 +421,39 @@ module View
             }
 
             card_sym = item.respond_to?(:sym) ? item.sym : item.name
-            tooltip = build_entity_tooltip(item)
-            subtext = item.respond_to?(:value) && item.value ? @game.format_currency(item.value) : nil
+            tooltip = build_entity_tooltip(item, price: (item_price if item_price&.positive?))
+            display_cost = if item_price&.positive?
+                             item_price
+                           else
+                             (item.respond_to?(:value) ? item.value : nil)
+                           end
+            subtext = display_cost ? @game.format_currency(display_cost) : nil
             card_classes = ['game-card']
             card_classes << 'action-buy clickable' if can_choose_item
             card_label = subtext ? "#{card_sym} #{subtext}" : card_sym
 
-            item_card = render_railcard(card_label, card_classes, (can_choose_item ? exec_action : nil), tooltip)
+            item_id = item.respond_to?(:id) ? item.id : item.to_s
+            wrapper_id = "draft_company_wrapper_#{item_id}"
+            wrapper_classes = ['status-company-wrapper']
+
+            item_card = render_railcard(
+              card_label,
+              card_classes,
+              (can_choose_item ? exec_action : nil),
+              tooltip,
+              nil,
+              wrapper_id,
+              wrapper_classes,
+              entity: item
+            )
 
             choose_btn = if can_choose_item
+
+                           btn_text = if item_price&.positive?
+                                        "#{btn_verb} #{@game.format_currency(item_price)}"
+                                      else
+                                        btn_verb
+                                      end
                            h(:button, {
                                style: {
                                  padding: '0 10px',
@@ -441,14 +461,15 @@ module View
                                  fontSize: '0.82rem',
                                  fontWeight: 'bold',
                                  fontFamily: FONT_MONEY,
-                                 backgroundColor: action_mode == :bid ? '#0284c7' : '#16a34a',
+                                 backgroundColor: action_mode == :bid && !is_draft ? '#0284c7' : '#16a34a',
                                  color: '#fff',
                                  border: 'none',
                                  borderRadius: '4px',
                                  cursor: 'pointer',
                                },
                                on: { click: exec_action },
-                             }, "#{btn_verb} #{@game.format_currency(item_price)}")
+                             }, btn_text)
+
                          end
 
             btn_cell_children = choose_btn ? [choose_btn] : []
@@ -515,24 +536,8 @@ module View
                        'transparent'
                      end
 
-            target_hexes = resolve_target_hexes(item)
-            row_events = {}
-            if target_hexes.any?
-              row_events = {
-                mouseenter: lambda {
-                  `window.highlightMapHexes && window.highlightMapHexes(#{target_hexes})`
-                  nil
-                },
-                mouseleave: lambda {
-                  `window.clearMapHexHighlights && window.clearMapHexHighlights()`
-                  nil
-                },
-              }
-            end
-
-            h(:tr, { style: { backgroundColor: row_bg, opacity: is_owned ? '0.88' : '1' }, on: row_events }, row_cells)
+            h(:tr, { style: { backgroundColor: row_bg, opacity: is_owned ? '0.88' : '1' } }, row_cells)
           end
-
           is_minimized = Lib::Storage['draft_overlay_minimized'] || false
 
           saved_left = %x((function() {

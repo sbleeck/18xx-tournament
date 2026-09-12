@@ -118,7 +118,15 @@ module View
           ')
         end
 
-        def render_company_tooltip(title, subtitle, desc, val, rev, owner, hexes = [])
+        def render_company_tooltip(title, subtitle, desc, val, rev, owner, hexes = [], price = nil)
+          bottom_row = [
+            h(:span, ['Value: ', h(:span, { style: { fontFamily: FONT_MONEY, fontWeight: 'bold', color: COLOR_MONEY } }, val)]),
+          ]
+          if price && !price.to_s.strip.empty?
+            bottom_row << h(:span, ['Price: ', h(:span, { style: { fontFamily: FONT_MONEY, fontWeight: 'bold', color: COLOR_MONEY } }, price)])
+          end
+          bottom_row << h(:span, ['Revenue: ', h(:span, { style: { fontFamily: FONT_MONEY, fontWeight: 'bold', color: COLOR_MONEY } }, rev)])
+
           h(:div, {
               attrs: {
                 class: 'status-company-tooltip cmd-company-tooltip',
@@ -160,15 +168,12 @@ module View
               }, title),
             h(:div, { style: { fontWeight: 'bold', fontSize: '0.9rem', textAlign: 'center', marginBottom: '4px' } }, subtitle),
             h(:div, { style: { fontSize: '0.78rem', lineHeight: '1.25', marginBottom: '6px', color: '#222222', whiteSpace: 'normal', wordBreak: 'break-word' } }, desc),
-            h(:div, { style: { display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', fontWeight: 'bold', borderTop: '1px solid #ddd', paddingTop: '4px', marginBottom: '2px' } }, [
-              h(:span, ['Value: ', h(:span, { style: { fontFamily: FONT_MONEY, fontWeight: 'bold', color: COLOR_MONEY } }, val)]),
-              h(:span, ['Revenue: ', h(:span, { style: { fontFamily: FONT_MONEY, fontWeight: 'bold', color: COLOR_MONEY } }, rev)]),
-            ]),
+            h(:div, { style: { display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', fontWeight: 'bold', borderTop: '1px solid #ddd', paddingTop: '4px', marginBottom: '2px' } }, bottom_row),
             h(:div, { style: { fontSize: '0.78rem', fontWeight: 'bold', textAlign: 'center', color: '#555555' } }, "Owner: #{owner}"),
           ])
         end
 
-        def build_company_tooltip(c)
+        def build_company_tooltip(c, price: nil)
           owner_name = c.owner&.name || 'Bank'
           desc_text = if c.respond_to?(:desc) && c.desc && !c.desc.empty?
                         c.desc
@@ -182,7 +187,21 @@ module View
           revenue_str = @game.format_currency(c.revenue || 0)
           target_hexes = resolve_target_hexes(c)
 
-          render_company_tooltip('Private Company', c.name, desc_text, value_str, revenue_str, owner_name, target_hexes)
+          price_val = price
+          if price_val.nil?
+            if c.respond_to?(:discount) && c.discount && !c.discount.zero?
+              price_val = c.respond_to?(:min_bid) ? c.min_bid : (c.value - c.discount)
+            elsif c.respond_to?(:min_bid) && c.min_bid && c.respond_to?(:value) && c.min_bid != c.value
+              price_val = c.min_bid
+            elsif c.respond_to?(:min_price) && c.min_price && c.respond_to?(:value) && c.min_price != c.value
+              price_val = c.min_price
+            end
+          end
+          price_str = if price_val
+                        price_val.is_a?(Numeric) ? @game.format_currency(price_val) : price_val.to_s
+                      end
+
+          render_company_tooltip('Private Company', c.name, desc_text, value_str, revenue_str, owner_name, target_hexes, price_str)
         end
 
         def render_corp_tooltip(corporation)
@@ -208,15 +227,19 @@ module View
             ])
         end
 
-        def build_entity_tooltip(entity)
+        def build_entity_tooltip(entity, price: nil)
           return nil unless entity
 
-          if entity.respond_to?(:company?) && entity.company?
-            build_company_tooltip(entity)
+          if (entity.respond_to?(:company?) && entity.company?) ||
+             (defined?(Engine::Company) && entity.is_a?(Engine::Company)) ||
+             (!entity.respond_to?(:corporation?) && !entity.respond_to?(:minor?) &&
+              !(defined?(Engine::Corporation) && entity.is_a?(Engine::Corporation)) &&
+              !(defined?(Engine::Minor) && entity.is_a?(Engine::Minor)))
+            build_company_tooltip(entity, price: price)
           elsif (entity.respond_to?(:corporation?) && entity.corporation?) ||
                 (entity.respond_to?(:minor?) && entity.minor?) ||
-                entity.is_a?(Engine::Corporation) ||
-                entity.is_a?(Engine::Minor)
+                (defined?(Engine::Corporation) && entity.is_a?(Engine::Corporation)) ||
+                (defined?(Engine::Minor) && entity.is_a?(Engine::Minor))
             render_corp_tooltip(entity)
           end
         end

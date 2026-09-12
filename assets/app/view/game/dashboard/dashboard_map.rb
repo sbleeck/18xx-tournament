@@ -9,6 +9,74 @@ require 'view/game/tile_selector'
 require 'view/game/token_selector'
 require 'view/game/part/track'
 require 'view/game/part/revenue'
+require 'view/game/part/city_slot'
+module View
+  module Game
+    module Part
+      class CitySlot < Base
+        needs :game, default: nil, store: true
+        needs :selected_company, default: nil, store: true
+        unless method_defined?(:orig_render)
+          alias orig_render render
+
+          def render
+            rendered = orig_render
+            return rendered unless flash_token_slot?
+
+            highlight = h(:circle, {
+                            attrs: {
+                              cx: 0,
+                              cy: 0,
+                              r: @radius,
+                              fill: '#00ffff',
+                              stroke: '#00ffff',
+                              'stroke-width': 3,
+                              'pointer-events': 'none',
+                            },
+                          }, [
+              h(:animate,
+                attrs: { attributeName: 'fill-opacity', values: '0.15;0.70;0.15', dur: '1.4s', repeatCount: 'indefinite' }),
+              h(:animate,
+                attrs: { attributeName: 'stroke-opacity', values: '0.35;1.0;0.35', dur: '1.4s', repeatCount: 'indefinite' }),
+            ])
+
+            h(:g, [rendered, highlight])
+          end
+
+          def flash_token_slot?
+            return false if @token || !@game || !@tile&.hex
+
+            step = @game.round.active_step(@selected_company)
+            current_entity = @selected_company || step&.current_entity
+            return false unless step && current_entity
+
+            actions = step.actions(current_entity) || []
+            return false unless actions.include?('place_token') || actions.include?('hex_token')
+            return false unless step.available_hex(current_entity, @tile.hex)
+
+            return false if step.respond_to?(:available_tokens) && step.available_tokens(current_entity).empty?
+
+            already_tokened = (@city.respond_to?(:tokened_by?) && @city.tokened_by?(current_entity)) ||
+                              (@city.respond_to?(:tokens) && @city.tokens.compact.any? { |t| t.corporation == current_entity })
+            return false if already_tokened
+
+            open_slot = @city.respond_to?(:open_slot?) ? @city.open_slot?(current_entity) : @city.tokens.any?(&:nil?)
+            return false unless open_slot
+
+            if @reservation
+              res_corp = @reservation.respond_to?(:corporation) ? @reservation.corporation : @reservation
+              if res_corp && res_corp != current_entity && (res_corp.respond_to?(:id) ? res_corp.id != current_entity.id : true)
+                return false
+              end
+            end
+
+            true
+          end
+        end
+      end
+    end
+  end
+end
 
 module View
   module Game
@@ -73,6 +141,56 @@ module View
         (min..max).to_a
       end
 
+      # Register highlighter immediately on load so cyan is active before any layout guards
+      %x{
+        if (typeof window !== 'undefined') {
+          window.highlightMapHexes = function(hexIds, _color) {
+            if (!hexIds) return;
+            window.clearMapHexHighlights();
+            var list = Array.isArray(hexIds) ? hexIds : (hexIds.to_a ? hexIds.to_a() : [hexIds]);
+            var len = list.length || 0;
+            for (var i = 0; i < len; i++) {
+              var rawId = String(list[i]);
+              var targets = [
+                document.getElementById('hex-' + rawId),
+                document.querySelector('.hex-' + rawId),
+                document.getElementById('hex-' + rawId.toUpperCase()),
+                document.querySelector('.hex-' + rawId.toUpperCase()),
+                document.getElementById('hex-' + rawId.toLowerCase()),
+                document.querySelector('.hex-' + rawId.toLowerCase())
+              ];
+              for (var t = 0; t < targets.length; t++) {
+                var hexEl = targets[t];
+                if (hexEl) {
+                  var poly = hexEl.querySelector('.hex-highlight-poly');
+                  if (poly) {
+                    poly.setAttribute('stroke', '#00ffff');
+                    poly.setAttribute('stroke-width', '8');
+                    poly.setAttribute('fill', '#00ffff');
+                    poly.setAttribute('fill-opacity', '0.35');
+                  }
+                }
+              }
+            }
+          };
+
+          window.clearMapHexHighlights = function() {
+            var polys = document.querySelectorAll('.hex-highlight-poly');
+            for (var i = 0; i < polys.length; i++) {
+              var p = polys[i];
+              var origStroke = p.getAttribute('data-orig-stroke') || 'transparent';
+              var origWidth = p.getAttribute('data-orig-width') || '0';
+              var origFill = p.getAttribute('data-orig-fill') || 'transparent';
+              var origFillOpacity = p.getAttribute('data-orig-fill-opacity') || '0';
+              p.setAttribute('stroke', origStroke);
+              p.setAttribute('stroke-width', origWidth);
+              p.setAttribute('fill', origFill);
+              p.setAttribute('fill-opacity', origFillOpacity);
+            }
+          };
+        }
+      }
+
       def hex_cost_display(step, entity_or_entities, hex)
         current_entity = Array(entity_or_entities).first
         base_cost = 0
@@ -97,20 +215,16 @@ module View
 
         border_objs = (hex.tile&.borders || []).select { |b| b.cost && b.cost.positive? }
 
-        # No border costs: price is strictly fixed
         if border_objs.empty?
           return nil if base_cost.zero?
 
           return @game.respond_to?(:format_currency) ? @game.format_currency(base_cost) : "$#{base_cost}"
         end
 
-        # Check connectivity to see if border crossing is mandatory or optional
         connected_edges = step.respond_to?(:hex_neighbors) ? (step.hex_neighbors(current_entity, hex) || []) : []
         cost_edges = border_objs.map(&:edge)
-
         border_total = border_objs.sum(&:cost)
 
-        # If entity ONLY connects from the border edge(s), the crossing fee is mandatory and fixed
         if connected_edges.any? && connected_edges.all? { |e| cost_edges.include?(e) }
           total = base_cost + border_total
           return nil if total.zero?
@@ -118,10 +232,8 @@ module View
           return @game.respond_to?(:format_currency) ? @game.format_currency(total) : "$#{total}"
         end
 
-        # Cost depends on orientation: player can avoid border (min_cost) or cross border (max_cost)
         min_cost = base_cost
         max_cost = base_cost + border_total
-
         format_val = ->(val) { @game.respond_to?(:format_currency) ? @game.format_currency(val) : "$#{val}" }
 
         if min_cost.zero?
@@ -142,6 +254,48 @@ module View
 
         @start_pos = [@cols.first, @rows.first]
         @scale = 1.0
+
+        %x{
+          if (typeof window !== 'undefined') {
+            window.highlightMapHexes = function(hexIds, _color) {
+              if (!hexIds) return;
+              window.clearMapHexHighlights();
+              var list = Array.isArray(hexIds) ? hexIds : (hexIds.to_a ? hexIds.to_a() : [hexIds]);
+              for (var i = 0; i < list.length; i++) {
+                var rawId = String(list[i]);
+                var targets = [
+                  document.getElementById('hex-' + rawId),
+                  document.querySelector('.hex-' + rawId),
+                  document.getElementById('hex-' + rawId.toUpperCase()),
+                  document.querySelector('.hex-' + rawId.toUpperCase())
+                ];
+                for (var t = 0; t < targets.length; t++) {
+                  var hexEl = targets[t];
+                  if (hexEl) {
+                    var poly = hexEl.querySelector('.hex-highlight-poly');
+                    if (poly) {
+                      poly.setAttribute('stroke', '#00ffff');
+                      poly.setAttribute('stroke-width', '8');
+                      poly.setAttribute('fill', '#00ffff');
+                      poly.setAttribute('fill-opacity', '0.35');
+                    }
+                  }
+                }
+              }
+            };
+
+            window.clearMapHexHighlights = function() {
+              var polys = document.querySelectorAll('.hex-highlight-poly');
+              for (var i = 0; i < polys.length; i++) {
+                var p = polys[i];
+                p.setAttribute('stroke', p.getAttribute('data-orig-stroke') || 'transparent');
+                p.setAttribute('stroke-width', p.getAttribute('data-orig-width') || '0');
+                p.setAttribute('fill', p.getAttribute('data-orig-fill') || 'transparent');
+                p.setAttribute('fill-opacity', p.getAttribute('data-orig-fill-opacity') || '0');
+              }
+            };
+          }
+        }
 
         step = @game.round.active_step(@selected_company)
 
@@ -164,35 +318,21 @@ module View
 
         @hexes.map! do |hex|
           clickable = @show_starting_map ? false : step&.available_hex(entity_or_entities, hex)
+          is_hovered = hovered_target_hexes.map(&:to_s).map(&:upcase).include?(hex.id.to_s.upcase)
 
           base_hex = h(
-            Hex,
-            hex: hex,
-            opacity: @show_starting_map ? 1.0 : (@opacity || 1.0),
-            entity: current_entity,
-            clickable: clickable,
-            actions: actions,
-            routes: routes,
-            start_pos: @start_pos,
-            highlight: false
-          )
+             Hex,
+             hex: hex,
+             opacity: @show_starting_map ? 1.0 : (@opacity || 1.0),
+             entity: current_entity,
+             clickable: clickable,
+             actions: actions,
+             routes: routes,
+             start_pos: @start_pos,
+             highlight: false
+           )
 
-          border_color = nil
-          if hovered_target_hexes.include?(hex.id.to_s)
-            border_color = '#9333ea'
-          elsif clickable && token_action_active
-            token_nodes = (hex.tile&.cities || []) + (hex.tile&.towns || []).select { |t| t.respond_to?(:tokens) && t.tokens }
-            has_tokens = !step.respond_to?(:available_tokens) || step.available_tokens(current_entity).any?
-            already_tokened = token_nodes.any? do |node|
-              (node.respond_to?(:tokened_by?) && node.tokened_by?(current_entity)) ||
-                node.tokens.compact.any? { |t| t.corporation == current_entity }
-            end
-            open_slot = token_nodes.any? do |node|
-              node.respond_to?(:open_slot?) ? node.open_slot?(current_entity) : node.tokens.any?(&:nil?)
-            end
-
-            border_color = '#ff8c00' if has_tokens && !already_tokened && open_slot
-          end
+          border_color = is_hovered ? '#00ffff' : nil
 
           x, y = Hex.coordinates(hex, @start_pos)
           transform_str = "translate(#{x}, #{y})#{hex.layout == :pointy ? ' rotate(30)' : ''}"
@@ -266,9 +406,10 @@ module View
               ])
             end
           end
-
           initial_stroke = border_color || 'transparent'
           initial_width = border_color ? (Hex::HIGHLIGHT_STROKE_WIDTH + 4) : 0
+          initial_fill = is_hovered ? '#00ffff' : 'transparent'
+          initial_fill_opacity = is_hovered ? '0.35' : '0'
 
           hex_children = [
             base_hex,
@@ -285,9 +426,12 @@ module View
                     class: 'hex-highlight-poly',
                     'data-orig-stroke': initial_stroke,
                     'data-orig-width': initial_width.to_s,
+                    'data-orig-fill': initial_fill,
+                    'data-orig-fill-opacity': initial_fill_opacity,
                     stroke: initial_stroke,
                     'stroke-width': initial_width.to_s,
-                    'fill-opacity': '0',
+                    fill: initial_fill,
+                    'fill-opacity': initial_fill_opacity,
                   },
                   style: { pointerEvents: 'none' },
                 }),
