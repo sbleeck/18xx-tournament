@@ -237,37 +237,6 @@ module View
           clickable = @show_starting_map ? false : step&.available_hex(entity_or_entities, hex)
           opacity = 1.0
 
-          # # Cache data fields synchronously to prevent asynchronous flickering
-          # if revenue_phase_active && !hex.empty && hex.tile
-          #   rev_entries = hex.tile.respond_to?(:revenue_to_render) ? hex.tile.revenue_to_render : []
-          #   if rev_entries.any?
-          #     val_string = rev_entries.first.to_s
-          #     hx, hy = Hex.coordinates(hex, @start_pos)
-          #     final_cx = hx + map_x
-          #     final_cy = hy + map_y + 12
-
-          #     @fancy_value_overlays << h(:text, {
-          #                                  key: "fancy-txt-#{hex.id}",
-          #                                  attrs: {
-          #                                    x: final_cx.to_s,
-          #                                    y: final_cy.to_s,
-          #                                    'text-anchor': 'middle',
-          #                                    'dominant-baseline': 'central',
-          #                                    fill: '#ffffff',
-          #                                    stroke: '#000000',
-          #                                    'stroke-width': '6px',
-          #                                  },
-          #                                  style: {
-          #                                    fontSize: '70px',
-          #                                    fontWeight: '900',
-          #                                    fontFamily: '"Impact", "Arial Black", Charcoal, sans-serif',
-          #                                    paintOrder: 'stroke fill', # Forces outline behind fill to ensure perfect visibility
-          #                                    pointerEvents: 'none',
-          #                                  },
-          #                                }, val_string)
-          #   end
-          # end
-
           base_hex = h(
             Hex,
             hex: hex,
@@ -285,7 +254,7 @@ module View
             border_color = '#9333ea' # Vivid purple highlight for private company affected hexes
           elsif clickable
             if track_action_active
-              if step.upgradeable_tiles(entity_or_entities, hex).any?
+              if step.respond_to?(:potential_tiles) && step.potential_tiles(entity_or_entities, hex).any?
                 border_color = '#dc3545' # Red for active track building
               end
             elsif token_action_active
