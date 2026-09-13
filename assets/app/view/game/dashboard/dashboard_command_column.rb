@@ -179,7 +179,7 @@ module View
               update
             }
 
-            card_classes = %w[game-card action-buy]
+            card_classes = %w[game-card action-buy card-train]
             card_classes << 'clickable' if selected
             train_badge = render_railcard(train.name, card_classes, card_click)
 
@@ -2217,7 +2217,7 @@ module View
 
         train_boxes = (discardable || []).map do |train|
           click_handler = -> { process_action(Engine::Action::DiscardTrain.new(entity, train: train)) }
-          render_railcard(train.name, %w[game-card action-sell clickable], click_handler, nil, entity: train)
+          render_railcard(train.name, %w[game-card action-sell clickable card-train], click_handler)
         end
 
         return nil if train_boxes.empty?
@@ -2285,7 +2285,7 @@ module View
             cost_str = "(#{@game.format_currency(cost)})" if cost && !cost.zero?
           end
 
-          card = render_railcard(train.name, %w[game-card action-sell clickable], click_handler)
+          card = render_railcard(train.name, %w[game-card action-sell clickable card-train], click_handler)
           if cost_str.empty?
             card
           else
@@ -2407,25 +2407,50 @@ module View
         train_boxes = []
         depot = @game.depot
 
-        available = if step.respond_to?(:buyable_trains)
-                      step.buyable_trains(entity).group_by(&:owner)
-                    else
-                      {}
-                    end
+        step_buyable = (step.buyable_trains(entity) || [] if step.respond_to?(:buyable_trains))
+
+        must_buy = if step.respond_to?(:must_buy_train?)
+                     step.must_buy_train?(entity)
+                   else
+                     entity.respond_to?(:trains) && entity.trains.empty?
+                   end
 
         if depot
-          buyable_depot = available.delete(depot) || []
-          buyable_depot = [depot.upcoming.first].compact if buyable_depot.empty? && !step.respond_to?(:buyable_trains)
+          buyable_depot = if step_buyable
+                            step_buyable.select do |t|
+                              t.owner == depot || t.owner.nil? || t.owner == @game.bank ||
+                                (depot.respond_to?(:depot_trains) && depot.depot_trains.include?(t))
+                            end
+                          else
+                            [depot.upcoming.first].compact
+                          end
           unique_depot_trains = buyable_depot.uniq { |t| [depot.discarded.include?(t) ? :pool : :bank, t.name] }
 
           unique_depot_trains.each do |train|
             variants = train.respond_to?(:names_to_prices) && train.names_to_prices && !train.names_to_prices.empty? ? train.names_to_prices : { train.name => train.price }
             is_pool = depot.discarded.include?(train)
-            source_tag = is_pool ? "'Pool'" : "'Bank'"
+            source_tag = is_pool ? 'Pool' : 'Bank'
 
             variants.each do |variant_name, price|
-              can_afford = (entity.respond_to?(:cash) ? entity.cash : 0) >= price ||
-                           (entity.respond_to?(:trains) && entity.trains.empty?)
+              can_afford = (entity.respond_to?(:cash) ? entity.cash : 0) >= price || must_buy
+              next unless can_afford
+
+              can_buy_step = if step.respond_to?(:can_buy_train?)
+                               begin
+                                 step.can_buy_train?(entity, train)
+                               rescue ArgumentError
+                                 begin
+                                   step.can_buy_train?(entity)
+                                 rescue ArgumentError
+                                   step.can_buy_train?
+                                 end
+                               rescue StandardError
+                                 true
+                               end
+                             else
+                               true
+                             end
+              next unless can_buy_step
 
               variant_str = variant_name.to_s
               variant_param = (variant_str == train.name.to_s ? nil : variant_str)
@@ -2433,12 +2458,13 @@ module View
               click_handler = lambda {
                 process_action(Engine::Action::BuyTrain.new(entity, train: train, price: price, variant: variant_param))
               }
-              train_classes = %w[game-card action-buy]
-              card = render_railcard(variant_str, train_classes, (can_afford ? click_handler : nil))
+              train_classes = %w[game-card action-buy clickable card-train]
+              card = render_railcard(variant_str, train_classes, click_handler)
               price_str = @game.format_currency(price)
-              train_boxes << h(:div, { style: { display: 'inline-flex', alignItems: 'center', gap: '0.3rem', margin: '0 0.2rem' } }, [
+              train_boxes << h(:div, { style: { display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.4rem' } }, [
                 card,
-                h(:span, { style: { fontFamily: FONT_MONEY, color: can_afford ? COLOR_MONEY : '#9ca3af', fontWeight: 'bold', fontSize: '0.85rem', whiteSpace: 'nowrap' } }, "(#{source_tag} #{price_str})"),
+                h(:span, { style: { fontSize: '0.85rem', color: '#475569', fontWeight: 'bold', whiteSpace: 'nowrap' } }, source_tag),
+                h(:span, { style: { fontFamily: FONT_MONEY, color: can_afford ? COLOR_MONEY : '#9ca3af', fontWeight: 'bold', fontSize: '0.85rem', whiteSpace: 'nowrap' } }, price_str),
               ])
             end
           end
@@ -2448,8 +2474,13 @@ module View
           step.respond_to?(:corp_owner) ? step.corp_owner(corp) : corp.owner
         end
 
-        available_other = available.select do |owner, _|
-          owner && owner != depot && corp_owner.call(owner) == corp_owner.call(entity)
+        available_other = if step_buyable
+                            step_buyable.reject { |t| buyable_depot&.include?(t) }.group_by(&:owner)
+                          else
+                            {}
+                          end
+        available_other = available_other.select do |owner, _|
+          owner && owner != depot && owner != @game.bank && corp_owner.call(owner) == corp_owner.call(entity)
         end
 
         available_other.each do |c, trains|
@@ -2468,17 +2499,43 @@ module View
                 process_action(Engine::Action::BuyTrain.new(entity, train: t, price: price_val))
               })
             }
-            card = render_railcard(t.name, %w[game-card action-buy clickable], train_click_handler)
-            train_boxes << h(:div, { style: { display: 'inline-flex', alignItems: 'center', gap: '0.3rem', margin: '0 0.2rem' } }, [
+            card = render_railcard(t.name, %w[game-card action-buy clickable card-train], train_click_handler)
+            train_boxes << h(:div, { style: { display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '0.4rem' } }, [
               card,
-              h(:span, { style: { fontSize: '0.82rem', color: '#475569', fontWeight: 'bold', whiteSpace: 'nowrap' } }, "(#{c.id || c.name})"),
+              h(:span, { style: { fontSize: '0.85rem', color: '#475569', fontWeight: 'bold', whiteSpace: 'nowrap' } }, (c.id || c.name).to_s),
             ])
           end
         end
 
         return nil if train_boxes.empty?
 
-        render_action_row('Buy Train:', train_boxes)
+        h(:div, {
+            style: {
+              display: 'flex',
+              flexDirection: 'row',
+              alignItems: 'flex-start',
+              justifyContent: 'flex-start',
+              gap: '0.4rem',
+              width: '100%',
+              maxWidth: '100%',
+              margin: '0 auto',
+            },
+          }, [
+          h(:span, {
+              style: {
+                fontSize: '0.92rem',
+                fontWeight: 'bold',
+                color: '#333',
+                minWidth: '6.5rem',
+                textAlign: 'left',
+                flexShrink: '0',
+                height: '1.45rem',
+                display: 'inline-flex',
+                alignItems: 'center',
+              },
+            }, 'Buy Train:'),
+          h(:div, { style: { display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '0.3rem', width: '100%' } }, train_boxes),
+        ])
       end
 
       def render_issue_shares(step, entity)

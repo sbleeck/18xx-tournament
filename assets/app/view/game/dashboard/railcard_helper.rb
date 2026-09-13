@@ -594,6 +594,8 @@ module View
           end
           has_dropdown = !dropdown_items.empty?
 
+          is_train = classes.include?('card-train') || wrapper_id.to_s.include?('train')
+
           style_props = {
             minWidth: '3.2rem',
             height: '1.45rem',
@@ -603,7 +605,7 @@ module View
             display: 'inline-flex',
             alignItems: 'center',
             justifyContent: 'center',
-            borderRadius: '4px',
+            borderRadius: is_train ? '12px' : '4px',
             fontSize: '0.85rem',
             fontFamily: '"Helvetica Neue", Helvetica, Arial, sans-serif',
             color: '#000000',

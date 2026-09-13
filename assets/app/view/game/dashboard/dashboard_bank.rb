@@ -3,12 +3,14 @@
 require 'lib/settings'
 require 'view/game/actionable'
 require 'view/game/dashboard/dashboard_card'
+require 'view/game/dashboard/railcard_helper'
 
 module View
   module Game
     class DashboardBank < Snabberb::Component
       include Lib::Settings
       include Actionable
+      include View::Game::Dashboard::RailcardHelper
 
       needs :game, store: true
       needs :train_handler, default: nil
@@ -50,7 +52,6 @@ module View
             fontWeight: 'bold',
             letterSpacing: '1px',
             textAlign: 'center',
-            borderBottom: '1px solid #b3b3b3',
           },
         }
         body_props = {
@@ -58,7 +59,7 @@ module View
             margin: '0.3rem 0.5rem 0.4rem',
             display: 'flex',
             flexDirection: 'column',
-            gap: '0.75rem',
+            gap: '0.35rem',
           },
         }
 
@@ -199,7 +200,7 @@ module View
                      end
 
           variants.each do |variant_name, price|
-            card_classes = ['game-card']
+            card_classes = %w[game-card card-train]
             click_handler = nil
 
             if train_buyable_step && active_entity&.corporation?
@@ -224,19 +225,19 @@ module View
               end
             end
 
-            card_props = { attrs: { class: card_classes.join(' ') } }
-            card_props[:on] = { click: click_handler } if click_handler
-
             available_count = train_available_count(train, variant_name)
             dom_id = "bank_train_#{train.id}_#{variant_name.to_s.tr('/', '_')}"
+            card_el = render_railcard(variant_name.to_s, card_classes, click_handler, entity: train)
 
             train_cards << h(:div, { attrs: { id: dom_id }, style: { display: 'inline-block', margin: '2px', textAlign: 'center', verticalAlign: 'top' } }, [
-              h(:div, card_props, variant_name.to_s),
-              h(:div,
-                { style: { fontFamily: FONT_CASH, color: COLOR_CASH, fontSize: '0.75rem', fontWeight: 'bold', marginTop: '2px' } }, @game.format_currency(price)),
-              h(:div,
-                { style: { fontFamily: FONT_STD, color: '#555555', fontSize: '0.72rem', marginTop: '1px' } }, "(#{available_count})"),
-            ])
+                card_el,
+                h(:div, { style: { marginTop: '2px', whiteSpace: 'nowrap' } }, [
+                  h(:span,
+                    { style: { fontFamily: FONT_CASH, color: COLOR_CASH, fontSize: '0.75rem', fontWeight: 'bold' } }, @game.format_currency(price)),
+                  h(:span,
+                    { style: { fontFamily: FONT_STD, color: '#555555', fontSize: '0.72rem', marginLeft: '3px' } }, "(#{available_count})"),
+                ]),
+              ])
           end
         end
 
@@ -244,13 +245,11 @@ module View
 
         h(:div, {
             style: {
-              marginTop: '0.4rem',
-              paddingTop: '0.4rem',
-              borderTop: '1px solid #bbbbbb',
+              marginTop: '0.2rem',
               textAlign: 'center',
             },
           }, [
-          h(:div, { style: { fontSize: '0.8rem', fontWeight: 'bold', marginBottom: '0.3rem', fontFamily: FONT_STD } },
+          h(:div, { style: { fontSize: '0.8rem', fontWeight: 'bold', marginBottom: '0.2rem', fontFamily: FONT_STD } },
             'Bank Depot:'),
           h(:div, { style: { display: 'flex', flexWrap: 'wrap', justifyContent: 'center' } }, train_cards),
         ])
@@ -293,7 +292,7 @@ module View
           price = @game.format_currency(train.price)
           count_text = trains.size.to_s
 
-          card_classes = ['game-card']
+          card_classes = %w[game-card card-train]
           click_handler = nil
 
           if train_buyable_step && active_entity && active_entity.corporation?
@@ -316,9 +315,6 @@ module View
             end
           end
 
-          card_props = { attrs: { class: card_classes.join(' ') } }
-          card_props[:on] = { click: click_handler } if click_handler
-
           effects = []
           train.names_to_prices.keys.each do |key|
             if (rust = rust_schedule[key]) && !rust.empty?
@@ -330,9 +326,11 @@ module View
             effects << "Phases out: #{obsolete_schedule[train.name].join(', ')}"
           end
 
+          card_el = render_railcard(train.name, card_classes, click_handler, entity: train)
+
           h(:tr, { style: { borderBottom: '1px solid #cccccc' } }, [
             h('td.center', { attrs: { id: "bank_train_#{train.id}" }, style: { padding: '0.4rem 0.6rem', verticalAlign: 'middle' } }, [
-              h(:div, card_props, train.name),
+              card_el,
             ]),
             h('td.right', { style: { fontFamily: FONT_CASH, color: COLOR_CASH, padding: '0.4rem 0.6rem', fontWeight: 'bold' } }, [
               h(:div, price),

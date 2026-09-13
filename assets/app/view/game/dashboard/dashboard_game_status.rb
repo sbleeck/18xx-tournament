@@ -190,21 +190,6 @@ module View
         end
         rows << cert_cells
 
-        # 2b. Fixed Income Row
-        fix_inc_cells = [h('th.left', 'Fix Inc')]
-        display_players.each_with_index do |p, idx|
-          bg_color = p == active_player ? COLOR_ACTIVE : COLOR_INACTIVE
-          is_last = idx == @game.players.size - 1
-
-          # Sum up the revenue properties of all active companies/bonds owned by the player
-          total_inc = p.companies.reject { |c| c.respond_to?(:closed?) && c.closed? }.sum(&:revenue)
-          formatted_inc = @game.format_currency(total_inc)
-
-          fix_inc_cells << h("td.padded_number.money-value#{'.thick-right' if is_last}",
-                             { style: { backgroundColor: bg_color } }, formatted_inc)
-        end
-        rows << fix_inc_cells
-
         # 3. Loans Row
         if @game.respond_to?(:player_loans)
           loans_cells = [h('th.left', 'Loans')]
@@ -1349,18 +1334,25 @@ module View
         step_buyable_trains = if train_buyable_step && active_entity && step.respond_to?(:buyable_trains)
                                 step.buyable_trains(active_entity)
                               end
+        corp_owner = lambda do |corp|
+          step.respond_to?(:corp_owner) ? step.corp_owner(corp) : corp&.owner
+        end
+        same_player = active_entity && corporation != active_entity &&
+                      corp_owner.call(corporation) &&
+                      corp_owner.call(corporation) == corp_owner.call(active_entity)
+
         train_cards = corporation.trains.map do |t|
           card_classes = ['game-card']
           train_click_handler = nil
           menu_dropdown = nil
 
-          # Check if the train is authoritatively buyable by active_entity
-          is_buyable_other_train = if step_buyable_trains
+          # Check if the train is authoritatively buyable by active_entity (strictly from same player)
+          is_buyable_other_train = if !same_player
+                                     false
+                                   elsif step_buyable_trains
                                      step_buyable_trains.include?(t)
                                    elsif train_buyable_step
-                                     owned_by_same_player = active_player && corporation.owner == active_player
-                                     not_own_train = active_entity && corporation != active_entity
-                                     owned_by_same_player && not_own_train && (!step.respond_to?(:can_buy_train?) || step.can_buy_train?(active_entity, t))
+                                     !step.respond_to?(:can_buy_train?) || step.can_buy_train?(active_entity, t)
                                    else
                                      false
                                    end
