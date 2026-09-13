@@ -10,6 +10,7 @@ require 'view/game/token_selector'
 require 'view/game/part/track'
 require 'view/game/part/revenue'
 require 'view/game/part/city_slot'
+
 module View
   module Game
     module Part
@@ -191,14 +192,19 @@ module View
         }
       }
 
-      def hex_cost_display(step, entity_or_entities, hex)
+      def hex_cost_display(step, entity_or_entities, hex, tile: nil)
         current_entity = Array(entity_or_entities).first
         base_cost = 0
 
+        target_tile = tile || hex.tile
         if @game.respond_to?(:upgrade_cost)
           begin
-            base_cost += (@game.upgrade_cost(hex.tile, hex, current_entity) || 0)
+            base_cost += (@game.upgrade_cost(target_tile, hex, current_entity) || 0)
           rescue StandardError
+            begin
+              base_cost += (@game.upgrade_cost(hex.tile, hex, current_entity) || 0)
+            rescue StandardError
+            end
           end
         end
 
@@ -214,6 +220,45 @@ module View
         end
 
         border_objs = (hex.tile&.borders || []).select { |b| b.cost && b.cost.positive? }
+
+        format_val = ->(val) { @game.respond_to?(:format_currency) ? @game.format_currency(val) : "$#{val}" }
+
+        if tile
+          tile_exits = []
+          if tile.respond_to?(:exits) && tile.exits
+            tile_exits = tile.exits
+          elsif tile.respond_to?(:paths) && tile.paths
+            tile_exits = tile.paths.flat_map do |p|
+              if p.respond_to?(:exits) && p.exits
+                p.exits
+              elsif p.respond_to?(:edges) && p.edges
+                p.edges.map(&:num)
+              elsif p.respond_to?(:a) && p.respond_to?(:b)
+                [p.a, p.b].select { |n| n.respond_to?(:edge?) && n.edge? }.map(&:num)
+              end
+            end.compact.uniq
+          end
+
+          border_cost = nil
+          if @game.respond_to?(:border_cost)
+            begin
+              border_cost = @game.border_cost(tile, hex, current_entity)
+            rescue ArgumentError
+              begin
+                border_cost = @game.border_cost(tile, hex)
+              rescue StandardError
+              end
+            rescue StandardError
+            end
+          end
+
+          border_cost ||= border_objs.select { |b| tile_exits.include?(b.edge) }.sum(&:cost)
+          actual_cost = base_cost + border_cost
+
+          return nil if border_objs.empty? && actual_cost.zero?
+
+          return format_val.call(actual_cost)
+        end
 
         if border_objs.empty?
           return nil if base_cost.zero?
@@ -234,7 +279,6 @@ module View
 
         min_cost = base_cost
         max_cost = base_cost + border_total
-        format_val = ->(val) { @game.respond_to?(:format_currency) ? @game.format_currency(val) : "$#{val}" }
 
         if min_cost.zero?
           "#{format_val.call(max_cost)}?"
@@ -316,6 +360,13 @@ module View
         hovered_c_id = Lib::Storage['hovered_company_id']
         hovered_target_hexes = extract_hovered_hexes(hovered_c_id)
 
+        hex_selected = @tile_selector && !@tile_selector.is_a?(Lib::TokenSelector) &&
+                         @tile_selector.respond_to?(:hex) && @tile_selector.hex
+        selected_hex = hex_selected ? @tile_selector.hex : nil
+        tile_chosen = hex_selected && @tile_selector.tile &&
+                      @tile_selector.hex.tile != @tile_selector.tile
+        active_tile = tile_chosen ? @tile_selector.tile : nil
+
         @hexes.map! do |hex|
           clickable = @show_starting_map ? false : step&.available_hex(entity_or_entities, hex)
           is_hovered = hovered_target_hexes.map(&:to_s).map(&:upcase).include?(hex.id.to_s.upcase)
@@ -325,7 +376,7 @@ module View
              hex: hex,
              opacity: @show_starting_map ? 1.0 : (@opacity || 1.0),
              entity: current_entity,
-             clickable: clickable,
+             clickable: hex_selected ? (hex == selected_hex && clickable) : clickable,
              actions: actions,
              routes: routes,
              start_pos: @start_pos,
@@ -339,8 +390,14 @@ module View
 
           overlays = []
 
-          if clickable && track_action_active && step.respond_to?(:potential_tiles) && step.potential_tiles(entity_or_entities,
-                                                                                                            hex).any?
+          show_building_highlight = if hex_selected
+                                      hex == selected_hex
+                                    else
+                                      clickable && track_action_active && step.respond_to?(:potential_tiles) &&
+                                        step.potential_tiles(entity_or_entities, hex).any?
+                                    end
+
+          if show_building_highlight
             overlays << h(:polygon, {
                             attrs: {
                               points: Hex::HIGHLIGHT_POINTS,
@@ -364,7 +421,7 @@ module View
                             },
                           })
 
-            cost_str = hex_cost_display(step, entity_or_entities, hex)
+            cost_str = hex_cost_display(step, entity_or_entities, hex, tile: (hex == selected_hex ? active_tile : nil))
             if cost_str
               scale_factor = case cost_str.length
                              when 1..3 then 2.2
