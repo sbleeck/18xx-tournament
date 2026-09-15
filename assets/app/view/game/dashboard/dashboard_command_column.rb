@@ -1481,9 +1481,23 @@ module View
           ].compact)
         end
 
-        if @game.round.stock?
+        is_draft_round = is_draft ||
+                          (@game.round.class.name =~ /Draft|Auction/i) ||
+                          (step&.class&.name =~ /Draft|Auction|Waterfall/i)
+
+        is_stock_round = begin
+          @game.round.is_a?(Engine::Round::Stock)
+        rescue StandardError
+          false
+        end ||
+                         (@game.round.class.name =~ /Stock/i) ||
+                         (@game.round.respond_to?(:stock?) && @game.round.stock?)
+
+        player_display_name = active_player&.name || (entity.respond_to?(:name) ? entity.name : nil) || player_name
+
+        if is_stock_round || is_draft_round || (entity.respond_to?(:player?) && entity.player?)
           zone_1 = h(:div, { style: { flex: '0 0 20%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '0.5rem', borderRight: '1px solid #ccc', boxSizing: 'border-box' } }, [
-            h(:div, { style: { fontSize: '1.8rem', fontWeight: 'bold', color: '#000000', textAlign: 'center', wordBreak: 'break-word' } }, player_name),
+            h(:div, { style: { fontSize: '1.6rem', fontWeight: 'bold', color: '#000000', textAlign: 'center', wordBreak: 'break-word', lineHeight: '1.2' } }, player_display_name),
           ])
         else
           phase_labels = {

@@ -157,7 +157,7 @@ module View
                         `document.body.style.padding = '0'`
                         `document.body.style.backgroundColor = '#ffffff'`
                         `document.getElementById('app') && Object.assign(document.getElementById('app').style, { overflow: 'hidden', padding: '0', margin: '0', maxWidth: '100vw', width: '100vw', height: '100vh', backgroundColor: '#ffffff' })`
-                        `document.getElementById('game') && Object.assign(document.getElementById('game').style, { overflow: 'hidden', width: '100vw', height: '100vh', maxWidth: '100vw', maxHeight: '100vh' })`
+                        `document.getElementById('game') && Object.assign(document.getElementById('game').style, { overflow: 'hidden', width: '100vw', height: 'calc(100vh - 50px)', maxWidth: '100vw', maxHeight: 'calc(100vh - 50px)' })`
 
                         %x(window.init18xxResizers = function() {
                           var savedResizers = {};
@@ -529,8 +529,8 @@ module View
               display: 'flex',
               flexDirection: 'row',
               width: '100vw',
-              height: '100vh',
-              maxHeight: '100vh',
+              height: 'calc(100vh - 50px)',
+              maxHeight: 'calc(100vh - 50px)',
               boxSizing: 'border-box',
               position: 'relative',
               overflow: 'hidden',
@@ -560,7 +560,7 @@ module View
                    attrs: { class: 'panel-manifest-control' },
                    style: {
                      position: 'absolute',
-                     bottom: '8px',
+                     top: '8px',
                      right: '8px',
                      zIndex: 30,
                      display: 'flex',
