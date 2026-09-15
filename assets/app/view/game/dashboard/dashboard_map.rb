@@ -191,8 +191,16 @@ module View
         }
       }
 
+<<<<<<< Updated upstream
       def hex_cost_display(step, entity_or_entities, hex)
+=======
+      def hex_cost_display(step, entity_or_entities, hex, tile: nil)
+        return '' unless spender
+
+>>>>>>> Stashed changes
         current_entity = Array(entity_or_entities).first
+        return nil unless current_entity && step
+
         base_cost = 0
 
         if @game.respond_to?(:upgrade_cost)
@@ -364,7 +372,14 @@ module View
                             },
                           })
 
+<<<<<<< Updated upstream
             cost_str = hex_cost_display(step, entity_or_entities, hex)
+=======
+            cost_str = if current_entity
+                         hex_cost_display(step, entity_or_entities, hex,
+                                          tile: (hex == selected_hex ? active_tile : nil))
+                       end
+>>>>>>> Stashed changes
             if cost_str
               scale_factor = case cost_str.length
                              when 1..3 then 2.2

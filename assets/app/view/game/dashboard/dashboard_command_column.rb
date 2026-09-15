@@ -2486,31 +2486,37 @@ module View
         return nil unless entity && step
 
         issuable_bundles = begin
-          if step.respond_to?(:issuable_shares)
-            begin
-              step.issuable_shares(entity)
-            rescue ArgumentError
-              step.issuable_shares
-            end
-          elsif step.respond_to?(:issuable_bundles)
-            begin
-              step.issuable_bundles(entity)
-            rescue ArgumentError
-              step.issuable_bundles
-            end
-          elsif @game.respond_to?(:issuable_shares)
-            @game.issuable_shares(entity)
-          elsif step.respond_to?(:bundles_for_corporation)
-            begin
-              step.bundles_for_corporation(entity, entity)
-            rescue ArgumentError
-              step.bundles_for_corporation(entity)
-            end
-          elsif step.respond_to?(:bundles)
-            step.bundles(entity)
-          else
-            []
+          bundles = if step.respond_to?(:issuable_shares)
+                      begin
+                        step.issuable_shares(entity)
+                      rescue ArgumentError
+                        step.issuable_shares
+                      end
+                    elsif step.respond_to?(:issuable_bundles)
+                      begin
+                        step.issuable_bundles(entity)
+                      rescue ArgumentError
+                        step.issuable_bundles
+                      end
+                    elsif @game.respond_to?(:issuable_shares)
+                      @game.issuable_shares(entity)
+                    elsif step.respond_to?(:bundles_for_corporation)
+                      begin
+                        step.bundles_for_corporation(entity, entity)
+                      rescue ArgumentError
+                        step.bundles_for_corporation(entity)
+                      end
+                    elsif step.respond_to?(:bundles)
+                      step.bundles(entity)
+                    else
+                      []
+                    end || []
+
+          if bundles.empty? && step.respond_to?(:can_sell?)
+            t_shares = entity.respond_to?(:shares_of) ? entity.shares_of(entity) : []
+            bundles = t_shares.map(&:to_bundle).select { |b| step.can_sell?(entity, b) }
           end
+          bundles
         rescue StandardError
           []
         end || []
@@ -2578,29 +2584,35 @@ module View
         end
 
         redeemable_bundles = begin
-          if step.respond_to?(:redeemable_shares)
-            begin
-              step.redeemable_shares(entity)
-            rescue ArgumentError
-              step.redeemable_shares
-            end
-          elsif step.respond_to?(:redeemable_bundles)
-            begin
-              step.redeemable_bundles(entity)
-            rescue ArgumentError
-              step.redeemable_bundles
-            end
-          elsif @game.respond_to?(:redeemable_shares)
-            @game.redeemable_shares(entity)
-          elsif step.respond_to?(:buyable_shares)
-            begin
-              step.buyable_shares(entity)
-            rescue ArgumentError
-              step.buyable_shares
-            end
-          else
-            []
+          bundles = if step.respond_to?(:redeemable_shares)
+                      begin
+                        step.redeemable_shares(entity)
+                      rescue ArgumentError
+                        step.redeemable_shares
+                      end
+                    elsif step.respond_to?(:redeemable_bundles)
+                      begin
+                        step.redeemable_bundles(entity)
+                      rescue ArgumentError
+                        step.redeemable_bundles
+                      end
+                    elsif @game.respond_to?(:redeemable_shares)
+                      @game.redeemable_shares(entity)
+                    elsif step.respond_to?(:buyable_shares)
+                      begin
+                        step.buyable_shares(entity)
+                      rescue ArgumentError
+                        step.buyable_shares
+                      end
+                    else
+                      []
+                    end || []
+
+          if bundles.empty? && step.respond_to?(:can_buy?)
+            pool_shares = @game.share_pool.shares_by_corporation[entity] || []
+            bundles = pool_shares.map(&:to_bundle).select { |b| step.can_buy?(entity, b) }
           end
+          bundles
         rescue StandardError
           []
         end || []
@@ -2817,6 +2829,9 @@ module View
             elsif step&.respond_to?(:cash_crisis?) && step&.cash_crisis?
               components << h(CashCrisis)
               loans_rendered = true if (%w[take_loan payoff_loan] & actions).any?
+            elsif (%w[issue_shares reissue_shares reissue redeem redeem_shares] & actions).any? ||
+                  ((actions.include?('buy_shares') || actions.include?('sell_shares')) && step&.current_entity&.corporation?)
+              components << render_issue_shares(step, step&.current_entity || current_entity)
             elsif actions.include?('buy_shares') || actions.include?('sell_shares') || actions.include?('par')
               if step&.respond_to?(:price_protection) && (price_protection = step.price_protection)
                 components << h(Corporation, corporation: price_protection.corporation)

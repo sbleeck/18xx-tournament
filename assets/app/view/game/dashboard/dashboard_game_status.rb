@@ -325,7 +325,11 @@ module View
         end
 
         treasury = []
+<<<<<<< Updated upstream
         treasury << h('th.column-zone-corporate', {}, render_sort_link('Shares', :treasury)) if @game.separate_treasury?
+=======
+        treasury << h('th.column-zone-corporate', {}, render_sort_link('Treasury', :treasury)) if show_treasury?
+>>>>>>> Stashed changes
 
         extra = []
         if @game.respond_to?(:capitalization_type_desc)
@@ -417,7 +421,11 @@ module View
         ]
 
         corporation_subtitles = [
+<<<<<<< Updated upstream
           h('th.column-zone-corporate', {}, render_sort_link('Treasury', :cash)),
+=======
+          h('th.column-zone-corporate', {}, render_sort_link('Cash', :cash)),
+>>>>>>> Stashed changes
           *treasury,
           h('th.column-zone-corporate', {}, render_sort_link('Trains', :trains)),
           h('th.column-zone-corporate', {}, render_sort_link('Tokens', :tokens)),
@@ -596,9 +604,61 @@ module View
 
         # Map active corporate property cells
         treasury = []
+<<<<<<< Updated upstream
         if @game.separate_treasury?
           treasury << h('td.padded_number.column-zone-corporate', {},
                         num_shares_of(corporation, corporation))
+=======
+        if show_treasury?
+          t_shares = treasury_shares_for(corporation)
+          treasury_cards = []
+
+          if t_shares.any?
+            t_shares.group_by { |s| s.corporation || corporation }.each do |c, c_shares|
+              num_s = c_shares.size
+              pct = c.respond_to?(:share_percent) && c.share_percent ? (num_s * c.share_percent) : (num_s * 10)
+              label = c == corporation ? "#{pct}%" : "#{c.id} #{pct}%"
+
+              bundle = c_shares.first.to_bundle
+              can_sell = is_active_row && (corp_actions.include?('sell_shares') || corp_actions.include?('corporate_sell_shares') || corp_actions.include?('issue_shares')) &&
+                         (!step.respond_to?(:can_sell?) || step.can_sell?(corporation, bundle))
+
+              classes = ['game-card']
+              classes << 'action-sell clickable' if can_sell
+
+              click_handler = if can_sell
+                                lambda { |_e|
+                                  process_action(Engine::Action::SellShares.new(
+                                    corporation,
+                                    shares: bundle.shares,
+                                    share_price: corporation.share_price,
+                                    percent: bundle.percent
+                                  ))
+                                }
+                              end
+
+              treasury_cards << render_railcard(label, classes, click_handler)
+            end
+          end
+
+          if @game.respond_to?(:all_corporations)
+            @game.all_corporations.each do |c|
+              next if c == corporation
+              next if t_shares.any? { |s| (s.corporation || corporation) == c }
+
+              other_num = num_shares_of(corporation, c)
+              if other_num.positive?
+                other_pct = c.respond_to?(:share_percent) && c.share_percent ? (other_num * c.share_percent) : (other_num * 10)
+                treasury_cards << render_railcard("#{c.id} #{other_pct}%", ['game-card'])
+              end
+            end
+          end
+
+          content = treasury_cards.any? ? treasury_cards : [h(:span, { style: { opacity: '0.35', fontSize: '0.8rem', fontFamily: 'var(--font-standard)' } }, '0%')]
+          treasury << h('td.column-zone-corporate',
+                        { style: { backgroundColor: corp_zone_bg, textAlign: 'center', minWidth: '3.5rem' } },
+                        content)
+>>>>>>> Stashed changes
         end
 
         extra = []
@@ -881,29 +941,35 @@ module View
 
         if is_active_row && ((%w[redeem_shares redeem corporate_buy_shares buy_shares] & corp_actions).any? || step.respond_to?(:redeemable_shares) || step.respond_to?(:redeemable_bundles))
           redeemable_bundles = begin
-            if step.respond_to?(:redeemable_shares)
-              begin
-                step.redeemable_shares(corporation)
-              rescue ArgumentError
-                step.redeemable_shares
-              end
-            elsif step.respond_to?(:redeemable_bundles)
-              begin
-                step.redeemable_bundles(corporation)
-              rescue ArgumentError
-                step.redeemable_bundles
-              end
-            elsif @game.respond_to?(:redeemable_shares)
-              @game.redeemable_shares(corporation)
-            elsif (%w[redeem redeem_shares corporate_buy_shares] & corp_actions).any? && step.respond_to?(:buyable_shares)
-              begin
-                step.buyable_shares(corporation)
-              rescue ArgumentError
-                step.buyable_shares
-              end
-            else
-              []
+            bundles = if step.respond_to?(:redeemable_shares)
+                        begin
+                          step.redeemable_shares(corporation)
+                        rescue ArgumentError
+                          step.redeemable_shares
+                        end
+                      elsif step.respond_to?(:redeemable_bundles)
+                        begin
+                          step.redeemable_bundles(corporation)
+                        rescue ArgumentError
+                          step.redeemable_bundles
+                        end
+                      elsif @game.respond_to?(:redeemable_shares)
+                        @game.redeemable_shares(corporation)
+                      elsif (%w[redeem redeem_shares corporate_buy_shares buy_shares] & corp_actions).any? && step.respond_to?(:buyable_shares)
+                        begin
+                          step.buyable_shares(corporation)
+                        rescue ArgumentError
+                          step.buyable_shares
+                        end
+                      else
+                        []
+                      end || []
+
+            if bundles.empty? && step.respond_to?(:can_buy?)
+              pool_shares = @game.share_pool.shares_by_corporation[corporation] || []
+              bundles = pool_shares.map(&:to_bundle).select { |b| step.can_buy?(corporation, b) }
             end
+            bundles
           rescue StandardError
             []
           end || []
@@ -2107,11 +2173,29 @@ module View
         [time_val, formatted_time]
       end
 
+      def show_treasury?
+        @game.separate_treasury? || (/1870/.match?(@game.class.name) ? true : false) || @game.all_corporations.any? { |c| treasury_shares_for(c).any? }
+      end
+
+      def treasury_shares_for(corporation)
+        if @game.separate_treasury?
+          corporation.shares_of(corporation)
+        elsif corporation.respond_to?(:ipo_shares) && corporation.ipo_shares
+          corporation.shares_of(corporation) - corporation.ipo_shares
+        elsif corporation.respond_to?(:treasury_shares) && corporation.treasury_shares
+          corporation.treasury_shares
+        else
+          []
+        end
+      end
+
       def num_ipo_shares(corporation)
         if @game.separate_treasury?
           num_shares_of(@game.bank, corporation)
         elsif corporation.respond_to?(:num_ipo_shares)
           corporation.num_ipo_shares
+        elsif corporation.respond_to?(:ipo_shares) && corporation.ipo_shares
+          corporation.ipo_shares.size
         else
           num_shares_of(corporation, corporation)
         end
