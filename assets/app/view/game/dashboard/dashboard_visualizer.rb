@@ -10,6 +10,7 @@ require 'view/game/dashboard/dashboard_game_status'
 require 'view/game/dashboard/dashboard_stock_market'
 require 'view/game/history_and_undo'
 require 'view/game/dashboard/par_prompt_overlay'
+require 'view/game/dashboard/dashboard_tile_manifest'
 
 module View
   module Game
@@ -61,6 +62,20 @@ module View
           entity: active_player || active_entity,
           corporation: corporation,
           on_cancel: cancel_handler)
+      end
+
+      def render_tile_manifest_overlay
+        return nil unless Lib::Storage['dashboard_tile_manifest']
+
+        close_handler = lambda {
+          Lib::Storage['dashboard_tile_manifest'] = false
+          update
+        }
+
+        h(::View::Game::Dashboard::TileManifest,
+          game: @game,
+          tile_selector: @tile_selector,
+          on_close: close_handler)
       end
 
       def render_zoom_controls(panel_id, position_styles = {})
@@ -142,7 +157,7 @@ module View
                         `document.body.style.padding = '0'`
                         `document.body.style.backgroundColor = '#ffffff'`
                         `document.getElementById('app') && Object.assign(document.getElementById('app').style, { overflow: 'hidden', padding: '0', margin: '0', maxWidth: '100vw', width: '100vw', height: '100vh', backgroundColor: '#ffffff' })`
-                        `document.getElementById('game') && Object.assign(document.getElementById('game').style, { overflow: 'hidden', width: '100vw', height: '100vh', maxWidth: '100vw', maxHeight: '100vh' })`
+                        `document.getElementById('game') && Object.assign(document.getElementById('game').style, { overflow: 'hidden', width: '100vw', height: 'calc(100vh - 50px)', maxWidth: '100vw', maxHeight: 'calc(100vh - 50px)' })`
 
                         %x(window.init18xxResizers = function() {
                           var savedResizers = {};
@@ -514,8 +529,8 @@ module View
               display: 'flex',
               flexDirection: 'row',
               width: '100vw',
-              height: '100vh',
-              maxHeight: '100vh',
+              height: 'calc(100vh - 50px)',
+              maxHeight: 'calc(100vh - 50px)',
               boxSizing: 'border-box',
               position: 'relative',
               overflow: 'hidden',
@@ -536,12 +551,46 @@ module View
             h(:div, { attrs: { id: 'resizer-h-cmd-map' }, style: { flex: '0 0 0.5rem', cursor: 'row-resize', zIndex: 10 } }),
 
             # Map Panel Box
-            h(:div, { attrs: { id: 'map-panel-bot' }, style: { flex: '1 1 auto', border: '1px solid #ccc', borderRadius: '4px', backgroundColor: '#fff', overflow: 'hidden', position: 'relative' } }, [
-              render_zoom_controls('map-panel-bot', { top: '6px', left: '6px' }),
-              h(:div, { attrs: { class: 'scaler-content' }, style: { position: 'absolute', top: '0', left: '0', width: 'max-content', height: 'max-content', transformOrigin: 'top left' } }, [
-                h(View::Game::DashboardMap, game: @game, user: @user),
-              ]),
-            ]),
+            h(:div, { attrs: { id: 'map-panel-bot' }, style: { flex: '1 1 auto', minHeight: '0', boxSizing: 'border-box', border: '1px solid #ccc', borderRadius: '4px', backgroundColor: '#fff', overflow: 'hidden', position: 'relative' } }, [
+               render_zoom_controls('map-panel-bot', { top: '6px', left: '6px' }),
+               h(:div, { attrs: { class: 'scaler-content' }, style: { position: 'absolute', top: '0', left: '0', width: 'max-content', height: 'max-content', transformOrigin: 'top left' } }, [
+                 h(View::Game::DashboardMap, game: @game, user: @user),
+               ]),
+               h(:div, {
+                   attrs: { class: 'panel-manifest-control' },
+                   style: {
+                     position: 'absolute',
+                     top: '8px',
+                     right: '8px',
+                     zIndex: 30,
+                     display: 'flex',
+                   },
+                 }, [
+                 h(:button, {
+                     attrs: { id: 'btn-show-tile-manifest', type: 'button', title: 'Toggle tile manifest overlay' },
+                     style: {
+                       backgroundColor: '#ffffff',
+                       color: '#1e293b',
+                       border: '1px solid #94a3b8',
+                       borderRadius: '4px',
+                       padding: '4px 9px',
+                       fontSize: '0.78rem',
+                       fontWeight: 'bold',
+                       cursor: 'pointer',
+                       boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+                       display: 'inline-flex',
+                       alignItems: 'center',
+                       lineHeight: '1.2',
+                     },
+                     on: {
+                       click: lambda {
+                         Lib::Storage['dashboard_tile_manifest'] = !Lib::Storage['dashboard_tile_manifest']
+                         update
+                       },
+                     },
+                   }, 'Show Remaining Tiles'),
+               ]),
+             ]),
           ]),
 
           # VERTICAL RESIZER
@@ -578,6 +627,7 @@ module View
             ]),
           ]),
           render_par_overlay,
+          render_tile_manifest_overlay,
         ].compact)
       end
     end
