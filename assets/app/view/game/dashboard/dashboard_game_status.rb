@@ -36,7 +36,6 @@ require 'view/game/dashboard/dashboard_bank'
 require 'view/game/dashboard/dashboard_upcoming_trains'
 require 'view/game/dashboard/dashboard_card_animation'
 require 'view/game/dashboard/dashboard_money_animation'
-require 'view/game/dashboard/dashboard_card_animation'
 require 'view/game/dashboard/railcard_helper'
 require 'view/game/dashboard/par_prompt_overlay'
 
@@ -90,58 +89,56 @@ module View
         end
 
         css = <<~CSS
-                                                                                                                                            :root {
-                                                                                                                                              --font-money: 'Courier New', monospace;
-                                                                                                                                              --font-standard: "Helvetica Neue", Helvetica, Arial, sans-serif;
-                                                                                                                                              --color-money-text: #4c1d95;
-                                                                                                                                              --accent-action-color: #2563eb;
-                                                                                                                                              --pulse-opacity-min: 0.75;
-                                                                                                                                              --pulse-scale-duration: 2s;
-                                                                                                                                              --opacity-unopened-row: 0.45;
-                                                                                                                                              --bg-active-row: #ffffff;
-                                                                                                                                               --bg-market-zone: #e6f4ea; /* Soft Sage Green */
-                                                                                                                                              --bg-corporate-zone: #f3e8ff;
-                                                                                                                                              --action-buy-edge: #16a34a;
-                                                                                                                                              --action-sell-edge: #dc2626;
-                                                                                                                                              --shadow-card: 0 1px 3px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.24);
-                                                                                                                                            }
-                                                                                #spreadsheet table { border-collapse: collapse; border: 3px solid #333333; background-color: #{COLOR_INACTIVE}; }
-                                                                      #spreadsheet th, #spreadsheet td { border: 1px solid #b3b3b3 !important; vertical-align: middle !important; padding: 4px 2px !important; }
-                                                                                                    #spreadsheet thead tr:last-child th { border-bottom: 3px solid #333333 !important; }
-                                                                                                    #spreadsheet tr.last-player-row th, #spreadsheet tr.last-player-row td { border-bottom: 3px solid #333333 !important; }
-                                                                                                    #spreadsheet tr.last-minor-row th, #spreadsheet tr.last-minor-row td { border-bottom: 3px solid #333333 !important; }
-                                                                                                              .thick-right { border-right: 3px solid #333333 !important; }
-                                                                                                    .no-border { border: none !important; }
-                                                                                                                                .money-value, .padded_number { text-align: right !important; padding-right: 0.5rem !important; }
-                                                  .money-value { font-family: var(--font-money) !important; font-weight: bold !important; color: var(--color-money-text) !important; font-variant-numeric: tabular-nums !important; }
+          :root {
+            --font-money: 'Courier New', monospace;
+            --font-standard: "Helvetica Neue", Helvetica, Arial, sans-serif;
+            --color-money-text: #4c1d95;
+            --accent-action-color: #2563eb;
+            --pulse-opacity-min: 0.75;
+            --pulse-scale-duration: 2s;
+            --opacity-unopened-row: 0.45;
+            --bg-active-row: #ffffff;
+            --bg-market-zone: #e6f4ea; /* Soft Sage Green */
+            --bg-corporate-zone: #f3e8ff;
+            --action-buy-edge: #16a34a;
+            --action-sell-edge: #dc2626;
+            --shadow-card: 0 1px 3px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.24);
+          }
+          #spreadsheet table { border-collapse: collapse; border: 3px solid #333333; background-color: #{COLOR_INACTIVE}; }
+          #spreadsheet th, #spreadsheet td { border: 1px solid #b3b3b3 !important; vertical-align: middle !important; padding: 4px 2px !important; }
+          #spreadsheet thead tr:last-child th { border-bottom: 3px solid #333333 !important; }
+          #spreadsheet tr.last-player-row th, #spreadsheet tr.last-player-row td { border-bottom: 3px solid #333333 !important; }
+          #spreadsheet tr.last-minor-row th, #spreadsheet tr.last-minor-row td { border-bottom: 3px solid #333333 !important; }
+          .thick-right { border-right: 3px solid #333333 !important; }
+          .no-border { border: none !important; }
+          .money-value, .padded_number { text-align: right !important; padding-right: 0.5rem !important; }
+          .money-value { font-family: var(--font-money) !important; font-weight: bold !important; color: var(--color-money-text) !important; font-variant-numeric: tabular-nums !important; }
 
-                                        .game-card { display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; min-width: 3.5rem; height: 1.45rem; font-size: 0.85rem; padding: 0 4px; margin: 2px; border: 1px solid #888888; border-radius: 4px; background-color: #fdfbf7; color: #000000; box-shadow: var(--shadow-card); transition: transform 0.1s ease; font-family: var(--font-standard); }
-                                                                                                              .game-card.clickable:hover { cursor: pointer; transform: translateY(-1px); box-shadow: 0 2px 5px rgba(0,0,0,0.2); }
-                    .game-card.action-sell { border: 2px solid var(--action-sell-edge) !important; background-color: #fef2f2 !important; box-shadow: 0 0 0 1px var(--action-sell-edge) !important; }
+          .game-card { display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; min-width: 3.5rem; height: 1.45rem; font-size: 0.85rem; padding: 0 4px; margin: 2px; border: 1px solid #888888; border-radius: 4px; background-color: #fdfbf7; color: #000000; box-shadow: var(--shadow-card); transition: transform 0.1s ease; font-family: var(--font-standard); }
+          .game-card.clickable:hover { cursor: pointer; transform: translateY(-1px); box-shadow: 0 2px 5px rgba(0,0,0,0.2); }
+          .game-card.action-sell { border: 2px solid var(--action-sell-edge) !important; background-color: #fef2f2 !important; box-shadow: 0 0 0 1px var(--action-sell-edge) !important; }
+          .game-card.action-buy { border: 2px solid var(--action-buy-edge) !important; background-color: #e6f4ea !important; box-shadow: 0 0 0 1px var(--action-buy-edge) !important; }
+          .sell-restricted { text-decoration: line-through !important; opacity: 0.5 !important; cursor: not-allowed !important; }
+          .token-bond { display: inline-block; width: 12px; height: 12px; background-color: #b91c1c; border-radius: 2px; }
+          .align-top { vertical-align: top !important; }
 
+          tr.active-turn-focus { background-color: var(--bg-active-row) !important; animation: zeroJankPulse var(--pulse-scale-duration) infinite ease-in-out; }
+          tr.active-turn-focus th, tr.active-turn-focus td { box-shadow: inset 0 3px 0 var(--accent-action-color), inset 0 -3px 0 var(--accent-action-color) !important; }
+          tr.active-turn-focus th:first-child, tr.active-turn-focus td:first-child { box-shadow: inset 3px 3px 0 var(--accent-action-color), inset 0 -3px 0 var(--accent-action-color) !important; }
+          tr.active-turn-focus th:last-child, tr.active-turn-focus td:last-child { box-shadow: inset -3px 3px 0 var(--accent-action-color), inset 0 -3px 0 var(--accent-action-color) !important; }
 
-                                                                                                            .game-card.action-buy { border: 2px solid var(--action-buy-edge) !important; background-color: #e6f4ea !important; box-shadow: 0 0 0 1px var(--action-buy-edge) !important; }                                                  #{'                                         '}
-                                                                                                                                          .sell-restricted { text-decoration: line-through !important; opacity: 0.5 !important; cursor: not-allowed !important; }
-                                                                                                                                          .token-bond { display: inline-block; width: 12px; height: 12px; background-color: #b91c1c; border-radius: 2px; }
-                                                                                                                                          .align-top { vertical-align: top !important; }
+          @keyframes zeroJankPulse { 0% { opacity: 1; } 50% { opacity: var(--pulse-opacity-min); } 100% { opacity: 1; } }
 
-
-                                                                  tr.active-turn-focus { background-color: var(--bg-active-row) !important; animation: zeroJankPulse var(--pulse-scale-duration) infinite ease-in-out; }                                                                                                   tr.active-turn-focus th, tr.active-turn-focus td { box-shadow: inset 0 3px 0 var(--accent-action-color), inset 0 -3px 0 var(--accent-action-color) !important; }
-                                                                                                                                          tr.active-turn-focus th:first-child, tr.active-turn-focus td:first-child { box-shadow: inset 3px 3px 0 var(--accent-action-color), inset 0 -3px 0 var(--accent-action-color) !important; }
-                                                                                                                                          tr.active-turn-focus th:last-child, tr.active-turn-focus td:last-child { box-shadow: inset -3px 3px 0 var(--accent-action-color), inset 0 -3px 0 var(--accent-action-color) !important; }
-                                                                                                    #{'                                         '}
-                                                                                                                                          @keyframes zeroJankPulse { 0% { opacity: 1; } 50% { opacity: var(--pulse-opacity-min); } 100% { opacity: 1; } }
-
-                                                                                                                                          tr.company-row-unfloated, tr.company-row-closed { opacity: var(--opacity-unopened-row) !important; filter: grayscale(40%) !important; }
+          tr.company-row-unfloated, tr.company-row-closed { opacity: var(--opacity-unopened-row) !important; filter: grayscale(40%) !important; }
           tr.company-row-unfloated:hover, tr.company-row-closed:hover { opacity: 1 !important; filter: none !important; }
           tr.active-turn-focus:hover { animation: none !important; opacity: 1 !important; }
-                                                                                                                                          .column-zone-market { background-color: var(--bg-market-zone) !important; }
+
+          .column-zone-market { background-color: var(--bg-market-zone) !important; }
           .column-zone-corporate { background-color: var(--bg-corporate-zone) !important; }
           tr.active-turn-focus td.column-zone-market, tr.active-turn-focus td.column-zone-corporate { background-color: var(--bg-active-row) !important; }
-                      th.column-zone-corporate { background-color: #e9d5ff !important; color: #4c1d95 !important; }
+          th.column-zone-corporate { background-color: #e9d5ff !important; color: #4c1d95 !important; }
           .status-corp-wrapper:hover { z-index: 99999; }
           .status-corp-tooltip, .status-company-tooltip, .cmd-corp-tooltip, .cmd-company-tooltip { display: none !important; }
-          #{'          '}
         CSS
 
         h(:div, [
@@ -207,7 +204,7 @@ module View
         display_players.each_with_index do |p, idx|
           bg_color = p == active_player ? COLOR_ACTIVE : COLOR_INACTIVE
           is_last = idx == @game.players.size - 1
-          comp_cells << render_companies(p, bg_color, is_last: is_last)
+          comp_cells << render_companies(p, bg_color, nil, is_last: is_last)
         end
         rows << comp_cells
 
@@ -309,8 +306,11 @@ module View
           props
         end
 
-        treasury = []
-        treasury << h('th.column-zone-corporate', {}, render_sort_link('Treasury', :treasury)) if show_treasury?
+        treasury_headers = []
+        if has_treasury_column?
+          header_name = any_reserved_shares? && !@game.separate_treasury? ? @game.ipo_reserved_name : 'Treasury'
+          treasury_headers << h('th.column-zone-corporate', {}, render_sort_link(header_name, :treasury))
+        end
 
         extra = []
         if @game.respond_to?(:capitalization_type_desc)
@@ -323,27 +323,17 @@ module View
         extra << h('th.column-zone-corporate', {}, render_sort_link('Loans', :loans)) if @game.total_loans&.nonzero?
         extra << h('th.column-zone-corporate', {}, render_sort_link('Shorts', :shorts)) if @game.respond_to?(:available_shorts)
 
+        if @game.total_loans&.positive?
+          extra << h('th.column-zone-corporate', {}, render_sort_link('Buying Power', :buying_power))
+          extra << h('th.column-zone-corporate', {}, render_sort_link('Interest Due', :interest)) if @game.corporation_show_interest?
+        end
+
         if (@diff_corp_sizes = @game.all_corporations.any? { |c| @game.corporation_size(c) != :small })
           extra << h('th.column-zone-corporate', {}, render_sort_link('Size', :corp_size))
         end
         @extra_size = extra.size
 
-        corporation_props_size = (@show_privates ? 5 : 4) + extra.size + treasury.size
-
-        players_title = h('th.thick-right', th_props[display_players.size], 'Players')
-
-        pool_th_props = th_props[2]
-        pool_th_props[:attrs][:class] = 'column-zone-market'
-        pool_title = h('th.thick-right', pool_th_props, 'Pool')
-
-        ipo_th_props = th_props[2]
-        ipo_th_props[:attrs][:class] = 'column-zone-market'
-        ipo_title = h('th.thick-right', ipo_th_props, @game.ipo_name)
-
-        corporation_title = h(:th, th_props[corporation_props_size], ['Corporation ', render_toggle_not_floated_link])
-
         players_subtitles = []
-        subtitles = []
         display_players.each_with_index do |p, idx|
           is_active_col = (p == active_player)
           props = { style: { backgroundColor: is_active_col ? COLOR_ACTIVE : 'inherit' } }
@@ -394,42 +384,47 @@ module View
           h('th.thick-right.column-zone-market', { attrs: { class: 'column-zone-market' }, style: { color: '#000000' } },
             render_sort_link('Price', :share_price)),
         ]
-        ipo_subtitles = [
+
+        bank_subtitles = [
           h('th.column-zone-market', { attrs: { class: 'column-zone-market' }, style: { color: '#000000' } },
-            render_sort_link('Shares', :ipo_shares)),
+            render_sort_link(@game.ipo_name, :ipo_shares)),
           h('th.thick-right.column-zone-market', { attrs: { class: 'column-zone-market' }, style: { color: '#000000' } },
             render_sort_link('Price', :par_price)),
         ]
 
         corporation_subtitles = [
+          *treasury_headers,
           h('th.column-zone-corporate', {}, render_sort_link('Cash', :cash)),
-          *treasury,
           h('th.column-zone-corporate', {}, render_sort_link('Trains', :trains)),
           h('th.column-zone-corporate', {}, render_sort_link('Tokens', :tokens)),
           *extra,
+          h('th.column-zone-corporate', {}, render_sort_link('Order', :order)),
         ]
 
         corporation_subtitles << h('th.column-zone-corporate', {}, render_sort_link('Privates', :companies)) if @show_privates
         corporation_subtitles << h('th.column-zone-corporate', {}, render_sort_link('Last Run', :prev_revenue))
 
-        titles = [
-          players_title,
-          pool_title,
-          ipo_title,
-          corporation_title,
-        ]
+        players_title = h('th.thick-right', th_props[players_subtitles.size], 'Players')
+        pool_title = h('th.thick-right.column-zone-market', th_props[pool_subtitles.size], 'Pool')
+        bank_title = h('th.thick-right.column-zone-market', th_props[bank_subtitles.size], 'Bank / IPO')
+        corporation_title = h(:th, th_props[corporation_subtitles.size, false], ['Corporation ', render_toggle_not_floated_link])
+
+        subtitles = []
         subtitles.concat(players_subtitles)
         subtitles.concat(pool_subtitles)
-        subtitles.concat(ipo_subtitles)
+        subtitles.concat(bank_subtitles)
         subtitles.concat(corporation_subtitles)
 
         [
           h(:tr, [
             h('th.thick-right', { style: { minWidth: '5rem' } }, ''),
-            *titles,
+            players_title,
+            pool_title,
+            bank_title,
+            corporation_title,
           ]),
           h(:tr, [
-            h('th.thick-right', { style: { paddingBottom: '0.3rem' } }, ''),
+            h('th.thick-right', { style: { paddingBottom: '0.3rem' } }, render_sort_link('SYM', :id)),
             *subtitles,
           ]),
         ]
@@ -526,11 +521,61 @@ module View
         result
       end
 
-      def render_corporation(corporation, _operating_order, _current_round, is_last_minor = false)
+      def render_corporation(corporation, operating_order, current_round, is_last_minor = false)
         return '' if @hide_not_floated && !@game.operating_order.include?(corporation)
 
         step = @game.round.active_step
         is_active_row = (active_entity == corporation)
+
+        corp_actions = if is_active_row
+                         actions = if @game.round.respond_to?(:actions_for)
+                                     begin
+                                       @game.round.actions_for(corporation)
+                                     rescue StandardError
+                                       []
+                                     end
+                                   else
+                                     []
+                                   end
+                         actions = step.current_actions || [] if actions.empty? && step.respond_to?(:current_actions)
+                         actions
+                       else
+                         []
+                       end
+
+        issuable_bundles = []
+        if is_active_row && ((%w[issue_shares reissue_shares reissue corporate_sell_shares sell_shares] & corp_actions).any? || step.respond_to?(:issuable_shares) || step.respond_to?(:issuable_bundles))
+          issuable_bundles = begin
+            if step.respond_to?(:issuable_shares)
+              begin
+                step.issuable_shares(corporation)
+              rescue ArgumentError
+                step.issuable_shares
+              end
+            elsif step.respond_to?(:issuable_bundles)
+              begin
+                step.issuable_bundles(corporation)
+              rescue ArgumentError
+                step.issuable_bundles
+              end
+            elsif @game.respond_to?(:issuable_shares)
+              @game.issuable_shares(corporation)
+            elsif step.respond_to?(:bundles_for_corporation)
+              begin
+                step.bundles_for_corporation(corporation, corporation)
+              rescue ArgumentError
+                step.bundles_for_corporation(corporation)
+              end
+            elsif step.respond_to?(:bundles)
+              step.bundles(corporation)
+            else
+              []
+            end
+          rescue StandardError
+            []
+          end || []
+        end
+        can_issue = is_active_row && issuable_bundles.any?
 
         is_unfloated = corporation.respond_to?(:floated?) && !corporation.floated?
         is_directed = corporation.respond_to?(:owner) && (corporation.owner == active_player)
@@ -538,7 +583,6 @@ module View
         tr_props = tr_default_props(is_active_row)
         tr_props[:attrs] ||= {}
 
-        # Attach DOM tracking and the FLIP animation hooks
         tr_props[:key] = corporation.id
         tr_props[:hook] = Lib::RowAnimation.hook(corporation.id)
 
@@ -578,12 +622,6 @@ module View
         is_mauve_corp = is_operating && is_open && sold_more
         corp_zone_bg = is_mauve_corp ? 'var(--bg-corporate-zone)' : COLOR_INACTIVE
 
-        corp_bg_color = corporation.color
-        if !is_operating && corp_bg_color == COLOR_MAUVE
-          corp_bg_color = COLOR_INACTIVE
-        elsif is_mauve_corp
-          corp_bg_color = COLOR_MAUVE
-        end
         name_props = {
           attrs: { class: 'status-corp-wrapper' },
           style: {
@@ -598,55 +636,127 @@ module View
 
         # Map active corporate property cells
         treasury = []
-        if show_treasury?
+        bound_issue_to_treasury = false
+
+        if has_treasury_column?
           t_shares = treasury_shares_for(corporation)
           treasury_cards = []
 
           if t_shares.any?
             t_shares.group_by { |s| s.corporation || corporation }.each do |c, c_shares|
               num_s = c_shares.size
-              pct = c.respond_to?(:share_percent) && c.share_percent ? (num_s * c.share_percent) : (num_s * 10)
-              label = c == corporation ? "#{pct}%" : "#{c.id} #{pct}%"
+              label = c == corporation ? num_s.to_s : "#{c.id} #{num_s}"
 
               bundle = c_shares.first.to_bundle
               can_sell = is_active_row && (corp_actions.include?('sell_shares') || corp_actions.include?('corporate_sell_shares') || corp_actions.include?('issue_shares')) &&
                          (!step.respond_to?(:can_sell?) || step.can_sell?(corporation, bundle))
 
+              is_issuable = can_issue && issuable_bundles.any?
+
               classes = ['game-card']
-              classes << 'action-sell clickable' if can_sell
+              classes << 'action-sell' if can_sell || is_issuable
+              classes << 'clickable' if can_sell || is_issuable
 
-              click_handler = if can_sell
-                                lambda { |_e|
-                                  process_action(Engine::Action::SellShares.new(
-                                    corporation,
-                                    shares: bundle.shares,
-                                    share_price: corporation.share_price,
-                                    percent: bundle.percent
-                                  ))
-                                }
-                              end
+              click_handler = nil
+              dropdowns = []
 
-              treasury_cards << render_railcard(label, classes, click_handler)
+              if can_sell || is_issuable
+                if issuable_bundles.size > 1 && is_issuable
+                  click_handler = lambda {
+                    Lib::Storage['issue_menu_corp'] = corporation.id
+                    update
+                  }
+                else
+                  target_bundle = is_issuable && issuable_bundles.any? ? issuable_bundles.first : bundle
+                  click_handler = lambda { |_e|
+                    exec_issue_share_bundle(corporation, target_bundle, corp_actions)
+                  }
+                end
+              end
+
+              if Lib::Storage['issue_menu_corp'] == corporation.id && is_issuable && !issuable_bundles.empty?
+                options = issuable_bundles.map do |ib|
+                  num = if ib.respond_to?(:num_shares)
+                          ib.num_shares
+                        else
+                          (ib.respond_to?(:shares) ? ib.shares.size : 1)
+                        end
+                  pct_str = ib.respond_to?(:percent) && ib.percent ? "#{ib.percent}%" : "#{num}S"
+                  {
+                    label: "Issue #{pct_str}",
+                    action: lambda { |_event|
+                      Lib::Storage['issue_menu_corp'] = nil
+                      exec_issue_share_bundle(corporation, ib, corp_actions)
+                    },
+                  }
+                end
+                cancel_handler = lambda {
+                  Lib::Storage['issue_menu_corp'] = nil
+                  update
+                }
+                dropdowns << render_choice_menu('Issue shares:', options, cancel_handler)
+              end
+
+              treasury_cards << render_railcard(label, classes, click_handler, nil, dropdowns)
             end
           end
 
-          if @game.respond_to?(:all_corporations)
-            @game.all_corporations.each do |c|
-              next if c == corporation
-              next if t_shares.any? { |s| (s.corporation || corporation) == c }
+          res_shares = num_reserved_shares(corporation)
+          if res_shares.positive?
+            label = res_shares.to_s
 
-              other_num = num_shares_of(corporation, c)
-              if other_num.positive?
-                other_pct = c.respond_to?(:share_percent) && c.share_percent ? (other_num * c.share_percent) : (other_num * 10)
-                treasury_cards << render_railcard("#{c.id} #{other_pct}%", ['game-card'])
+            is_issuable = can_issue && issuable_bundles.any?
+            bound_issue_to_treasury = true if is_issuable
+
+            classes = ['game-card']
+            classes << 'action-sell' if is_issuable
+            classes << 'clickable' if is_issuable
+
+            click_handler = nil
+            dropdowns = []
+
+            if is_issuable
+              if issuable_bundles.size > 1
+                click_handler = lambda {
+                  Lib::Storage['issue_menu_corp'] = corporation.id
+                  update
+                }
+              else
+                target_bundle = issuable_bundles.first
+                click_handler = lambda { |_e|
+                  exec_issue_share_bundle(corporation, target_bundle, corp_actions)
+                }
+              end
+
+              if Lib::Storage['issue_menu_corp'] == corporation.id
+                options = issuable_bundles.map do |ib|
+                  num = if ib.respond_to?(:num_shares)
+                          ib.num_shares
+                        else
+                          (ib.respond_to?(:shares) ? ib.shares.size : 1)
+                        end
+                  pct_str = ib.respond_to?(:percent) && ib.percent ? "#{ib.percent}%" : "#{num}S"
+                  {
+                    label: "Issue #{pct_str}",
+                    action: lambda { |_event|
+                      Lib::Storage['issue_menu_corp'] = nil
+                      exec_issue_share_bundle(corporation, ib, corp_actions)
+                    },
+                  }
+                end
+                cancel_handler = lambda {
+                  Lib::Storage['issue_menu_corp'] = nil
+                  update
+                }
+                dropdowns << render_choice_menu('Issue shares:', options, cancel_handler)
               end
             end
+
+            treasury_cards << render_railcard(label, classes, click_handler, nil, dropdowns)
           end
 
-          content = treasury_cards.any? ? treasury_cards : [h(:span, { style: { opacity: '0.35', fontSize: '0.8rem', fontFamily: 'var(--font-standard)' } }, '0%')]
-          treasury << h('td.column-zone-corporate',
-                        { style: { backgroundColor: corp_zone_bg, textAlign: 'center', minWidth: '3.5rem' } },
-                        content)
+          content = treasury_cards.any? ? treasury_cards : [h(:span, { style: { opacity: '0.35', fontSize: '0.8rem', fontFamily: 'var(--font-standard)' } }, '')]
+          treasury << h('td.column-zone-corporate', { style: { textAlign: 'center', minWidth: '3.5rem' } }, content)
         end
 
         extra = []
@@ -654,34 +764,14 @@ module View
           desc_text = @game.capitalization_type_desc(corporation)
           if @is_escrow_game && desc_text&.include?('Escrow')
             clean_digits = desc_text.scan(/\d+/).first || '0'
-            extra << h('td.money-value', { style: { backgroundColor: corp_zone_bg } }, clean_digits)
+            extra << h('td.column-zone-corporate.money-value', {}, clean_digits)
           else
-            extra << h('td', { style: { backgroundColor: corp_zone_bg } }, desc_text)
+            extra << h('td.column-zone-corporate', {}, desc_text)
           end
         end
 
-        extra << h('td', { style: { backgroundColor: corp_zone_bg } }, [render_loan_dots(corporation)]) if @game.total_loans&.nonzero?
-        if @game.respond_to?(:available_shorts)
-          taken, total = if @game.respond_to?(:available_shorts)
-                           @game.available_shorts(corporation)
-                         else
-                           [0, 0]
-                         end
-          extra << h('td', { style: { backgroundColor: corp_zone_bg } }, "#{taken} / #{total}")
-        end
-
-        if @diff_corp_sizes
-          size_name = if corporation.minor?
-                        'Minor'
-                      elsif @game.respond_to?(:corporation_size_name)
-                        @game.corporation_size_name(corporation)
-                      else
-                        ''
-                      end
-          extra << h('td', { style: { backgroundColor: corp_zone_bg } }, size_name)
-        end
-
         extra << h('td.column-zone-corporate', {}, [render_loan_dots(corporation)]) if @game.total_loans&.nonzero?
+
         if @game.respond_to?(:available_shorts)
           taken, total = if @game.respond_to?(:available_shorts)
                            @game.available_shorts(corporation)
@@ -689,6 +779,19 @@ module View
                            [0, 0]
                          end
           extra << h('td.column-zone-corporate', {}, "#{taken} / #{total}")
+        end
+
+        if @game.total_loans&.positive?
+          extra << h('td.column-zone-corporate.money-value', {}, @game.format_currency(@game.buying_power(corporation, full: true)))
+          interest_props = { style: {} }
+          unless @game.can_pay_interest?(corporation)
+            color = StockMarket::COLOR_MAP[:yellow]
+            interest_props[:style][:backgroundColor] = color
+            interest_props[:style][:color] = contrast_on(color)
+          end
+          if @game.corporation_show_interest?
+            extra << h('td.column-zone-corporate.money-value', interest_props, @game.format_currency(@game.interest_owed(corporation)).to_s)
+          end
         end
 
         if @diff_corp_sizes
@@ -929,22 +1032,6 @@ module View
           end
         end
 
-        corp_actions = if is_active_row
-                         actions = if @game.round.respond_to?(:actions_for)
-                                     begin
-                                       @game.round.actions_for(corporation)
-                                     rescue StandardError
-                                       []
-                                     end
-                                   else
-                                     []
-                                   end
-                         actions = step.current_actions || [] if actions.empty? && step.respond_to?(:current_actions)
-                         actions
-                       else
-                         []
-                       end
-
         # --- Pool Shares Content (Redeem) ---
         can_redeem = false
         redeemable_bundles = []
@@ -1127,279 +1214,177 @@ module View
           pool_cell_children << render_railcard(pool_share_text, card_classes, pool_click_handler, nil, dropdowns)
         end
 
-        # --- Pool Market Price Content ---
-        market_style = {}
-        if corporation.share_price&.highlight? &&
-          (m_color = StockMarket::COLOR_MAP[@game.class::STOCKMARKET_COLORS[corporation.share_price.type]])
-          market_style[:backgroundColor] = m_color
-          market_style[:color] = contrast_on(m_color)
-        end
-        is_operating = @game.operating_order.include?(corporation)
-        clean_market_price = if corporation.share_price && is_operating
-                               @game.format_currency(corporation.share_price.price)
-                             else
-                               ''
-                             end
-
-        pool_row_content = [
-                  h('td.column-zone-market',
-                    { attrs: { id: "pool_shares_#{corporation.id}" }, style: { position: 'relative', textAlign: 'center' } }, pool_cell_children),
-                  h('td.padded_number.column-zone-market.money-value', { style: market_style }, clean_market_price),
-                ]
-
         # --- IPO Shares Content ---
-        issuable_bundles = []
-        if is_active_row && ((%w[issue_shares reissue_shares reissue corporate_sell_shares sell_shares] & corp_actions).any? || step.respond_to?(:issuable_shares) || step.respond_to?(:issuable_bundles))
-          issuable_bundles = begin
-            if step.respond_to?(:issuable_shares)
-              begin
-                step.issuable_shares(corporation)
-              rescue ArgumentError
-                step.issuable_shares
-              end
-            elsif step.respond_to?(:issuable_bundles)
-              begin
-                step.issuable_bundles(corporation)
-              rescue ArgumentError
-                step.issuable_bundles
-              end
-            elsif @game.respond_to?(:issuable_shares)
-              @game.issuable_shares(corporation)
-            elsif step.respond_to?(:bundles_for_corporation)
-              begin
-                step.bundles_for_corporation(corporation, corporation)
-              rescue ArgumentError
-                step.bundles_for_corporation(corporation)
-              end
-            elsif step.respond_to?(:bundles)
-              step.bundles(corporation)
-            else
-              []
-            end
-          rescue StandardError
-            []
-          end || []
-        end
-        can_issue = is_active_row && issuable_bundles.any?
+        ipo_share_text = n_ipo_shares.positive? ? "#{n_ipo_shares * 10}%" : ''
 
-        ipo_share_text = if n_ipo_shares.positive?
-                           "#{n_ipo_shares * 10}%"
-                         elsif can_issue && issuable_bundles.any?
-                           pct = issuable_bundles.first.respond_to?(:percent) ? issuable_bundles.first.percent : 10
-                           "#{pct}%"
-                         else
-                           ''
-                         end
         ipo_click_handler = nil
         valid_ipo_shares = []
 
-        if can_issue
-          ipo_click_handler = if issuable_bundles.size > 1
-                                lambda {
-                                  Lib::Storage['issue_menu_corp'] = corporation.id
-                                  update
-                                }
-                              else
-                                lambda { |_event|
-                                  exec_issue_share_bundle(corporation, issuable_bundles.first, corp_actions)
-                                }
-                              end
-        else
-          player_actions = if active_player && @game.round.respond_to?(:actions_for)
-                             begin
-                               @game.round.actions_for(active_player)
-                             rescue StandardError
-                               []
-                             end
-                           elsif step.respond_to?(:actions)
-                             begin
-                               step.actions(active_player) || []
-                             rescue StandardError
-                               []
-                             end
-                           elsif step.respond_to?(:current_actions)
-                             step.current_actions || []
-                           else
+        player_actions = if active_player && @game.round.respond_to?(:actions_for)
+                           begin
+                             @game.round.actions_for(active_player)
+                           rescue StandardError
                              []
-                           end || []
-          is_corp = corporation.respond_to?(:corporation?) &&
-                     corporation.corporation? &&
-                     (!corporation.respond_to?(:minor?) || !corporation.minor?) &&
-                     (!corporation.respond_to?(:ipoed) || !corporation.ipoed)
-
-          corp_available = if corporation.respond_to?(:available?)
-                             corporation.available?
-                           elsif @game.respond_to?(:corporation_available?)
-                             @game.corporation_available?(corporation)
-                           else
-                             true
                            end
-
-          can_par = is_corp &&
-                     active_player &&
-                     player_actions.include?('par') &&
-                     corp_available &&
-                     (!@game.respond_to?(:can_par?) || @game.can_par?(corporation, active_player)) &&
-                     (!step.respond_to?(:can_par?) || begin
-                       step.can_par?(corporation, active_player)
-                     rescue ArgumentError
-                       step.can_par?(active_player, corporation)
-                     end)
-
-          can_bid = active_player && player_actions.include?('bid') && (
-            if step.respond_to?(:can_bid?)
-              begin
-                step.can_bid?(active_player, corporation)
-              rescue ArgumentError
-                step.can_bid?(corporation)
-              end
-            elsif is_corp && @game.respond_to?(:can_par?)
-              @game.can_par?(corporation, active_player)
-            else
-              corporation.respond_to?(:ipoed) ? !corporation.ipoed : true
-            end
-          )
-
-          par_prices = []
-          if can_par
-            par_prices = if step.respond_to?(:get_par_prices_with_help)
-                           step.get_par_prices_with_help(active_player, corporation).sort_by(&:price)
-                         elsif step.respond_to?(:get_par_prices)
-                           step.get_par_prices(active_player, corporation).sort_by(&:price)
-                         elsif @game.respond_to?(:par_prices)
-                           @game.par_prices(corporation).sort_by(&:price)
+                         elsif step.respond_to?(:actions)
+                           begin
+                             step.actions(active_player) || []
+                           rescue StandardError
+                             []
+                           end
+                         elsif step.respond_to?(:current_actions)
+                           step.current_actions || []
                          else
-                           @game.stock_market.par_prices.sort_by(&:price)
+                           []
+                         end || []
+
+        is_corp = corporation.respond_to?(:corporation?) &&
+                   corporation.corporation? &&
+                   (!corporation.respond_to?(:minor?) || !corporation.minor?) &&
+                   (!corporation.respond_to?(:ipoed) || !corporation.ipoed)
+
+        corp_available = if corporation.respond_to?(:available?)
+                           corporation.available?
+                         elsif @game.respond_to?(:corporation_available?)
+                           @game.corporation_available?(corporation)
+                         else
+                           true
                          end
-            if @game.respond_to?(:par_chart)
-              par_prices = par_prices.reject do |sp|
-                slots = @game.par_chart[sp]
-                slots && slots.none?(&:nil?)
-              end
+
+        can_par = is_corp &&
+                   active_player &&
+                   player_actions.include?('par') &&
+                   corp_available &&
+                   (!@game.respond_to?(:can_par?) || @game.can_par?(corporation, active_player)) &&
+                   (!step.respond_to?(:can_par?) || begin
+                     step.can_par?(corporation, active_player)
+                   rescue ArgumentError
+                     step.can_par?(active_player, corporation)
+                   end)
+
+        can_bid = active_player && player_actions.include?('bid') && (
+          if step.respond_to?(:can_bid?)
+            begin
+              step.can_bid?(active_player, corporation)
+            rescue ArgumentError
+              step.can_bid?(corporation)
             end
+          elsif is_corp && @game.respond_to?(:can_par?)
+            @game.can_par?(corporation, active_player)
+          else
+            corporation.respond_to?(:ipoed) ? !corporation.ipoed : true
+          end
+        )
 
-            # Resolve presidency certificate share multiplier
-            pres_share = if corporation.respond_to?(:presidents_share) && corporation.presidents_share
-                           corporation.presidents_share
-                         elsif corporation.respond_to?(:shares) && corporation.shares&.first
-                           corporation.shares.first
-                         end
-
-            shares_multiplier = if pres_share.respond_to?(:multiplier) && pres_share.multiplier
-                                  pres_share.multiplier
-                                elsif pres_share.respond_to?(:percent) && corporation.respond_to?(:share_percent) && corporation.share_percent&.positive?
-                                  (pres_share.percent / corporation.share_percent).to_i
-                                elsif pres_share.respond_to?(:percent)
-                                  (pres_share.percent / 10).to_i
-                                else
-                                  2
-                                end
-
-            if step.respond_to?(:par_shares)
-              bundle = begin
-                step.par_shares(corporation)
-              rescue ArgumentError
-                step.par_shares(active_player, corporation)
-              end
-              if bundle
-                shares_multiplier = if bundle.respond_to?(:num_shares)
-                                      bundle.num_shares
-                                    elsif bundle.respond_to?(:shares) && bundle.shares
-                                      bundle.shares.size
-                                    else
-                                      shares_multiplier
-                                    end
-              end
+        par_prices = []
+        if can_par
+          par_prices = if step.respond_to?(:get_par_prices_with_help)
+                         step.get_par_prices_with_help(active_player, corporation).sort_by(&:price)
+                       elsif step.respond_to?(:get_par_prices)
+                         step.get_par_prices(active_player, corporation).sort_by(&:price)
+                       elsif @game.respond_to?(:par_prices)
+                         @game.par_prices(corporation).sort_by(&:price)
+                       else
+                         @game.stock_market.par_prices.sort_by(&:price)
+                       end
+          if @game.respond_to?(:par_chart)
+            par_prices = par_prices.reject do |sp|
+              slots = @game.par_chart[sp]
+              slots && slots.none?(&:nil?)
             end
-            shares_multiplier = 1 if shares_multiplier.to_i <= 0
+          end
 
-            # Filter prices strictly to what the active player can physically afford
-            player_cash = active_player.respond_to?(:cash) ? (active_player.cash || 0) : 0
-            par_prices = par_prices.select do |sp|
-              price_val = sp.respond_to?(:price) ? sp.price : sp.to_i
-              player_cash >= (price_val * shares_multiplier)
-            end
+          pres_share = if corporation.respond_to?(:presidents_share) && corporation.presidents_share
+                         corporation.presidents_share
+                       elsif corporation.respond_to?(:shares) && corporation.shares&.first
+                         corporation.shares.first
+                       end
 
-            unless par_prices.empty?
-              ipo_click_handler = lambda {
-                Lib::Storage['par_menu_corp'] = corporation.id
-                update
-              }
-            end
-          elsif can_bid
-            ipo_click_handler = lambda {
-              store(:selected_corporation, corporation)
-              store(:selected_company, corporation)
-              Lib::Storage['selected_bid_corp'] = corporation.id
-              update
-            }
-          elsif step.respond_to?(:can_buy?) && active_player
-            ipo_shares = corporation.respond_to?(:ipo_shares) ? corporation.ipo_shares : []
-            valid_ipo_shares = ipo_shares.select do |s|
-              (s.respond_to?(:buyable) ? s.buyable : true) && step.can_buy?(active_player, s.to_bundle)
-            end
+          shares_multiplier = if pres_share.respond_to?(:multiplier) && pres_share.multiplier
+                                pres_share.multiplier
+                              elsif pres_share.respond_to?(:percent) && corporation.respond_to?(:share_percent) && corporation.share_percent&.positive?
+                                (pres_share.percent / corporation.share_percent).to_i
+                              elsif pres_share.respond_to?(:percent)
+                                (pres_share.percent / 10).to_i
+                              else
+                                2
+                              end
 
-            unless valid_ipo_shares.empty?
-              ipo_click_handler = if valid_ipo_shares.uniq { |s| s.to_bundle.percent }.size > 1
-                                    lambda {
-                                      Lib::Storage['buy_ipo_menu_corp'] = corporation.id
-                                      update
-                                    }
+          if step.respond_to?(:par_shares)
+            bundle = begin
+              step.par_shares(corporation)
+            rescue ArgumentError
+              step.par_shares(active_player, corporation)
+            end
+            if bundle
+              shares_multiplier = if bundle.respond_to?(:num_shares)
+                                    bundle.num_shares
+                                  elsif bundle.respond_to?(:shares) && bundle.shares
+                                    bundle.shares.size
                                   else
-                                    lambda { |_event|
-                                      source_selector = "#ipo_shares_#{corporation.id} .game-card"
-                                      exec_buy_shares(source_selector, active_player, valid_ipo_shares.first.to_bundle, corporation.id)
-                                    }
+                                    shares_multiplier
                                   end
             end
           end
-        end
+          shares_multiplier = 1 if shares_multiplier.to_i <= 0
 
+          player_cash = active_player.respond_to?(:cash) ? (active_player.cash || 0) : 0
+          par_prices = par_prices.select do |sp|
+            price_val = sp.respond_to?(:price) ? sp.price : sp.to_i
+            player_cash >= (price_val * shares_multiplier)
+          end
+
+          unless par_prices.empty?
+            ipo_click_handler = lambda {
+              Lib::Storage['par_menu_corp'] = corporation.id
+              update
+            }
+          end
+        elsif can_bid
+          ipo_click_handler = lambda {
+            store(:selected_corporation, corporation)
+            store(:selected_company, corporation)
+            Lib::Storage['selected_bid_corp'] = corporation.id
+            update
+          }
+        elsif step.respond_to?(:can_buy?) && active_player
+          ipo_shares = corporation.respond_to?(:ipo_shares) ? corporation.ipo_shares : []
+          valid_ipo_shares = ipo_shares.select do |s|
+            (s.respond_to?(:buyable) ? s.buyable : true) && step.can_buy?(active_player, s.to_bundle)
+          end
+
+          unless valid_ipo_shares.empty?
+            ipo_click_handler = if valid_ipo_shares.uniq { |s| s.to_bundle.percent }.size > 1
+                                  lambda {
+                                    Lib::Storage['buy_ipo_menu_corp'] = corporation.id
+                                    update
+                                  }
+                                else
+                                  lambda { |_event|
+                                    source_selector = "#ipo_shares_#{corporation.id} .game-card"
+                                    exec_buy_shares(source_selector, active_player, valid_ipo_shares.first.to_bundle, corporation.id)
+                                  }
+                                end
+          end
+        end
         ipo_cell_children = []
         unless ipo_share_text.empty?
           card_classes = ['game-card']
-          if can_issue
-            card_classes << 'action-sell'
-            card_classes << 'clickable' if ipo_click_handler
-          elsif ipo_click_handler
+          if ipo_click_handler
             card_classes << 'action-buy'
             card_classes << 'clickable'
           end
 
           dropdowns = []
-
-          if Lib::Storage['issue_menu_corp'] == corporation.id && can_issue && !issuable_bundles.empty?
-            options = issuable_bundles.map do |bundle|
-              num = if bundle.respond_to?(:num_shares)
-                      bundle.num_shares
-                    else
-                      (bundle.respond_to?(:shares) ? bundle.shares.size : 1)
-                    end
-              pct_str = bundle.respond_to?(:percent) && bundle.percent ? "#{bundle.percent}%" : "#{num}S"
-              {
-                label: "Issue #{pct_str}",
-                action: lambda { |_event|
-                  Lib::Storage['issue_menu_corp'] = nil
-                  exec_issue_share_bundle(corporation, bundle, corp_actions)
-                },
-              }
-            end
-            cancel_handler = lambda {
-              Lib::Storage['issue_menu_corp'] = nil
-              update
-            }
-            dropdowns << render_choice_menu('Issue shares:', options, cancel_handler)
-          end
-
           if Lib::Storage['buy_ipo_menu_corp'] == corporation.id && !valid_ipo_shares.empty?
             options = valid_ipo_shares.map do |share|
               {
                 label: "Buy #{share.to_bundle.percent}%",
                 action: lambda { |_event|
-                          Lib::Storage['buy_ipo_menu_corp'] = nil
-                          source_selector = "#ipo_shares_#{corporation.id} .game-card"
-                          exec_buy_shares_simple(source_selector, active_player, share.to_bundle, corporation.id)
-                        },
+                  Lib::Storage['buy_ipo_menu_corp'] = nil
+                  source_selector = "#ipo_shares_#{corporation.id} .game-card"
+                  exec_buy_shares_simple(source_selector, active_player, share.to_bundle, corporation.id)
+                },
               }
             end
             cancel_handler = lambda {
@@ -1412,13 +1397,32 @@ module View
           ipo_cell_children << render_railcard(ipo_share_text, card_classes, ipo_click_handler, nil, dropdowns)
         end
 
-        # --- IPO Par Price Content ---
+        border_style = "1px solid #{color_for(:font2)}"
+        market_style = {}
+        if corporation.share_price&.highlight? &&
+          (m_color = StockMarket::COLOR_MAP[@game.class::STOCKMARKET_COLORS[corporation.share_price.type]])
+          market_style[:backgroundColor] = m_color
+          market_style[:color] = contrast_on(m_color)
+        end
+        is_operating = @game.operating_order.include?(corporation)
+        clean_market_price = if corporation.share_price && is_operating
+                               @game.format_currency(corporation.share_price.price)
+                             else
+                               ''
+                             end
         clean_par_price = corporation.par_price ? @game.format_currency(corporation.par_price.price) : ''
-        ipo_row_content = [
-                  h('td.column-zone-market', { attrs: { id: "ipo_shares_#{corporation.id}" }, style: { position: 'relative', textAlign: 'center' } },
-                    ipo_cell_children),
-                  h('td.padded_number.column-zone-market.money-value', {}, clean_par_price),
-                ]
+
+        reserved = []
+
+        pool_row_content = [
+          h('td.column-zone-market', { attrs: { id: "pool_shares_#{corporation.id}" }, style: { position: 'relative', textAlign: 'center', borderLeft: border_style } }, pool_cell_children),
+          h('td.padded_number.column-zone-market.money-value', { style: market_style.merge(borderRight: border_style) }, clean_market_price),
+        ]
+
+        bank_row_content = [
+          h('td.column-zone-market', { attrs: { id: "ipo_shares_#{corporation.id}" }, style: { position: 'relative', textAlign: 'center' } }, ipo_cell_children),
+          h('td.padded_number.column-zone-market.money-value', { style: { borderRight: border_style } }, clean_par_price),
+        ]
 
         train_buyable_step = step&.current_actions&.include?('buy_train')
         train_discardable_step = step&.current_actions&.include?('discard_train')
@@ -1437,7 +1441,6 @@ module View
           train_click_handler = nil
           menu_dropdown = nil
 
-          # Check if the train is authoritatively buyable by active_entity (strictly from same player)
           is_buyable_other_train = if !same_player
                                      false
                                    elsif step_buyable_trains
@@ -1527,16 +1530,30 @@ module View
         last_rev = corporation.operating_history.values.last&.revenue
         clean_rev = last_rev ? @game.format_currency(last_rev) : ''
 
+        order_props = { style: { paddingLeft: '1.2em' } }
+        order_props[:style][:color] =
+          if operating_order[0] == UNSTARTED
+            'transparent'
+          elsif corporation.operating_history.keys[-1] == current_round
+            convert_hex_to_rgba(color_for(:font2), 0.5)
+          end
+
         corporation_row_content = [
-                 h('td.padded_number.money-value',
-                   { hook: Lib::MoneyAnimation.hook, style: { backgroundColor: corp_zone_bg } }, clean_corp_cash),
                  *treasury,
-                 h('td',
-                   { attrs: { id: "trains_#{corporation.id}" }, style: { backgroundColor: corp_zone_bg } }, train_cards),
-                 h('td', { style: { backgroundColor: corp_zone_bg } }, [render_unplaced_tokens(corporation)]),
+                 h('td.padded_number.column-zone-corporate.money-value',
+                   { hook: Lib::MoneyAnimation.hook }, clean_corp_cash),
+                 h('td.column-zone-corporate',
+                   { attrs: { id: "trains_#{corporation.id}" } }, train_cards),
+                 h('td.column-zone-corporate', {}, [render_unplaced_tokens(corporation)]),
                  *extra,
+                 h('td.padded_number.column-zone-corporate', order_props, if operating_order[0] == UNFLOATED
+                                                                            "[#{operating_order[1]}]"
+                                                                          else
+                                                                            operating_order[1]
+                                                                          end),
                 ]
-        corporation_row_content << render_companies(corporation, corp_zone_bg) if @show_privates
+        corporation_row_content << render_companies(corporation, nil, 'column-zone-corporate') if @show_privates
+
         last_run = corporation.operating_history.values.last
         div = last_run.respond_to?(:dividend) ? last_run.dividend : (last_run[:dividend] if last_run.is_a?(Hash))
         div_kind = (div.respond_to?(:kind) ? div.kind : div).to_s.downcase
@@ -1559,20 +1576,21 @@ module View
         half_held = false if clean_rev.empty? || held
 
         font_color = if held
-                       '#dc2626' # Red
+                       '#dc2626'
                      elsif half_held
-                       '#d97706' # Amber / Orange
+                       '#d97706'
                      end
 
-        rev_class = "td.padded_number#{font_color ? '' : '.money-value'}"
+        rev_class = "td.padded_number.column-zone-corporate#{font_color ? '' : '.money-value'}"
         rev_props = { hook: Lib::MoneyAnimation.hook }
-        rev_props[:style] = { backgroundColor: corp_zone_bg, color: font_color, fontFamily: 'var(--font-money)', fontWeight: 'bold', fontVariantNumeric: 'tabular-nums' }.compact
+        rev_props[:style] = { color: font_color, fontFamily: 'var(--font-money)', fontWeight: 'bold', fontVariantNumeric: 'tabular-nums' }.compact
 
         corporation_row_content << h(rev_class, rev_props, clean_rev)
+
         row_content = []
         row_content.concat(players_row_content)
         row_content.concat(pool_row_content)
-        row_content.concat(ipo_row_content)
+        row_content.concat(bank_row_content)
         row_content.concat(corporation_row_content)
 
         h(:tr, tr_props, [
@@ -1762,8 +1780,8 @@ module View
         h(:div, { style: { display: 'flex', alignItems: 'center', justifyContent: 'center' } }, dots)
       end
 
-      def render_companies(entity, bg_color = nil)
-        props = { attrs: { id: "companies_#{entity.id}", class: 'align-top' } }
+      def render_companies(entity, bg_color = nil, custom_class = nil)
+        props = { attrs: { id: "companies_#{entity.id}", class: ['align-top', custom_class].compact.join(' ') } }
         props[:style] = if entity.player?
                           {
                             maxWidth: PLAYER_COL_MAX_WIDTH,
@@ -1835,7 +1853,6 @@ module View
                          end
           end
 
-          # Restrict buyable list to only show privates owned by the operating corporation's president
           if active_ent.respond_to?(:corporation?) && active_ent.corporation? && (!c.owner || c.owner != active_ent.owner)
             is_buyable = false
           end
@@ -2000,17 +2017,17 @@ module View
         cert_limit = @game.cert_limit
         props = { style: { color: 'red' } }
         h(:tr, tr_default_props, [
-    h('th.left', 'Cert'),
-    *display_players.map.with_index do |player, idx|
-      is_active_col = (player == active_player)
-      bg_color = is_active_col ? COLOR_ACTIVE : COLOR_INACTIVE
-      num_certs = @game.num_certs(player)
-      cell_props = num_certs > cert_limit ? props.merge(style: { backgroundColor: bg_color }) : { style: { backgroundColor: bg_color } }
-      is_last = idx == @game.players.size - 1
-      h("td.padded_number#{'.thick-right' if is_last}", cell_props, "#{num_certs}/#{cert_limit}")
-    end,
-    h(:td, { attrs: { colspan: 30 }, style: { border: 'none' } }, ''),
-  ])
+          h('th.left', 'Cert'),
+          *display_players.map.with_index do |player, idx|
+            is_active_col = (player == active_player)
+            bg_color = is_active_col ? COLOR_ACTIVE : COLOR_INACTIVE
+            num_certs = @game.num_certs(player)
+            cell_props = num_certs > cert_limit ? props.merge(style: { backgroundColor: bg_color }) : { style: { backgroundColor: bg_color } }
+            is_last = idx == @game.players.size - 1
+            h("td.padded_number#{'.thick-right' if is_last}", cell_props, "#{num_certs}/#{cert_limit}")
+          end,
+          h(:td, { attrs: { colspan: 30 }, style: { border: 'none' } }, ''),
+        ])
       end
 
       def render_player_loans
@@ -2190,32 +2207,44 @@ module View
         [time_val, formatted_time]
       end
 
-      def show_treasury?
-        @game.separate_treasury? || (/1870/.match?(@game.class.name) ? true : false) || @game.all_corporations.any? { |c| treasury_shares_for(c).any? }
+      def has_treasury_column?
+        @game.separate_treasury? || any_reserved_shares? || @game.all_corporations.any? { |c| treasury_shares_for(c).any? }
       end
 
       def treasury_shares_for(corporation)
         if @game.separate_treasury?
           corporation.shares_of(corporation)
-        elsif corporation.respond_to?(:ipo_shares) && corporation.ipo_shares
-          corporation.shares_of(corporation) - corporation.ipo_shares
-        elsif corporation.respond_to?(:treasury_shares) && corporation.treasury_shares
+        elsif @game.respond_to?(:treasury_shares) && @game.treasury_shares(corporation)&.any?
+          @game.treasury_shares(corporation)
+        elsif corporation.respond_to?(:treasury_shares) && corporation.treasury_shares&.any?
           corporation.treasury_shares
+        elsif @game.respond_to?(:redeemed_shares) && @game.redeemed_shares(corporation)&.any?
+          @game.redeemed_shares(corporation)
         else
-          []
+          corporation.respond_to?(:shares_of) ? corporation.shares_of(corporation) : []
         end
       end
 
       def num_ipo_shares(corporation)
         if @game.separate_treasury?
-          num_shares_of(@game.bank, corporation)
+          num_shares_of(@game.bank, corporation) - num_reserved_shares(corporation)
         elsif corporation.respond_to?(:num_ipo_shares)
-          corporation.num_ipo_shares
+          corporation.num_ipo_shares - num_reserved_shares(corporation)
         elsif corporation.respond_to?(:ipo_shares) && corporation.ipo_shares
-          corporation.ipo_shares.size
+          corporation.ipo_shares.size - num_reserved_shares(corporation)
         else
-          num_shares_of(corporation, corporation)
+          num_shares_of(corporation, corporation) - num_reserved_shares(corporation)
         end
+      end
+
+      def num_reserved_shares(corporation)
+        return 0 unless corporation.respond_to?(:num_ipo_reserved_shares)
+
+        corporation.num_ipo_reserved_shares || 0
+      end
+
+      def any_reserved_shares?
+        @game.all_corporations.any? { |c| num_reserved_shares(c).positive? }
       end
 
       def min_width(entity)

@@ -13,6 +13,9 @@ require 'view/game/dashboard/dashboard_card_animation'
 require 'view/game/history_and_undo'
 require 'view/game/dashboard/railcard_helper'
 require 'view/game/round/operating'
+require 'view/game/dashboard/actions_monitor_overlay'
+require 'view/game/dashboard/manual_route_overlay'
+require 'view/game/dashboard/draft_overlay'
 
 class String
   def player?
@@ -40,996 +43,6 @@ end
 
 module View
   module Game
-    module Dashboard
-      class ManualRouteOverlay < Snabberb::Component
-        include Actionable
-        include Lib::Settings
-        include View::Game::Dashboard::RailcardHelper
-
-        FONT_MONEY = '"Courier New", Courier, monospace'
-        COLOR_MONEY = '#4c1d95'
-        SCREAMING_PALETTE = ['#ff1493', '#00ffff', '#7fff00', '#ff00ff'].freeze
-
-        needs :game, store: true
-        needs :routes, store: true, default: []
-        needs :selected_route, store: true, default: nil
-        needs :cmd_router_running, store: true, default: false
-        needs :show_manual_routes, store: true, default: false
-        needs :entity, default: nil
-
-        def current_entity
-          @entity ||
-            @game.round.active_step&.current_entity ||
-            (@game.round.respond_to?(:current_entity) ? @game.round.current_entity : nil) ||
-            @game.current_entity
-        rescue NotImplementedError, StandardError
-          nil
-        end
-
-        def active_routes
-          @routes.select { |r| r.chains.any? }
-        end
-
-        def render
-          entity = current_entity
-          return h(:div) unless entity
-
-          trains = begin
-            if @game.respond_to?(:route_trains)
-              @game.route_trains(entity)
-            elsif entity.respond_to?(:trains)
-              entity.trains
-            else
-              []
-            end
-          rescue StandardError
-            entity.respond_to?(:trains) ? entity.trains : []
-          end || []
-
-          trains = entity.trains || [] if trains.empty? && entity.respond_to?(:trains)
-
-          if @routes.empty? && trains.any?
-            trains.each do |t|
-              @routes << Engine::Route.new(@game, @game.phase, t, routes: @routes)
-            end
-            store(:routes, @routes, skip: true)
-          end
-
-          current_route = @selected_route || @routes.first
-          if current_route != @selected_route && current_route
-            @selected_route = current_route
-            store(:selected_route, @selected_route, skip: true)
-          end
-
-          logo_src = begin
-            setting_for(:simple_logos, @game) ? entity&.simple_logo : entity&.logo
-          rescue StandardError
-            nil
-          end
-
-          bg_color = entity.respond_to?(:color) ? (entity.color || '#4169e1') : '#333333'
-          text_color = entity.respond_to?(:text_color) ? (entity.text_color || 'white') : 'white'
-
-          logo_element = if logo_src
-                           h(:img, {
-                               attrs: { src: logo_src, alt: entity&.name || 'Logo' },
-                               style: {
-                                 width: '85px',
-                                 height: '85px',
-                                 objectFit: 'contain',
-                                 flexShrink: '0',
-                               },
-                             })
-                         else
-                           h(:div, {
-                               style: {
-                                 width: '85px',
-                                 height: '85px',
-                                 fontSize: '1.8rem',
-                                 fontWeight: 'bold',
-                                 display: 'flex',
-                                 alignItems: 'center',
-                                 justifyContent: 'center',
-                                 backgroundColor: bg_color,
-                                 color: text_color,
-                                 borderRadius: '8px',
-                                 flexShrink: '0',
-                               },
-                             }, entity&.id || entity&.name || 'N/A')
-                         end
-
-          train_cards = trains.map.with_index do |train, idx|
-            route = @routes.find { |r| r.train == train }
-            selected = @selected_route&.train == train
-            track_color = SCREAMING_PALETTE[idx % SCREAMING_PALETTE.size]
-
-            rev_val = begin
-              if route && route.chains.any?
-                @game.respond_to?(:format_revenue_currency) ? @game.format_revenue_currency(route.revenue) : @game.format_currency(route.revenue)
-              else
-                @game.format_currency(0)
-              end
-            rescue StandardError
-              'Err'
-            end
-
-            stops_str = begin
-              if route && route.chains.any?
-                dist = if route.respond_to?(:distance_str)
-                         route.distance_str
-                       else
-                         (route.respond_to?(:distance) ? route.distance : nil)
-                       end
-                dist ? "#{dist} stops" : 'Routed'
-              else
-                'not assigned'
-              end
-            rescue StandardError
-              'not assigned'
-            end
-
-            card_click = lambda {
-              target_route = @routes.find { |r| r.train == train }
-              unless target_route
-                target_route = Engine::Route.new(@game, @game.phase, train, routes: @routes)
-                @routes << target_route
-                store(:routes, @routes)
-              end
-              store(:selected_route, target_route)
-              update
-            }
-
-            card_classes = %w[game-card action-buy]
-            card_classes << 'clickable' if selected
-            train_badge = render_railcard(train.name, card_classes, card_click)
-
-            h(:div, {
-                style: {
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  padding: '0.4rem 0.6rem',
-                  minWidth: '6.2rem',
-                  backgroundColor: selected ? '#ffffff' : '#f8fafc',
-                  border: "2px solid #{selected ? track_color : '#cbd5e1'}",
-                  borderRadius: '6px',
-                  cursor: 'pointer',
-                  boxShadow: selected ? "0 0 8px #{track_color}88" : '0 1px 2px rgba(0,0,0,0.05)',
-                  opacity: selected ? '1.0' : '0.75',
-                },
-                on: { click: card_click },
-              }, [
-              h(:div, { style: { display: 'flex', alignItems: 'center', gap: '0.4rem' } }, [
-                h(:span, {
-                    style: {
-                      width: '0.75rem',
-                      height: '0.75rem',
-                      borderRadius: '50%',
-                      backgroundColor: track_color,
-                      display: 'inline-block',
-                      flexShrink: '0',
-                    },
-                  }),
-                train_badge,
-              ]),
-              h(:span, { style: { fontSize: '0.75rem', color: '#64748b', marginTop: '0.2rem' } }, stops_str),
-              h(:span, {
-                  style: {
-                    fontWeight: 'bold',
-                    fontSize: '0.95rem',
-                    fontFamily: FONT_MONEY,
-                    color: COLOR_MONEY,
-                    marginTop: '0.15rem',
-                  },
-                }, rev_val),
-            ])
-          end
-
-          curr_idx = @routes.index(@selected_route) || 0
-          active_color = SCREAMING_PALETTE[curr_idx % SCREAMING_PALETTE.size]
-          err_msg = nil
-          begin
-            @selected_route&.revenue if @selected_route&.chains&.any?
-          rescue Engine::GameError, StandardError => e
-            err_msg = e.to_s
-          end
-
-          clear_selected = lambda {
-            @selected_route&.reset!
-            store(:selected_route, @selected_route)
-            store(:routes, @routes)
-            update
-          }
-
-          clear_all_routes = lambda {
-            @routes.each(&:reset!)
-            @game.reset_adjustable_trains!(entity, @routes) if @game.respond_to?(:reset_adjustable_trains!)
-            store(:routes, @routes)
-            store(:selected_route, @routes.first)
-            update
-          }
-
-          trigger_auto = lambda {
-            store(:cmd_router_running, true)
-            update
-            lambda {
-              `setTimeout(function() {`
-              begin
-                flash_cb = lambda do |msg|
-                  store(:flash_opts, { message: msg }, skip: false)
-                end
-                router = Engine::AutoRouter.new(@game, flash_cb)
-                router_entity = @game.current_entity || entity
-                p_timeout = setting_for(:path_timeout).to_i
-                p_timeout = 10_000 if p_timeout.zero?
-                r_timeout = setting_for(:route_timeout).to_i
-                r_timeout = 10_000 if r_timeout.zero?
-
-                @routes.each(&:reset!) if @routes&.any?
-                @game.reset_adjustable_trains!(entity, @routes) if @game.respond_to?(:reset_adjustable_trains!)
-
-                router.compute(
-                  router_entity,
-                  routes: [],
-                  path_timeout: p_timeout,
-                  route_timeout: r_timeout,
-                  callback: lambda do |computed_routes|
-                    routes_list = computed_routes || []
-                    store(:routes, routes_list, skip: true)
-                    store(:selected_route, routes_list.first, skip: true)
-
-                    auto_rev = 0
-                    routes_list.each do |r|
-                      auto_rev += r.revenue if r.chains.any?
-                    rescue Engine::GameError, StandardError
-                    end
-
-                    storage_key = "rev_override_#{entity&.id}"
-                    last_base_key = "last_base_rev_#{entity&.id}"
-                    Lib::Storage[storage_key] = auto_rev
-                    Lib::Storage[last_base_key] = auto_rev
-
-                    store(:cmd_router_running, false)
-                    update
-                  end
-                )
-              rescue Exception
-                store(:cmd_router_running, false)
-                update
-              end
-              `}, 50);`
-            }.call
-          }
-
-          base_revenue = 0
-          active_routes.each do |r|
-            base_revenue += r.revenue if r.chains.any?
-          rescue Engine::GameError, StandardError
-          end
-          storage_key = "rev_override_#{entity&.id}"
-          current_revenue = Lib::Storage[storage_key] ? Lib::Storage[storage_key].to_i : base_revenue
-          formatted_rev = @game.respond_to?(:format_revenue_currency) ? @game.format_revenue_currency(current_revenue) : @game.format_currency(current_revenue)
-
-          submit_and_close = lambda {
-            routes_to_submit = active_routes
-            process_action(Engine::Action::RunRoutes.new(
-              entity,
-              routes: routes_to_submit,
-              extra_revenue: @game.extra_revenue(entity, routes_to_submit) + (current_revenue - base_revenue)
-            ))
-            store(:selected_route, nil, skip: true)
-            store(:show_manual_routes, false)
-            Lib::Storage['cmd_manual_routes'] = false
-            update
-          }
-
-          close_manual = lambda {
-            store(:selected_route, nil, skip: true)
-            store(:show_manual_routes, false)
-            Lib::Storage['cmd_manual_routes'] = false
-            update
-          }
-
-          is_minimized = Lib::Storage['manual_route_overlay_minimized'] || false
-
-          saved_left = %x((function() {
-            try {
-              var l = sessionStorage.getItem('manual_route_overlay_left');
-              var parsed = parseFloat(l);
-              if (l && l !== 'undefined' && l !== 'null' && !isNaN(parsed) && parsed >= 10 && parsed < (window.innerWidth - 100)) {
-                return parsed;
-              }
-              return null;
-            } catch(e) { return null; }
-          })())
-          saved_top = %x((function() {
-            try {
-              var t = sessionStorage.getItem('manual_route_overlay_top');
-              var parsed = parseFloat(t);
-              if (t && t !== 'undefined' && t !== 'null' && !isNaN(parsed) && parsed >= 10 && parsed < (window.innerHeight - 80)) {
-                return parsed;
-              }
-              return null;
-            } catch(e) { return null; }
-          })())
-
-          on_header_mousedown = lambda do |event|
-            %x(
-            var ev = #{event} || (typeof arguments !== 'undefined' ? arguments[0] : null) || window.event;
-            if (!ev) return;
-
-            var target = ev.target || ev.srcElement;
-            if (target) {
-              var tag = (target.tagName || '').toUpperCase();
-              if (tag === 'BUTTON' || tag === 'INPUT' || (target.closest && target.closest('button'))) {
-                return;
-              }
-            }
-
-            if (ev.preventDefault) ev.preventDefault();
-
-            var modal = document.getElementById('manual-route-overlay-dialog');
-            if (!modal) return;
-
-            var header = document.getElementById('manual-route-overlay-header');
-            if (header) header.style.cursor = 'grabbing';
-
-            var rect = modal.getBoundingClientRect();
-            var shiftX = ev.clientX - rect.left;
-            var shiftY = ev.clientY - rect.top;
-
-            modal.style.position = 'fixed';
-            modal.style.left = rect.left + 'px';
-            modal.style.top = rect.top + 'px';
-            modal.style.margin = '0';
-            modal.style.transform = 'none';
-
-            function onMouseMove(moveEv) {
-              var mEv = moveEv || window.event;
-              if (mEv.preventDefault) mEv.preventDefault();
-
-              var newLeft = mEv.clientX - shiftX;
-              var newTop = mEv.clientY - shiftY;
-
-              var maxLeft = window.innerWidth - 80;
-              var maxTop = window.innerHeight - 50;
-
-              if (newLeft < 10) newLeft = 10;
-              if (newLeft > maxLeft) newLeft = maxLeft;
-              if (newTop < 0) newTop = 0;
-              if (newTop > maxTop) newTop = maxTop;
-
-              modal.style.left = newLeft + 'px';
-              modal.style.top = newTop + 'px';
-            }
-
-            function onMouseUp() {
-              document.removeEventListener('mousemove', onMouseMove, true);
-              document.removeEventListener('mouseup', onMouseUp, true);
-              window.removeEventListener('mousemove', onMouseMove, true);
-              window.removeEventListener('mouseup', onMouseUp, true);
-
-              if (header) header.style.cursor = 'grab';
-
-              var finalRect = modal.getBoundingClientRect();
-              if (finalRect && !isNaN(finalRect.left) && !isNaN(finalRect.top)) {
-                try {
-                  sessionStorage.setItem('manual_route_overlay_left', finalRect.left);
-                  sessionStorage.setItem('manual_route_overlay_top', finalRect.top);
-                } catch(err) {}
-              }
-            }
-
-            document.addEventListener('mousemove', onMouseMove, true);
-            document.addEventListener('mouseup', onMouseUp, true);
-            window.addEventListener('mousemove', onMouseMove, true);
-            window.addEventListener('mouseup', onMouseUp, true);
-            )
-          end
-
-          reset_pos = lambda do
-            %x(
-            try {
-              sessionStorage.removeItem('manual_route_overlay_left');
-              sessionStorage.removeItem('manual_route_overlay_top');
-            } catch(e) {}
-            var modal = document.getElementById('manual-route-overlay-dialog');
-            if (modal) {
-              modal.style.left = '50%';
-              modal.style.top = '45%';
-              modal.style.transform = 'translate(-50%, -50%)';
-              modal.style.margin = '0';
-            }
-            )
-            update
-          end
-
-          toggle_minimize = lambda do
-            Lib::Storage['manual_route_overlay_minimized'] = !is_minimized
-            update
-          end
-
-          dialog_style = {
-            width: '650px',
-            maxWidth: '94vw',
-            backgroundColor: '#ffffff',
-            borderRadius: '8px',
-            boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(0, 0, 0, 0.15)',
-            display: 'flex',
-            flexDirection: 'column',
-            overflow: 'hidden',
-            border: '2px solid #0f172a',
-            pointerEvents: 'auto',
-            margin: '0',
-            zIndex: '100060',
-          }
-          if saved_left && saved_top
-            dialog_style[:position] = 'fixed'
-            dialog_style[:left] = "#{saved_left}px"
-            dialog_style[:top] = "#{saved_top}px"
-            dialog_style[:transform] = 'none'
-          else
-            dialog_style[:position] = 'relative'
-          end
-
-          header_controls = [
-            h(:button, {
-                attrs: { title: is_minimized ? 'Expand overlay' : 'Minimize overlay' },
-                style: {
-                  padding: '0 8px',
-                  height: '1.5rem',
-                  fontSize: '0.78rem',
-                  fontWeight: '600',
-                  backgroundColor: '#334155',
-                  color: '#ffffff',
-                  border: '1px solid #475569',
-                  borderRadius: '4px',
-                  cursor: 'pointer',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                },
-                on: { click: toggle_minimize },
-              }, is_minimized ? 'Expand' : 'Minimize'),
-            h(:button, {
-                attrs: { title: 'Close manual routing' },
-                style: {
-                  background: 'transparent',
-                  border: 'none',
-                  color: '#cbd5e1',
-                  fontSize: '1.2rem',
-                  fontWeight: 'bold',
-                  cursor: 'pointer',
-                  padding: '0 6px',
-                  lineHeight: '1',
-                },
-                on: { click: close_manual },
-              }, '✕'),
-          ]
-
-          body_content = if is_minimized
-                           nil
-                         else
-                           h(:div, {
-                               style: {
-                                 padding: '0.9rem',
-                                 display: 'flex',
-                                 flexDirection: 'row',
-                                 alignItems: 'center',
-                                 gap: '1rem',
-                               },
-                             }, [
-                             logo_element,
-                             h(:div, {
-                                 style: {
-                                   display: 'flex',
-                                   flexDirection: 'column',
-                                   gap: '0.7rem',
-                                   flex: '1 1 auto',
-                                   minWidth: '0',
-                                 },
-                               }, [
-                               (if train_cards.any?
-                                  h(:div, { style: { display: 'flex', flexDirection: 'row', gap: '0.5rem', alignItems: 'center', overflowX: 'auto', paddingBottom: '0.2rem' } }, train_cards)
-                                else
-                                  h(:div, { style: { color: '#64748b', fontStyle: 'italic', fontSize: '0.85rem' } }, "No trains available for #{entity.name}")
-                                end),
-                               h(:div, { style: { fontSize: '0.82rem', minHeight: '1.3rem', display: 'flex', alignItems: 'center' } }, [
-                                 if err_msg
-                                   h(:span, { style: { color: '#dc2626', fontWeight: 'bold' } }, "⚠️ #{err_msg}")
-                                 else
-                                   track_info = begin
-                                     if @selected_route&.chains&.any? && @selected_route.respond_to?(:stops)
-                                       stops = @selected_route.stops.map do |stop|
-                                         rev = begin
-                                           if @selected_route.respond_to?(:stop_revenue)
-                                             @selected_route.stop_revenue(stop)
-                                           elsif stop.respond_to?(:route_revenue)
-                                             stop.route_revenue(@game.phase, @selected_route.train)
-                                           elsif stop.respond_to?(:revenue)
-                                             stop.revenue(@selected_route.train, @game.phase)
-                                           end
-                                         rescue StandardError
-                                           nil
-                                         end
-                                         hex_name = stop.respond_to?(:hex) && stop.hex ? stop.hex.name : stop.to_s
-                                         rev ? "#{hex_name} (#{@game.format_currency(rev)})" : hex_name
-                                       end.join(' ➔ ')
-                                       stops.empty? ? 'No stops connected' : "Track: #{stops}"
-                                     else
-                                       'Click revenue centers on the map to route or cycle paths.'
-                                     end
-                                   rescue StandardError
-                                     'Click revenue centers on the map to route or cycle paths.'
-                                   end
-
-                                   h(:span, { style: { color: '#334155' } }, [
-                                     h(:strong, { style: { color: active_color } }, "Train #{@selected_route&.train&.name || '-'}: "),
-                                     h(:span, track_info),
-                                   ])
-                                 end,
-                               ]),
-                               h(:div, { style: { display: 'flex', flexDirection: 'row', gap: '0.5rem', alignItems: 'center', marginTop: '0.2rem' } }, [
-                                 h(:button, {
-                                     style: { height: '1.85rem', padding: '0 10px', fontSize: '0.82rem', fontWeight: 'bold', backgroundColor: '#f1f5f9', border: '1px solid #cbd5e1', borderRadius: '4px', cursor: 'pointer' },
-                                     on: { click: clear_selected },
-                                   }, 'Clear Train'),
-                                 h(:button, {
-                                     style: { height: '1.85rem', padding: '0 10px', fontSize: '0.82rem', fontWeight: 'bold', backgroundColor: '#f1f5f9', border: '1px solid #cbd5e1', borderRadius: '4px', cursor: 'pointer' },
-                                     on: { click: clear_all_routes },
-                                   }, 'Clear All'),
-                                 h(:button, {
-                                     style: { height: '1.85rem', padding: '0 12px', fontSize: '0.82rem', fontWeight: 'bold', backgroundColor: '#2563eb', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' },
-                                     on: { click: trigger_auto },
-                                   }, 'Auto'),
-                                 h(:div, { style: { display: 'flex', alignItems: 'center', gap: '0.25rem', marginLeft: 'auto' } }, [
-                                   h(:button, {
-                                       attrs: { title: 'Decrease revenue override by 10' },
-                                       style: {
-                                         width: '1.85rem',
-                                         height: '1.85rem',
-                                         fontSize: '1rem',
-                                         fontWeight: 'bold',
-                                         cursor: 'pointer',
-                                         backgroundColor: '#f1f5f9',
-                                         border: '1px solid #cbd5e1',
-                                         borderRadius: '4px',
-                                         display: 'inline-flex',
-                                         alignItems: 'center',
-                                         justifyContent: 'center',
-                                         padding: '0',
-                                         lineHeight: '1',
-                                       },
-                                       on: {
-                                         click: lambda {
-                                           Lib::Storage[storage_key] = [current_revenue - 10, 0].max
-                                           update
-                                         },
-                                       },
-                                     }, '-'),
-                                   h(:button, {
-                                       attrs: { title: 'Increase revenue override by 10' },
-                                       style: {
-                                         width: '1.85rem',
-                                         height: '1.85rem',
-                                         fontSize: '1rem',
-                                         fontWeight: 'bold',
-                                         cursor: 'pointer',
-                                         backgroundColor: '#f1f5f9',
-                                         border: '1px solid #cbd5e1',
-                                         borderRadius: '4px',
-                                         display: 'inline-flex',
-                                         alignItems: 'center',
-                                         justifyContent: 'center',
-                                         padding: '0',
-                                         lineHeight: '1',
-                                       },
-                                       on: {
-                                         click: lambda {
-                                           Lib::Storage[storage_key] = current_revenue + 10
-                                           update
-                                         },
-                                       },
-                                     }, '+'),
-                                   h(:button, {
-                                       style: {
-                                         height: '1.85rem',
-                                         padding: '0 14px',
-                                         fontSize: '0.9rem',
-                                         fontWeight: 'bold',
-                                         backgroundColor: '#16a34a',
-                                         color: '#fff',
-                                         border: 'none',
-                                         borderRadius: '4px',
-                                         cursor: 'pointer',
-                                         boxShadow: '0 1px 3px rgba(0,0,0,0.15)',
-                                       },
-                                       on: { click: submit_and_close },
-                                     }, "Submit #{formatted_rev}"),
-                                 ]),
-                               ]),
-                             ]),
-                           ])
-                         end
-
-          dialog_children = [
-            h(:div, {
-                attrs: { id: 'manual-route-overlay-header' },
-                style: {
-                  padding: '0.7rem 1.1rem',
-                  backgroundColor: '#0f172a',
-                  color: '#ffffff',
-                  borderBottom: is_minimized ? 'none' : '1px solid #e2e8f0',
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  cursor: 'grab',
-                  userSelect: 'none',
-                },
-                on: {
-                  mousedown: on_header_mousedown,
-                  dblclick: reset_pos,
-                },
-              }, [
-              h(:div, [
-                h(:div, { style: { display: 'flex', alignItems: 'center', gap: '0.5rem' } }, [
-                  h(:span, { style: { fontWeight: 'bold', fontSize: '1rem' } }, "Manual Route Selection — #{entity.name}"),
-                  h(:span, { style: { fontSize: '0.75rem', color: '#94a3b8', fontStyle: 'italic' } }, '(drag to move, dbl-click center)'),
-                ]),
-              ]),
-              h(:div, { style: { display: 'flex', alignItems: 'center', gap: '0.4rem' } }, header_controls),
-            ]),
-          ]
-          dialog_children << body_content if body_content
-
-          h(:div, {
-              attrs: { id: 'manual-route-overlay-container' },
-              style: {
-                position: 'fixed',
-                top: '0',
-                left: '0',
-                right: '0',
-                bottom: '0',
-                backgroundColor: 'transparent',
-                pointerEvents: 'none',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                zIndex: '1000000',
-              },
-            }, [
-            h(:div, { attrs: { id: 'manual-route-overlay-dialog' }, style: dialog_style }, dialog_children),
-          ])
-        end
-      end
-
-      class DraftOverlay < Snabberb::Component
-        include Actionable
-        include Lib::Settings
-        include View::Game::Dashboard::RailcardHelper
-
-        FONT_MONEY = '"Courier New", Courier, monospace'
-        COLOR_MONEY = '#4c1d95'
-
-        needs :game, store: true
-
-        def current_entity
-          @game.round.active_step&.current_entity ||
-            (@game.round.respond_to?(:current_entity) ? @game.round.current_entity : nil) ||
-            @game.current_entity
-        rescue NotImplementedError, StandardError
-          nil
-        end
-
-        def render
-          step = @game.round.active_step
-          entity = current_entity
-          return h(:div) unless step && entity
-
-          actions = actions_for(entity)
-
-          raw_hand = []
-          raw_hand.concat(step.companies) if step.respond_to?(:companies) && step.companies&.any?
-          raw_hand.concat(step.minors) if step.respond_to?(:minors) && step.minors&.any?
-          raw_hand.concat(step.available) if step.respond_to?(:available) && step.available&.any?
-          raw_hand.concat(step.items) if step.respond_to?(:items) && step.items&.any?
-          raw_hand.concat(step.cards) if step.respond_to?(:cards) && step.cards&.any?
-
-          available_choices = if step.respond_to?(:choices_for)
-                                begin
-                                  step.choices_for(entity)
-                                rescue ArgumentError
-                                  step.choices_for
-                                rescue StandardError
-                                  nil
-                                end
-                              elsif step.respond_to?(:choices)
-                                begin
-                                  step.choices(entity)
-                                rescue ArgumentError
-                                  step.choices
-                                rescue StandardError
-                                  nil
-                                end
-                              end
-
-          choice_list = if available_choices.is_a?(Hash)
-                          available_choices.keys
-                        elsif available_choices.is_a?(Array)
-                          available_choices
-                        else
-                          []
-                        end
-          raw_hand.concat(choice_list) if choice_list.any?
-
-          has_blank_card = raw_hand.any? do |c|
-            c.is_a?(Engine::Player) || (c.respond_to?(:player?) && c.player?) || c.to_s =~ /Player/i
-          end
-
-          find_entity = lambda do |token|
-            return token if token.is_a?(Engine::Company) || token.is_a?(Engine::Minor)
-
-            if token.is_a?(String) || token.is_a?(Symbol)
-              (@game.respond_to?(:companies) ? @game.companies.find { |c| c.id.to_s == token.to_s || (c.respond_to?(:sym) && c.sym.to_s == token.to_s) } : nil) ||
-              (@game.respond_to?(:minors) ? @game.minors.find { |m| m.id.to_s == token.to_s || m.name.to_s == token.to_s } : nil)
-            end
-          end
-
-          draft_items = []
-          raw_hand.each do |c|
-            ent = find_entity.call(c)
-            draft_items << ent if ent
-          end
-
-          if @game.respond_to?(:companies) && @game.companies
-            acquired_companies = @game.companies.select do |c|
-              c.respond_to?(:owner) && c.owner && c.owner.respond_to?(:player?) && c.owner.player? && (!c.respond_to?(:closed?) || !c.closed?)
-            end
-            draft_items.concat(acquired_companies)
-          end
-
-          if @game.respond_to?(:minors) && @game.minors
-            acquired_minors = @game.minors.select do |m|
-              m.respond_to?(:owner) && m.owner && m.owner.respond_to?(:player?) && m.owner.player? && (!m.respond_to?(:closed?) || !m.closed?)
-            end
-            draft_items.concat(acquired_minors)
-          end
-
-          if draft_items.empty?
-            draft_items = (@game.respond_to?(:companies) ? (@game.companies || []).dup : []) +
-                          (@game.respond_to?(:minors) ? (@game.minors || []).dup : [])
-          end
-
-          all_game_items = (@game.respond_to?(:companies) ? @game.companies : []) +
-                           (@game.respond_to?(:minors) ? @game.minors : [])
-          items = draft_items.compact.uniq.sort_by { |item| all_game_items.index(item) || 999 }
-
-          players = @game.players || []
-
-          rows = items.map do |item|
-            is_owned = item.respond_to?(:owner) && item.owner && item.owner.respond_to?(:player?) && item.owner.player?
-
-            item_price = if step.respond_to?(:min_bid)
-                           begin
-                             step.min_bid(item)
-                           rescue ArgumentError
-                             step.min_bid
-                           rescue StandardError
-                             (item.respond_to?(:value) ? item.value : 0)
-                           end
-                         elsif step.respond_to?(:buy_price)
-                           step.buy_price(item)
-                         elsif item.respond_to?(:value)
-                           item.value
-                         else
-                           0
-                         end
-
-            is_in_hand = raw_hand.empty? || raw_hand.any? do |c|
-              c == item ||
-                (item.respond_to?(:id) && (c == item.id || c == item.id.to_s)) ||
-                (item.respond_to?(:name) && c == item.name) ||
-                (item.respond_to?(:sym) && c == item.sym)
-            end
-
-            can_afford = (entity.respond_to?(:cash) ? entity.cash : 0) >= item_price
-
-            exec_choose = lambda {
-              if actions.include?('bid')
-                bid_args = { price: item_price }
-                if item.respond_to?(:company?) && item.company?
-                  bid_args[:company] = item
-                elsif item.is_a?(Engine::Minor)
-                  comp = @game.company_by_id(item.id) if @game.respond_to?(:company_by_id)
-                  bid_args[:company] = comp || item
-                elsif item.respond_to?(:corporation?) && item.corporation?
-                  bid_args[:corporation] = item
-                else
-                  bid_args[:company] = item
-                end
-                process_action(Engine::Action::Bid.new(entity, **bid_args))
-              elsif actions.include?('buy_company')
-                process_action(Engine::Action::BuyCompany.new(entity, company: item, price: item_price))
-              elsif actions.include?('choose')
-                choice_val = if available_choices.is_a?(Hash)
-                               available_choices.keys.find { |k| k == item || (item.respond_to?(:id) && k == item.id) } || item.id
-                             else
-                               item.respond_to?(:id) ? item.id : item
-                             end
-                process_action(Engine::Action::Choose.new(entity, choice: choice_val))
-              end
-            }
-
-            can_choose_item = !is_owned && is_in_hand && can_afford &&
-                              (actions.include?('bid') || actions.include?('buy_company') || actions.include?('choose'))
-
-            card_sym = item.respond_to?(:sym) ? item.sym : item.name
-            tooltip = build_entity_tooltip(item)
-            subtext = item.respond_to?(:value) && item.value ? @game.format_currency(item.value) : nil
-            card_classes = ['game-card']
-            card_classes << 'action-buy clickable' if can_choose_item
-            card_label = subtext ? "#{card_sym} #{subtext}" : card_sym
-
-            item_card = render_railcard(card_label, card_classes, (can_choose_item ? exec_choose : nil), tooltip, entity: item)
-
-            choose_btn = if can_choose_item
-                           h(:button, {
-                               style: {
-                                 padding: '0 10px',
-                                 height: '1.6rem',
-                                 fontSize: '0.82rem',
-                                 fontWeight: 'bold',
-                                 fontFamily: FONT_MONEY,
-                                 backgroundColor: '#16a34a',
-                                 color: '#fff',
-                                 border: 'none',
-                                 borderRadius: '4px',
-                                 cursor: 'pointer',
-                               },
-                               on: { click: exec_choose },
-                             }, "Choose #{@game.format_currency(item_price)}")
-                         end
-
-            row_cells = [
-              h(:td, { style: { padding: '6px 8px', borderBottom: '1px solid #e2e8f0', width: '1%', whiteSpace: 'nowrap' } }, [item_card]),
-              h(:td, { style: { padding: '6px 8px', borderBottom: '1px solid #e2e8f0', width: '8rem', whiteSpace: 'nowrap' } }, [choose_btn].compact),
-            ]
-
-            players.each do |p|
-              owned_tag = if is_owned && item.respond_to?(:owner) && item.owner == p
-                            h(:span, {
-                                style: {
-                                  backgroundColor: '#16a34a',
-                                  color: '#fff',
-                                  padding: '3px 6px',
-                                  borderRadius: '3px',
-                                  fontWeight: 'bold',
-                                  fontSize: '0.75rem',
-                                },
-                              }, 'OWNED')
-                          else
-                            h(:span, { style: { color: '#cbd5e1' } }, '-')
-                          end
-              row_cells << h(:td, { style: { padding: '6px 8px', textAlign: 'center', borderBottom: '1px solid #e2e8f0' } }, [owned_tag])
-            end
-
-            h(:tr, { style: { backgroundColor: can_choose_item ? '#f0fdf4' : 'transparent' } }, row_cells)
-          end
-
-          if has_blank_card || actions.include?('pass')
-            blank_pass = -> { process_action(Engine::Action::Pass.new(entity)) }
-            blank_badge = render_railcard('Blank Card', %w[game-card action-buy clickable], blank_pass)
-            blank_btn = h(:button, {
-                            style: {
-                              padding: '0 10px',
-                              height: '1.6rem',
-                              fontSize: '0.82rem',
-                              fontWeight: 'bold',
-                              backgroundColor: '#64748b',
-                              color: '#fff',
-                              border: 'none',
-                              borderRadius: '4px',
-                              cursor: 'pointer',
-                            },
-                            on: { click: blank_pass },
-                          }, 'Take Blank (Pass)')
-
-            blank_cells = [
-              h(:td, { style: { padding: '6px 8px', borderBottom: '1px solid #e2e8f0', width: '1%', whiteSpace: 'nowrap' } }, [blank_badge]),
-              h(:td, { style: { padding: '6px 8px', borderBottom: '1px solid #e2e8f0', width: '8rem', whiteSpace: 'nowrap' } }, [blank_btn]),
-              *players.map { h(:td, { style: { padding: '6px 8px', textAlign: 'center', borderBottom: '1px solid #e2e8f0' } }, [h(:span, { style: { color: '#cbd5e1' } }, '-')]) },
-            ]
-            rows << h(:tr, { style: { backgroundColor: '#f8fafc' } }, blank_cells)
-          end
-
-          h(:div, {
-              style: {
-                position: 'fixed',
-                inset: '0',
-                backgroundColor: 'rgba(15, 23, 42, 0.65)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                zIndex: '100000',
-                backdropFilter: 'blur(2px)',
-              },
-            }, [
-            h(:div, {
-                style: {
-                  width: '90%',
-                  maxWidth: '920px',
-                  maxHeight: '88vh',
-                  backgroundColor: '#ffffff',
-                  borderRadius: '8px',
-                  boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.3)',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  overflow: 'hidden',
-                  border: '1px solid #cbd5e1',
-                },
-              }, [
-              h(:div, {
-                  style: {
-                    padding: '0.8rem 1.2rem',
-                    borderBottom: '1px solid #e2e8f0',
-                    backgroundColor: '#f8fafc',
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                  },
-                }, [
-                h(:div, [
-                  h(:h2, { style: { margin: '0', fontSize: '1.25rem', color: '#0f172a' } }, 'Private Distribution Draft'),
-                  h(:span, { style: { fontSize: '0.85rem', color: '#64748b' } }, "Active Player: #{entity.name}"),
-                ]),
-              ]),
-              h(:div, { style: { overflowY: 'auto', padding: '1rem' } }, [
-                h(:table, { style: { width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' } }, [
-                  h(:thead, [
-                    h(:tr, [
-                      h(:th, { attrs: { colspan: '2' }, style: { padding: '6px 8px', textAlign: 'left', borderBottom: '2px solid #cbd5e1', color: '#475569' } }, 'Available Cards'),
-                      *players.map do |p|
-                        is_current = (p == entity)
-                        h(:th, {
-                            style: {
-                              padding: '6px 8px',
-                              textAlign: 'center',
-                              borderBottom: '2px solid #cbd5e1',
-                              backgroundColor: is_current ? '#e0f2fe' : 'transparent',
-                              color: is_current ? '#0369a1' : '#475569',
-                              fontWeight: is_current ? 'bold' : '600',
-                            },
-                          }, p.name)
-                      end,
-                    ]),
-                  ]),
-                  h(:tbody, rows),
-                  h(:tfoot, [
-                    h(:tr, [
-                      h(:td, { attrs: { colspan: '2' }, style: { padding: '8px', fontWeight: 'bold', borderTop: '2px solid #cbd5e1', color: '#334155' } }, 'Cash on Hand:'),
-                      *players.map do |p|
-                        h(:td, {
-                            style: {
-                              padding: '8px',
-                              textAlign: 'center',
-                              borderTop: '2px solid #cbd5e1',
-                              fontWeight: 'bold',
-                              fontFamily: FONT_MONEY,
-                              color: COLOR_MONEY,
-                            },
-                          }, @game.format_currency(p.cash))
-                      end,
-                    ]),
-                  ]),
-                ]),
-              ]),
-            ]),
-          ])
-        end
-      end
-    end
-
     ManualRouteOverlay = Dashboard::ManualRouteOverlay
 
     class DashboardCommandColumn < Snabberb::Component
@@ -1049,6 +62,7 @@ module View
       needs :last_entity, store: true, default: nil
       needs :cmd_router_running, store: true, default: false
       needs :show_manual_routes, store: true, default: false
+      needs :show_actions_monitor, store: true, default: false
 
       def current_entity
         @game.round.active_step&.current_entity ||
@@ -1099,7 +113,7 @@ module View
                        ].compact.uniq
                      end
 
-        candidates.filter_map do |candidate|
+        candidates.map do |candidate|
           candidate_actions = actions_for(candidate)
           player_actions = p ? actions_for(p) : []
 
@@ -1115,9 +129,8 @@ module View
               issue_shares reissue_shares reissue
               redeem redeem_shares
             ]
-
           [candidate, candidate_actions] if relevant_actions.any? || has_shares
-        end
+        end.compact
       end
 
       def active_player
@@ -1436,8 +449,6 @@ module View
                    (step.respond_to?(:description) && step.description =~ /Draft/i) ||
                    (@game.respond_to?(:round) && @game.round.class.name =~ /Draft/i)
 
-
-
         is_home_token = home_token_step?(step, actions)
 
         phase = :waiting
@@ -1603,8 +614,14 @@ module View
                   },
                   on: {
                     click: lambda {
-                      store(:show_manual_routes, false)
-                      Lib::Storage['cmd_manual_routes'] = false
+                      if (@routes.nil? || @routes.empty?) && entity
+                        @routes = @game.routes_for(entity)
+                        store(:routes, @routes)
+                      end
+                      target_route = @selected_route || @routes&.first
+                      store(:selected_route, target_route) if target_route
+                      store(:show_manual_routes, true)
+                      Lib::Storage['cmd_manual_routes'] = true
                       update
                     },
                   },
@@ -1754,6 +771,8 @@ module View
           end
         end
 
+        is_monitor_open = @show_actions_monitor == true || Lib::Storage['cmd_actions_monitor'] == true || Lib::Storage['cmd_actions_monitor'] == 'true'
+
         zone_3 = h(:div, { style: { flex: '0 0 22%', display: 'flex', flexDirection: 'column', padding: '0.4rem', boxSizing: 'border-box', overflowY: 'auto', position: 'relative' } }, [
           h(:style, {}, '
             .cmd-company-wrapper:hover .cmd-company-tooltip,
@@ -1796,77 +815,109 @@ module View
                 attrs: { disabled: advance_disabled },
                 on: { click: advance_action },
               }, advance_text),
-
-            h(:div, { attrs: { class: 'cmd-undo-redo-wrapper' }, style: { width: '100%' } }, [
-              h(:style, {}, '
-                .cmd-undo-redo-wrapper #history,
-                .cmd-undo-redo-wrapper .history,
-                .cmd-undo-redo-wrapper input,
-                .cmd-undo-redo-wrapper button:not(#undo):not(#redo) {
-                  display: none !important;
-                }
-                .cmd-undo-redo-wrapper,
-                .cmd-undo-redo-wrapper * {
-                  box-sizing: border-box !important;
-                }
-               .cmd-undo-redo-wrapper,
-                .cmd-undo-redo-wrapper div,
-                .cmd-undo-redo-wrapper #history_and_undo,
-                .cmd-undo-redo-wrapper .history_and_undo {
-                  display: flex !important;
-                  flex-direction: row !important;
-                  flex-wrap: nowrap !important;
-                  align-items: center !important;
-                  justify-content: flex-start !important;
-                  gap: 0.6rem !important;
-                  width: 100% !important;
-                  min-width: 100% !important;
-                  max-width: 100% !important;
-                  margin: 0 !important;
-                  padding: 0 !important;
-                  border: none !important;
-                  background: transparent !important;
-                  box-shadow: none !important;
-                }
-                .cmd-undo-redo-wrapper button#undo,
-                .cmd-undo-redo-wrapper button#redo {
-                  display: inline-flex !important;
-                  flex: 0 0 3.5rem !important;
-                  width: 3.5rem !important;
-                  min-width: 3.5rem !important;
-                  max-width: 3.5rem !important;
-                  height: 1.45rem !important;
-                  min-height: 1.45rem !important;
-                  max-height: 1.45rem !important;
-                  justify-content: center !important;
-                  align-items: center !important;
-                  padding: 0 4px !important;
-                  font-size: 0.85rem !important;
-                  font-weight: bold !important;
-                  background-color: #f8f9fa !important;
-                  color: #212529 !important;
-                  border: 1px solid #ced4da !important;
-                  border-radius: 4px !important;
-                  cursor: pointer !important;
-                  margin: 0 !important;
-                  line-height: 1 !important;
-                  box-shadow: 0 1px 2px rgba(0,0,0,0.05) !important;
-                }
-                .cmd-undo-redo-wrapper button#undo:hover:not(:disabled),
-                .cmd-undo-redo-wrapper button#redo:hover:not(:disabled) {
-                  background-color: #e9ecef !important;
-                  border-color: #adb5bd !important;
-                }
-                .cmd-undo-redo-wrapper button#undo:disabled,
-                .cmd-undo-redo-wrapper button#redo:disabled {
-                  background-color: #f1f3f5 !important;
-                  color: #adb5bd !important;
-                  cursor: not-allowed !important;
-                  opacity: 0.6 !important;
-                  box-shadow: none !important;
-                }
-              '),
-              h(HistoryAndUndo, last_action_id: last_action_id),
+            h(:div, { style: { width: '100%', display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-start', gap: '0.35rem' } }, [
+              h(:div, { attrs: { class: 'cmd-undo-redo-wrapper' }, style: { flex: '0 0 auto' } }, [
+                h(:style, {}, '
+                  .cmd-undo-redo-wrapper #history,
+                  .cmd-undo-redo-wrapper .history,
+                  .cmd-undo-redo-wrapper input,
+                  .cmd-undo-redo-wrapper button:not(#undo):not(#redo) {
+                    display: none !important;
+                  }
+                  .cmd-undo-redo-wrapper,
+                  .cmd-undo-redo-wrapper * {
+                    box-sizing: border-box !important;
+                  }
+                  .cmd-undo-redo-wrapper,
+                  .cmd-undo-redo-wrapper div,
+                  .cmd-undo-redo-wrapper #history_and_undo,
+                  .cmd-undo-redo-wrapper .history_and_undo {
+                    display: flex !important;
+                    flex-direction: row !important;
+                    flex-wrap: nowrap !important;
+                    align-items: center !important;
+                    justify-content: flex-start !important;
+                    gap: 0.35rem !important;
+                    width: auto !important;
+                    min-width: auto !important;
+                    max-width: max-content !important;
+                    margin: 0 !important;
+                    padding: 0 !important;
+                    border: none !important;
+                    background: transparent !important;
+                    box-shadow: none !important;
+                  }
+                  .cmd-undo-redo-wrapper button#undo,
+                  .cmd-undo-redo-wrapper button#redo {
+                    display: inline-flex !important;
+                    flex: 0 0 3.2rem !important;
+                    width: 3.2rem !important;
+                    min-width: 3.2rem !important;
+                    max-width: 3.2rem !important;
+                    height: 1.45rem !important;
+                    min-height: 1.45rem !important;
+                    max-height: 1.45rem !important;
+                    justify-content: center !important;
+                    align-items: center !important;
+                    padding: 0 4px !important;
+                    font-size: 0.82rem !important;
+                    font-weight: bold !important;
+                    background-color: #f8f9fa !important;
+                    color: #212529 !important;
+                    border: 1px solid #ced4da !important;
+                    border-radius: 4px !important;
+                    cursor: pointer !important;
+                    margin: 0 !important;
+                    line-height: 1 !important;
+                    box-shadow: 0 1px 2px rgba(0,0,0,0.05) !important;
+                  }
+                  .cmd-undo-redo-wrapper button#undo:hover:not(:disabled),
+                  .cmd-undo-redo-wrapper button#redo:hover:not(:disabled) {
+                    background-color: #e9ecef !important;
+                    border-color: #adb5bd !important;
+                  }
+                  .cmd-undo-redo-wrapper button#undo:disabled,
+                  .cmd-undo-redo-wrapper button#redo:disabled {
+                    background-color: #f1f3f5 !important;
+                    color: #adb5bd !important;
+                    cursor: not-allowed !important;
+                    opacity: 0.6 !important;
+                    box-shadow: none !important;
+                  }
+                '),
+                h(HistoryAndUndo, last_action_id: last_action_id),
+              ]),
+              h(:button, {
+                  attrs: { id: 'cmd_action_monitor_btn', title: 'Open Available Actions Monitor' },
+                  style: {
+                    flex: '0 0 auto',
+                    height: '1.45rem',
+                    minHeight: '1.45rem',
+                    maxHeight: '1.45rem',
+                    padding: '0 7px',
+                    fontSize: '0.8rem',
+                    fontWeight: 'bold',
+                    backgroundColor: is_monitor_open ? '#0f172a' : '#f8f9fa',
+                    color: is_monitor_open ? '#ffffff' : '#212529',
+                    border: is_monitor_open ? '1px solid #0f172a' : '1px solid #ced4da',
+                    borderRadius: '4px',
+                    cursor: 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    lineHeight: '1',
+                    boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+                    margin: '0',
+                  },
+                  on: {
+                    click: lambda {
+                      new_val = !is_monitor_open
+                      Lib::Storage['cmd_actions_monitor'] = new_val
+                      store(:show_actions_monitor, new_val)
+                      update
+                    },
+                  },
+                }, '⚡ Act'),
             ]),
           ]),
         ])
@@ -1934,11 +985,15 @@ module View
           zone_2,
           zone_3,
         ].compact)
-        if show_manual_routes
-          h(:div, { style: { width: '100%', height: '100%', position: 'relative' } }, [
-            panel_bar,
-            h(View::Game::Dashboard::ManualRouteOverlay, game: @game, entity: entity, routes: @routes, selected_route: @selected_route),
-          ])
+        overlays = []
+        overlays << h(View::Game::Dashboard::ManualRouteOverlay, game: @game, entity: entity, routes: @routes, selected_route: @selected_route) if show_manual_routes
+        overlays << h(View::Game::Dashboard::ActionsMonitorOverlay, game: @game) if is_monitor_open
+
+        if overlays.any?
+          h(:div, { style: { width: '100%', height: '100%', position: 'relative', pointerEvents: 'none' } }, [
+             h(:div, { style: { pointerEvents: 'auto', width: '100%', height: '100%' } }, [panel_bar]),
+             *overlays,
+           ])
         else
           panel_bar
         end
@@ -2574,7 +1629,8 @@ module View
 
         rows = []
 
-        if issuable_bundles.any?
+        can_issue = (entity_actions & %w[issue_shares reissue_shares reissue corporate_sell_shares sell_shares]).any?
+        if issuable_bundles.any? && can_issue
           issue_buttons = issuable_bundles.map do |raw_bundle|
             bundle = raw_bundle.respond_to?(:to_bundle) && !raw_bundle.respond_to?(:num_shares) ? raw_bundle.to_bundle : raw_bundle
 
@@ -2597,27 +1653,26 @@ module View
             price_str = @game.format_currency(price)
 
             click_handler = lambda {
-              acting_entity = @game.current_entity || current_entity
+              acting_entity = entity.respond_to?(:corporation?) && entity.corporation? ? entity : (@game.current_entity || current_entity)
               all_actions = (actions_for(acting_entity) + actions_for(entity) + (step.respond_to?(:current_actions) ? (step.current_actions || []) : [])).uniq
 
               if all_actions.include?('reissue_shares') && defined?(Engine::Action::ReissueShares)
                 process_action(Engine::Action::ReissueShares.new(acting_entity, bundle: bundle))
-              elsif all_actions.include?('reissue') && defined?(Engine::Action::Reissue)
-                process_action(Engine::Action::Reissue.new(acting_entity, bundle: bundle))
-              elsif all_actions.include?('issue_shares')
+              elsif all_actions.include?('issue_shares') && defined?(Engine::Action::IssueShares)
                 process_action(Engine::Action::IssueShares.new(acting_entity, bundle: bundle))
-              elsif defined?(Engine::Action::ReissueShares) && @game.round.stock?
-                process_action(Engine::Action::ReissueShares.new(acting_entity, bundle: bundle))
-              elsif defined?(Engine::Action::IssueShares)
-                process_action(Engine::Action::IssueShares.new(acting_entity, bundle: bundle))
-              elsif all_actions.include?('corporate_sell_shares')
-                process_action(Engine::Action::CorporateSellShares.new(acting_entity, bundle: bundle))
+              elsif all_actions.include?('corporate_sell_shares') && defined?(Engine::Action::CorporateSellShares)
+                process_action(Engine::Action::CorporateSellShares.new(
+                  acting_entity,
+                  shares: bundle.respond_to?(:shares) ? bundle.shares : [bundle],
+                  share_price: bundle.respond_to?(:share_price) && bundle.share_price ? bundle.share_price : (price / [num, 1].max),
+                  percent: bundle.respond_to?(:percent) ? bundle.percent : (num * 10)
+                ))
               else
                 process_action(Engine::Action::SellShares.new(
                   acting_entity,
                   shares: bundle.respond_to?(:shares) ? bundle.shares : [bundle],
-                  share_price: bundle.respond_to?(:share_price) ? bundle.share_price : entity.share_price,
-                  percent: bundle.respond_to?(:percent) ? bundle.percent : 10
+                  share_price: bundle.respond_to?(:share_price) && bundle.share_price ? bundle.share_price : (price / [num, 1].max),
+                  percent: bundle.respond_to?(:percent) ? bundle.percent : (num * 10)
                 ))
               end
             }
@@ -2673,7 +1728,8 @@ module View
           []
         end || []
 
-        if redeemable_bundles.any?
+        can_redeem = (entity_actions & %w[redeem redeem_shares corporate_buy_shares buy_shares]).any?
+        if redeemable_bundles.any? && can_redeem
           redeem_buttons = redeemable_bundles.map do |raw_bundle|
             bundle = raw_bundle.respond_to?(:to_bundle) && !raw_bundle.respond_to?(:num_shares) ? raw_bundle.to_bundle : raw_bundle
             num = if bundle.respond_to?(:num_shares)
@@ -2701,16 +1757,14 @@ module View
             can_afford = (entity.respond_to?(:cash) ? entity.cash : 0) >= price
 
             click_handler = lambda {
-              acting_entity = @game.current_entity || current_entity
+              acting_entity = entity.respond_to?(:corporation?) && entity.corporation? ? entity : (@game.current_entity || current_entity)
               all_actions = (actions_for(acting_entity) + actions_for(entity) + (step.respond_to?(:current_actions) ? (step.current_actions || []) : [])).uniq
 
-              if all_actions.include?('redeem_shares')
+              if all_actions.include?('redeem_shares') && defined?(Engine::Action::RedeemShares)
                 process_action(Engine::Action::RedeemShares.new(acting_entity, bundle: bundle))
               elsif all_actions.include?('redeem') && defined?(Engine::Action::Redeem)
                 process_action(Engine::Action::Redeem.new(acting_entity, bundle: bundle))
-              elsif defined?(Engine::Action::RedeemShares)
-                process_action(Engine::Action::RedeemShares.new(acting_entity, bundle: bundle))
-              elsif all_actions.include?('corporate_buy_shares')
+              elsif all_actions.include?('corporate_buy_shares') && defined?(Engine::Action::CorporateBuyShares)
                 process_action(Engine::Action::CorporateBuyShares.new(
                   acting_entity,
                   shares: bundle.respond_to?(:shares) ? bundle.shares : [bundle],
@@ -2720,9 +1774,7 @@ module View
               else
                 process_action(Engine::Action::BuyShares.new(
                   acting_entity,
-                  shares: bundle.respond_to?(:shares) ? bundle.shares : [bundle],
-                  share_price: bundle.respond_to?(:share_price) && bundle.share_price ? bundle.share_price : (price / [num, 1].max),
-                  percent: bundle.respond_to?(:percent) ? bundle.percent : (num * 10)
+                  shares: bundle.respond_to?(:shares) ? bundle.shares.first : bundle
                 ))
               end
             }
