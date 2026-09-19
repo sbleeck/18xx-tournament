@@ -8,13 +8,138 @@ require 'view/game/loan_chart'
 
 module View
   module Game
-    class DashboardStockMarket < Snabberb::Component
+    module StockMarketAnimation
+      def self.capture_pre_render
+        %x{
+          window._stockMarketTokens = window._stockMarketTokens || {};
+          var tokens = window.document.querySelectorAll('.stock-market-token');
+          for (var i = 0; i < tokens.length; i++) {
+            var token = tokens[i];
+            var id = token.getAttribute('data-corp') || token.id;
+            if (id) {
+              var r = token.getBoundingClientRect();
+              if (r.width > 0 && r.height > 0) {
+                window._stockMarketTokens[id] = {
+                  left: r.left,
+                  top: r.top,
+                  width: r.width,
+                  height: r.height,
+                  src: token.getAttribute('src') || token.getAttribute('href') || ''
+                };
+              }
+            }
+          }
+        }
+      end
+
+      def self.animate_movements
+        %x{
+          window.requestAnimationFrame(function() {
+            window.requestAnimationFrame(function() {
+              if (!window._stockMarketTokens) return;
+              var newTokens = window.document.querySelectorAll('.stock-market-token');
+
+              for (var i = 0; i < newTokens.length; i++) {
+                (function(token) {
+                  var id = token.getAttribute('data-corp') || token.id;
+                  var prev = window._stockMarketTokens[id];
+                  if (!prev) return;
+
+                  var curr = token.getBoundingClientRect();
+                  if (curr.width === 0 || curr.height === 0) return;
+
+                  var dx = prev.left - curr.left;
+                  var dy = prev.top - curr.top;
+                  var dist = Math.sqrt(dx * dx + dy * dy);
+
+                  // Trigger animation only if the token actually changed market spaces
+                  if (dist > 3) {
+                    var clone;
+                    var isImg = token.tagName.toLowerCase() === 'img';
+                    if (isImg) {
+                      clone = token.cloneNode(true);
+                    } else {
+                      clone = window.document.createElement('img');
+                      clone.src = prev.src || token.getAttribute('href') || '';
+                      clone.style.borderRadius = '50%';
+                    }
+
+                    clone.style.position = 'fixed';
+                    clone.style.left = prev.left + 'px';
+                    clone.style.top = prev.top + 'px';
+                    clone.style.width = prev.width + 'px';
+                    clone.style.height = prev.height + 'px';
+                    clone.style.zIndex = '999999';
+                    clone.style.pointerEvents = 'none';
+                    clone.style.margin = '0';
+                    clone.style.boxSizing = 'border-box';
+                    clone.style.outline = '3px solid #38bdf8';
+                    clone.style.outlineOffset = '2px';
+                    clone.style.borderRadius = '50%';
+
+                    window.document.body.appendChild(clone);
+                    token.style.opacity = '0';
+
+                    var deltaX = curr.left - prev.left;
+                    var deltaY = curr.top - prev.top;
+
+                    // Trajectory: Lift off -> Scale up 1.9x -> Hover glide -> Settle down
+                    var keyframes = [
+                      {
+                        transform: 'translate(0px, 0px) scale(1)',
+                        filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.35))',
+                        offset: 0
+                      },
+                      {
+                        transform: 'translate(0px, -26px) scale(1.9)',
+                        filter: 'drop-shadow(0 28px 24px rgba(0,0,0,0.65))',
+                        offset: 0.22
+                      },
+                      {
+                        transform: 'translate(' + deltaX + 'px, ' + (deltaY - 26) + 'px) scale(1.9)',
+                        filter: 'drop-shadow(0 28px 24px rgba(0,0,0,0.65))',
+                        offset: 0.76
+                      },
+                      {
+                        transform: 'translate(' + deltaX + 'px, ' + (deltaY + 2) + 'px) scale(1.06)',
+                        filter: 'drop-shadow(0 4px 6px rgba(0,0,0,0.35))',
+                        offset: 0.92
+                      },
+                      {
+                        transform: 'translate(' + deltaX + 'px, ' + deltaY + 'px) scale(1)',
+                        filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.35))',
+                        offset: 1
+                      }
+                    ];
+
+                    var anim = clone.animate(keyframes, {
+                      duration: 900,
+                      easing: 'cubic-bezier(0.25, 1, 0.35, 1)',
+                      fill: 'forwards'
+                    });
+
+                    anim.onfinish = function() {
+                      token.style.opacity = '1';
+                      if (clone.parentNode) {
+                        clone.parentNode.removeChild(clone);
+                      }
+                    };
+                  }
+                })(newTokens[i]);
+              }
+            });
+          });
+        }
+      end
+    end
+
+    class DashboardStock < Snabberb::Component
       include Lib::Settings
 
       needs :game
       needs :user, default: nil, store: true
-      needs :show_bank, default: true
-      needs :explain_colors, default: false
+      needs :show_bank, default: false
+      needs :explain_colors, default: true
 
       COLOR_MAP = {
         red: '#ffaaaa',
@@ -31,20 +156,17 @@ module View
         peach: '#ffe5b4',
       }.freeze
 
-      # All markets
       PAD = 4
       BORDER = 1
       WIDTH_TOTAL = 50
       TOKEN_SIZE = 25
       TOKEN_SIZES = { small: 25, medium: 32, large: 40 }.freeze
 
-      # 1D markets
       VERTICAL_TOKEN_PAD = 4
       MIN_NUM_TOKENS = 3
       PRICE_HEIGHT = 20
       MIN_TOKENS_HEIGHT = MIN_NUM_TOKENS * (TOKEN_SIZE + VERTICAL_TOKEN_PAD)
 
-      # 2D markets
       HEIGHT_TOTAL = 50
       TOKEN_PAD = 3
       BOX_WIDTH = WIDTH_TOTAL - (2 * BORDER)
@@ -55,7 +177,6 @@ module View
       MID_TOKEN_POS = (LEFT_TOKEN_POS + RIGHT_TOKEN_POS) / 2
       TOKEN_BORDER_WIDTH = 2
 
-      # Hex markets
       HEX_WIDTH_TOTAL = 20
       HEX_PAD_FROM_CENTER = (HEX_WIDTH_TOTAL / 2) - BORDER
       HEX_HALF_TOKEN = TOKEN_SIZE / 2
@@ -160,6 +281,9 @@ module View
       def token_props(corporation, index = nil, num = nil, spacing = nil)
         props = {
           attrs: {
+            id: "stock-token-#{corporation.id}",
+            class: 'stock-market-token',
+            'data-corp': corporation.id,
             src: logo_for_user(corporation),
             title: corporation.name,
             width: "#{TOKEN_SIZES[@game.corporation_size(corporation)]}px",
@@ -200,6 +324,9 @@ module View
 
         props = {
           attrs: {
+            id: "stock-token-#{corporation.id}",
+            class: 'stock-market-token',
+            'data-corp': corporation.id,
             href: logo_for_user(corporation),
             title: corporation.name,
             width: "#{width}px",
@@ -446,7 +573,56 @@ module View
         setting_for(:simple_logos, @game) ? entity.simple_logo : entity.logo
       end
 
+      def render_legend
+        return nil unless @explain_colors
+        return nil unless @game.class.const_defined?(:MARKET_TEXT)
+
+        type_text = @game.class::MARKET_TEXT
+
+        type_to_first_col = {}
+        @game.stock_market.market.reverse.flatten.compact.each do |sp|
+          this_col = sp.coordinates ? sp.coordinates[1] : 0
+          sp.types&.each do |t|
+            min_col = type_to_first_col[t]
+            type_to_first_col[t] = this_col if !min_col || this_col < min_col
+          end
+        end
+        types_in_market = type_to_first_col.sort_by { |_t, col| col }.map(&:first).select { |t| type_text[t] }
+
+        return nil if types_in_market.empty?
+
+        legend_items = types_in_market.map do |type|
+          line_props = {
+            style: {
+              display: 'grid',
+              grid: '1fr / auto 1fr',
+              gap: '0.5rem',
+              alignItems: 'center',
+            },
+          }
+
+          h(:div, line_props, [
+            h(:div, { style: cell_style(@box_style_2d, [type]) }, []),
+            h(:div, { style: { maxWidth: '24rem' } }, type_text[type]),
+          ])
+        end
+
+        legend_props = {
+          style: {
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '0.75rem',
+            marginLeft: '1.5rem',
+            alignSelf: 'flex-start',
+          },
+        }
+
+        h('div#legend', legend_props, legend_items)
+      end
+
       def render
+        StockMarketAnimation.capture_pre_render
+
         @space_style_2d = {
           position: 'relative',
           display: 'inline-block',
@@ -485,8 +661,24 @@ module View
           },
         }
 
-        h(:div, grid_props, grid)
+        grid_elm = h(:div, grid_props, grid)
+        legend_elm = render_legend
+
+        StockMarketAnimation.animate_movements
+
+        container_props = {
+          style: {
+            display: 'flex',
+            flexDirection: 'row',
+            alignItems: 'flex-start',
+            width: 'max-content',
+          },
+        }
+
+        h(:div, container_props, [grid_elm, legend_elm].compact)
       end
     end
+
+    DashboardStockMarket = DashboardStock
   end
 end

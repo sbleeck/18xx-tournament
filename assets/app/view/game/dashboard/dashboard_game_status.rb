@@ -27,6 +27,7 @@ require 'view/game/dashboard/row_animation'
 require 'view/game/dashboard/dashboard_bank'
 require 'view/game/dashboard/dashboard_upcoming_trains'
 require 'view/game/dashboard/dashboard_card_animation'
+require 'view/game/dashboard/dashboard_loan_animation'
 require 'view/game/dashboard/dashboard_money_animation'
 require 'view/game/dashboard/railcard_helper'
 require 'view/game/dashboard/par_prompt_overlay'
@@ -78,14 +79,15 @@ module View
           p[:status]&.any? { |s| s.include?('can_buy_companies') }
         end
 
+        active_player_index = display_players.index(active_player)
+        active_player_nth = active_player_index ? active_player_index + 2 : -1
+
         css = <<~CSS
           :root {
             --font-money: 'Courier New', monospace;
             --font-standard: "Helvetica Neue", Helvetica, Arial, sans-serif;
             --color-money-text: #4c1d95;
             --accent-action-color: #2563eb;
-            --pulse-opacity-min: 0.75;
-            --pulse-scale-duration: 2s;
             --opacity-unopened-row: 0.45;
             --bg-active-row: #ffffff;
             --bg-market-zone: #e6f4ea;
@@ -101,8 +103,13 @@ module View
           #spreadsheet tr.last-minor-row th, #spreadsheet tr.last-minor-row td { border-bottom: 3px solid #333333 !important; }
           .thick-right { border-right: 3px solid #333333 !important; }
           .no-border { border: none !important; }
-          .money-value, .padded_number { text-align: right !important; padding-right: 0.5rem !important; }
-          .money-value { font-family: var(--font-money) !important; font-weight: bold !important; color: var(--color-money-text) !important; font-variant-numeric: tabular-nums !important; }
+          .money-value, .padded_number { text-align: right !important; padding-left: 0.45rem !important; padding-right: 0.45rem !important; box-sizing: border-box !important; }
+          .money-value { min-width: 4.35rem !important; width: 4.35rem !important; font-family: var(--font-money) !important; font-weight: bold !important; color: var(--color-money-text) !important; font-variant-numeric: tabular-nums !important; }
+          #spreadsheet .market-shares-col, #spreadsheet .market-price-col { width: 4.35rem !important; min-width: 4.35rem !important; max-width: 4.35rem !important; box-sizing: border-box !important; }
+          #spreadsheet .market-shares-col { text-align: center !important; }
+          #spreadsheet thead th.header-market { background-color: var(--bg-market-zone) !important; color: #111827 !important; }
+          #spreadsheet thead th.header-corporate { background-color: #e9d5ff !important; color: #4c1d95 !important; }
+          #spreadsheet thead th.header-player, #spreadsheet thead th.header-symbol { background-color: #e5e7eb !important; color: #111827 !important; }
           .game-card { display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; min-width: 3.5rem; height: 1.45rem; font-size: 0.85rem; padding: 0 4px; margin: 2px; border: 1px solid #888888; border-radius: 4px; background-color: #fdfbf7; color: #000000; box-shadow: var(--shadow-card); transition: transform 0.1s ease; font-family: var(--font-standard); }
           .game-card.clickable:hover { cursor: pointer; transform: translateY(-1px); box-shadow: 0 2px 5px rgba(0,0,0,0.2); }
           .game-card.action-sell { border: 2px solid var(--action-sell-edge) !important; background-color: #fef2f2 !important; box-shadow: 0 0 0 1px var(--action-sell-edge) !important; }
@@ -110,18 +117,30 @@ module View
           .sell-restricted { text-decoration: line-through !important; opacity: 0.5 !important; cursor: not-allowed !important; }
           .token-bond { display: inline-block; width: 12px; height: 12px; background-color: #b91c1c; border-radius: 2px; }
           .align-top { vertical-align: top !important; }
-          tr.active-turn-focus { background-color: var(--bg-active-row) !important; animation: zeroJankPulse var(--pulse-scale-duration) infinite ease-in-out; }
+          tr.active-turn-focus { background-color: var(--bg-active-row) !important; }
           tr.active-turn-focus th, tr.active-turn-focus td { box-shadow: inset 0 3px 0 var(--accent-action-color), inset 0 -3px 0 var(--accent-action-color) !important; }
           tr.active-turn-focus th:first-child, tr.active-turn-focus td:first-child { box-shadow: inset 3px 3px 0 var(--accent-action-color), inset 0 -3px 0 var(--accent-action-color) !important; }
           tr.active-turn-focus th:last-child, tr.active-turn-focus td:last-child { box-shadow: inset -3px 3px 0 var(--accent-action-color), inset 0 -3px 0 var(--accent-action-color) !important; }
-          @keyframes zeroJankPulse { 0% { opacity: 1; } 50% { opacity: var(--pulse-opacity-min); } 100% { opacity: 1; } }
           tr.company-row-unfloated, tr.company-row-closed { opacity: var(--opacity-unopened-row) !important; filter: grayscale(40%) !important; }
           tr.company-row-unfloated:hover, tr.company-row-closed:hover { opacity: 1 !important; filter: none !important; }
-          tr.active-turn-focus:hover { animation: none !important; opacity: 1 !important; }
+          tr.active-turn-focus:hover { opacity: 1 !important; }
           .column-zone-market { background-color: var(--bg-market-zone) !important; }
           .column-zone-corporate { background-color: var(--bg-corporate-zone) !important; }
-          tr.active-turn-focus td.column-zone-market, tr.active-turn-focus td.column-zone-corporate { background-color: var(--bg-active-row) !important; }
-          th.column-zone-corporate { background-color: #e9d5ff !important; color: #4c1d95 !important; }
+          tr.active-turn-focus { opacity: 1 !important; filter: none !important; }
+          tr.active-turn-focus > th:not(:first-child), tr.active-turn-focus > td:not(:first-child),
+          tr.active-turn-focus > td.column-zone-market, tr.active-turn-focus > td.column-zone-corporate {
+            background-color: #ffffff !important; opacity: 1 !important; filter: none !important;
+          }
+          tr.operated-this-or > th:not(:first-child), tr.operated-this-or > td:not(:first-child),
+          tr.operated-this-or > td.column-zone-market, tr.operated-this-or > td.column-zone-corporate {
+            background-color: #eeeeee !important; color: #6b7280 !important;
+          }
+          #spreadsheet tbody tr > *:nth-child(#{active_player_nth}) {
+            background-color: #ffffff !important; opacity: 1 !important; filter: none !important;
+          }
+          #spreadsheet thead th { font-weight: 700 !important; }
+          #spreadsheet th.header-cash, #spreadsheet td.corporation-cash { width: 4.35rem !important; min-width: 4.35rem !important; max-width: 4.35rem !important; }
+          #spreadsheet th.header-trains, #spreadsheet td.corporation-trains { width: 14.4rem !important; min-width: 14.4rem !important; max-width: 14.4rem !important; padding-left: 0 !important; padding-right: 0 !important; }
           .status-corp-wrapper:hover { z-index: 99999; }
           .status-corp-tooltip, .status-company-tooltip, .cmd-corp-tooltip, .cmd-company-tooltip { display: none !important; }
         CSS
@@ -239,9 +258,12 @@ module View
             clean_variant_id = variant_name.tr('/', '_')
             escaped_train_id = `CSS.escape('bank_train_' + #{train.id} + '_' + #{clean_variant_id})`
             escaped_dest_id = `CSS.escape('trains_' + #{active_entity.id})`
+            escaped_slot_id = `CSS.escape('train_drop_' + #{active_entity.id})`
             source_selector = "##{escaped_train_id} .game-card"
             source_fallback = "##{`CSS.escape('bank_train_' + #{train.id})`} .game-card"
-            target_selector = "##{escaped_dest_id}"
+            cell_selector = "##{escaped_dest_id}"
+            slot_selector = "##{escaped_slot_id}"
+            target_selector = `document.querySelector(#{slot_selector}) ? #{slot_selector} : #{cell_selector}`
             active_source = `document.querySelector(#{source_selector}) ? #{source_selector} : #{source_fallback}`
 
             Lib::CardAnimation.fly(active_source, target_selector) do
@@ -257,64 +279,46 @@ module View
       end
 
       def render_titles
-        th_props = lambda do |cols, border_right = true|
-          props = tr_default_props
-          props[:attrs] = { colspan: cols }
-          props[:style][:padding] = '0.3rem'
-          props[:style][:borderRight] = "1px solid #{color_for(:font2)}" if border_right
-          props[:style][:fontSize] = '1.1rem'
-          props[:style][:letterSpacing] = '1px'
-          props
-        end
-
         treasury_headers = []
         if has_treasury_column?
           header_name = any_reserved_shares? && !@game.separate_treasury? ? @game.ipo_reserved_name : 'Treasury'
-          treasury_headers << h('th.column-zone-corporate', {}, render_sort_link(header_name, :treasury))
+          treasury_headers << h(:th, { attrs: { class: 'header-corporate' } }, render_sort_link(header_name, :treasury))
         end
 
         extra = []
         if @game.respond_to?(:capitalization_type_desc)
           @is_escrow_game = @game.all_corporations.any? { |c| @game.capitalization_type_desc(c)&.include?('Escrow') }
           header_label = @is_escrow_game ? 'Escrow' : 'Capitalization'
-          extra << h('th.column-zone-corporate', {}, render_sort_link(header_label, :capitalization_type_desc))
+          extra << h(:th, { attrs: { class: 'header-corporate' } }, render_sort_link(header_label, :capitalization_type_desc))
         end
-        extra << h('th.column-zone-corporate', {}, render_sort_link('Loans', :loans)) if @game.total_loans&.nonzero?
-        extra << h('th.column-zone-corporate', {}, render_sort_link('Shorts', :shorts)) if @game.respond_to?(:available_shorts)
-
-        if @game.total_loans&.positive?
-          extra << h('th.column-zone-corporate', {}, render_sort_link('Buying Power', :buying_power))
-          extra << h('th.column-zone-corporate', {}, render_sort_link('Interest Due', :interest)) if @game.corporation_show_interest?
-        end
-
+        extra << h(:th, { attrs: { class: 'header-corporate' } }, render_sort_link('Loans', :loans)) if @game.total_loans&.nonzero?
+        extra << h(:th, { attrs: { class: 'header-corporate' } }, render_sort_link('Shorts', :shorts)) if @game.respond_to?(:available_shorts)
         if (@diff_corp_sizes = @game.all_corporations.any? { |c| @game.corporation_size(c) != :small })
-          extra << h('th.column-zone-corporate', {}, render_sort_link('Size', :corp_size))
+          extra << h(:th, { attrs: { class: 'header-corporate' } }, render_sort_link('Size', :corp_size))
         end
         @extra_size = extra.size
 
-        players_subtitles = []
-        display_players.each_with_index do |p, idx|
-          is_active_col = (p == active_player)
-          props = { style: { backgroundColor: is_active_col ? COLOR_ACTIVE : 'inherit' } }
-          props[:style][:width] = PLAYER_COL_MAX_WIDTH
-          props[:style][:minWidth] = PLAYER_COL_MAX_WIDTH
-          props[:style][:maxWidth] = PLAYER_COL_MAX_WIDTH
-          props[:style][:position] = 'relative'
-          props[:style][:overflow] = 'hidden'
-          props[:style][:textOverflow] = 'ellipsis'
-          props[:style][:textAlign] = 'left'
-          props[:style][:paddingRight] = '22px'
-          props[:style][:color] = '#000000'
-          is_last = idx == @game.players.size - 1
-
-          header_content = []
-          header_content.concat(render_sort_link(p.name, p.id))
-
-          if @game.respond_to?(:priority_deal_player) && p == @game.priority_deal_player
-            header_content << h(:svg, {
-                                  attrs: { viewBox: '0 0 16 16', width: '16', height: '16', title: 'Priority Deal' },
-                                  style: { position: 'absolute', right: '4px', top: '50%', transform: 'translateY(-50%)', fill: COLOR_CASH },
-                                }, [
+        player_headers = display_players.map.with_index do |player, index|
+          props = {
+            attrs: { class: ('thick-right' if index == display_players.size - 1) },
+            style: {
+              width: PLAYER_COL_MAX_WIDTH,
+              minWidth: PLAYER_COL_MAX_WIDTH,
+              maxWidth: PLAYER_COL_MAX_WIDTH,
+              position: 'relative',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              textAlign: 'left',
+              paddingRight: '22px',
+            },
+          }
+          props[:attrs][:class] = [props[:attrs][:class], 'header-player'].compact.join(' ')
+          content = render_sort_link(player.name, player.id)
+          if @game.respond_to?(:priority_deal_player) && player == @game.priority_deal_player
+            content += [h(:svg, {
+                            attrs: { viewBox: '0 0 16 16', width: '16', height: '16', title: 'Priority Deal' },
+                            style: { position: 'absolute', right: '4px', top: '50%', transform: 'translateY(-50%)', fill: COLOR_CASH },
+                          }, [
               h(:rect, attrs: { x: '0', y: '2', width: '6', height: '1' }),
               h(:rect, attrs: { x: '1', y: '3', width: '4', height: '7' }),
               h(:rect, attrs: { x: '11', y: '1', width: '2', height: '4' }),
@@ -324,58 +328,28 @@ module View
               h(:circle, attrs: { cx: '3.5', cy: '13.5', r: '1.5' }),
               h(:circle, attrs: { cx: '8.5', cy: '13.5', r: '1.5' }),
               h(:circle, attrs: { cx: '12.5', cy: '13.5', r: '1.5' }),
-            ])
+            ])]
           end
-
-          players_subtitles << h("th.name.nowrap#{'.thick-right' if is_last}", props, header_content)
+          h(:th, props, content)
         end
 
-        pool_subtitles = [
-          h('th.column-zone-market', { attrs: { class: 'column-zone-market' }, style: { color: '#000000' } }, render_sort_link('Shares', :market_shares)),
-          h('th.thick-right.column-zone-market', { attrs: { class: 'column-zone-market' }, style: { color: '#000000' } }, render_sort_link('Price', :share_price)),
-        ]
-
-        bank_subtitles = [
-          h('th.column-zone-market', { attrs: { class: 'column-zone-market' }, style: { color: '#000000' } }, render_sort_link(@game.ipo_name, :ipo_shares)),
-          h('th.thick-right.column-zone-market', { attrs: { class: 'column-zone-market' }, style: { color: '#000000' } }, render_sort_link('Price', :par_price)),
-        ]
-
-        corporation_subtitles = [
+        corporation_headers = [
           *treasury_headers,
-          h('th.column-zone-corporate', {}, render_sort_link('Cash', :cash)),
-          h('th.column-zone-corporate', {}, render_sort_link('Trains', :trains)),
-          h('th.column-zone-corporate', {}, render_sort_link('Tokens', :tokens)),
+          h(:th, { attrs: { class: 'header-cash header-corporate' } }, render_sort_link('Cash', :cash)),
+          h(:th, { attrs: { class: 'header-trains header-corporate' } }, render_sort_link('Trains', :trains)),
+          h(:th, { attrs: { class: 'header-corporate' } }, render_sort_link('Tokens', :tokens)),
           *extra,
-          h('th.column-zone-corporate', {}, render_sort_link('Order', :order)),
         ]
+        corporation_headers << h(:th, { attrs: { class: 'header-corporate' } }, render_sort_link('Privates', :companies)) if @show_privates
+        corporation_headers << h(:th, { attrs: { class: 'header-corporate' } }, render_sort_link('Last', :prev_revenue))
 
-        corporation_subtitles << h('th.column-zone-corporate', {}, render_sort_link('Privates', :companies)) if @show_privates
-        corporation_subtitles << h('th.column-zone-corporate', {}, render_sort_link('Last Run', :prev_revenue))
-
-        players_title = h('th.thick-right', th_props[players_subtitles.size], 'Players')
-        pool_title = h('th.thick-right.column-zone-market', th_props[pool_subtitles.size], 'Pool')
-        bank_title = h('th.thick-right.column-zone-market', th_props[bank_subtitles.size], 'Bank / IPO')
-        corporation_title = h(:th, th_props[corporation_subtitles.size, false], ['Corporation ', render_toggle_not_floated_link])
-
-        subtitles = []
-        subtitles.concat(players_subtitles)
-        subtitles.concat(pool_subtitles)
-        subtitles.concat(bank_subtitles)
-        subtitles.concat(corporation_subtitles)
-
-        [
-          h(:tr, [
-            h('th.thick-right', { style: { minWidth: '5rem' } }, ''),
-            players_title,
-            pool_title,
-            bank_title,
-            corporation_title,
-          ]),
-          h(:tr, [
-            h('th.thick-right', { style: { paddingBottom: '0.3rem' } }, render_sort_link('SYM', :id)),
-            *subtitles,
-          ]),
-        ]
+        [h(:tr, [
+          h('th.thick-right.header-symbol', ''),
+          *player_headers,
+          h(:th, { attrs: { colspan: 2, class: 'thick-right header-market' } }, render_sort_link('Pool', :market_shares)),
+          h(:th, { attrs: { colspan: 2, class: 'thick-right header-market' } }, render_sort_link('IPO', :ipo_shares)),
+          *corporation_headers,
+        ])]
       end
 
       def render_sort_link(text, _sort_by)
@@ -458,17 +432,16 @@ module View
         if @game.round.respond_to?(:actions_for)
           begin
             actions.concat(@game.round.actions_for(entity) || [])
-          rescue StandardError
+          rescue NotImplementedError, StandardError
           end
         end
         step = @game.round.active_step
-        if step&.respond_to?(:actions)
+        if actions.empty? && step&.respond_to?(:actions)
           begin
             actions.concat(step.actions(entity) || [])
-          rescue StandardError
+          rescue NotImplementedError, StandardError
           end
         end
-        actions.concat(step.current_actions || []) if step&.respond_to?(:current_actions)
         actions.compact.map(&:to_s).uniq
       end
 
@@ -554,7 +527,24 @@ module View
         nil
       end
 
-      def render_corporation(corporation, operating_order, current_round, is_last_minor = false)
+      def visual_operating_entity
+        entity = @game.respond_to?(:current_entity) ? @game.current_entity : nil
+        entity ||= @game.round.current_entity if @game.round.respond_to?(:current_entity)
+        entity ||= active_entity
+        entity
+      rescue NotImplementedError, StandardError
+        active_entity
+      end
+
+      def operated_this_or?(corporation, current_round)
+        return false unless @game.round.operating?
+        return false if corporation == visual_operating_entity
+        return false unless corporation.respond_to?(:operating_history)
+
+        corporation.operating_history.keys.include?(current_round)
+      end
+
+      def render_corporation(corporation, _operating_order, current_round, is_last_minor = false)
         return '' if @hide_not_floated && !@game.operating_order.include?(corporation)
 
         step = @game.round.active_step
@@ -563,11 +553,11 @@ module View
         corporation_controlled = is_active_row || (corporation.respond_to?(:owner) && corporation.owner == active_player)
 
         issuable_bundles = status_issuable_bundles(step, corporation)
-        issue_command = (corp_actions & %w[issue_shares reissue_shares reissue corporate_sell_shares sell_shares]).any?
+        issue_command = (corp_actions & %w[issue_shares reissue_shares reissue corporate_sell_shares]).any?
         can_issue = corporation_controlled && issue_command && issuable_bundles.any?
 
         all_redeemable_bundles = status_redeemable_bundles(step, corporation)
-        redeem_command = (corp_actions & %w[redeem redeem_shares corporate_buy_shares buy_shares]).any?
+        redeem_command = (corp_actions & %w[redeem redeem_shares corporate_buy_shares]).any?
         can_redeem = corporation_controlled && redeem_command && all_redeemable_bundles.any?
 
         is_unfloated = corporation.respond_to?(:floated?) && !corporation.floated?
@@ -593,8 +583,10 @@ module View
         should_grey_unfloated = @game.round.operating? ? is_unfloated : (is_unfloated && !(president_available || president_sold))
 
         row_classes << 'company-row-unfloated' if should_grey_unfloated
-        row_classes << 'active-turn-focus' if is_active_row
-        row_classes << 'directed-by-active-player' if is_directed && !is_active_row
+        visual_current = @game.round.operating? && corporation == visual_operating_entity
+        row_classes << 'operated-this-or' if operated_this_or?(corporation, current_round)
+        row_classes << 'active-turn-focus' if visual_current
+        row_classes << 'directed-by-active-player' if is_directed && !visual_current
         row_classes << 'last-minor-row' if is_last_minor
 
         tr_props[:attrs][:class] = row_classes.join(' ') unless row_classes.empty?
@@ -678,24 +670,11 @@ module View
           end
         end
 
-        extra << h('td.column-zone-corporate', {}, [render_loan_dots(corporation)]) if @game.total_loans&.nonzero?
+        extra << h('td.column-zone-corporate', { attrs: { id: "loans_#{corporation.id}" } }, [render_loan_dots(corporation)]) if @game.total_loans&.nonzero?
 
         if @game.respond_to?(:available_shorts)
           taken, total = @game.respond_to?(:available_shorts) ? @game.available_shorts(corporation) : [0, 0]
           extra << h('td.column-zone-corporate', {}, "#{taken} / #{total}")
-        end
-
-        if @game.total_loans&.positive?
-          extra << h('td.column-zone-corporate.money-value', {}, @game.format_currency(@game.buying_power(corporation, full: true)))
-          interest_props = { style: {} }
-          unless @game.can_pay_interest?(corporation)
-            color = StockMarket::COLOR_MAP[:yellow]
-            interest_props[:style][:backgroundColor] = color
-            interest_props[:style][:color] = contrast_on(color)
-          end
-          if @game.corporation_show_interest?
-            extra << h('td.column-zone-corporate.money-value', interest_props, @game.format_currency(@game.interest_owed(corporation)).to_s)
-          end
         end
 
         if @diff_corp_sizes
@@ -1287,13 +1266,13 @@ module View
         clean_par_price = corporation.par_price ? @game.format_currency(corporation.par_price.price) : ''
 
         pool_row_content = [
-          h('td.column-zone-market', { attrs: { id: "pool_shares_#{corporation.id}" }, style: { position: 'relative', textAlign: 'center', borderLeft: border_style } }, pool_cell_children),
-          h('td.padded_number.column-zone-market.money-value', { style: market_style.merge(borderRight: border_style) }, clean_market_price),
+          h('td.column-zone-market.market-shares-col', { attrs: { id: "pool_shares_#{corporation.id}" }, style: { position: 'relative', textAlign: 'center', borderLeft: border_style } }, pool_cell_children),
+          h('td.padded_number.column-zone-market.money-value.market-price-col', { style: market_style.merge(borderRight: border_style) }, clean_market_price),
         ]
 
         bank_row_content = [
-          h('td.column-zone-market', { attrs: { id: "ipo_shares_#{corporation.id}" }, style: { position: 'relative', textAlign: 'center' } }, ipo_cell_children),
-          h('td.padded_number.column-zone-market.money-value', { style: { borderRight: border_style } }, clean_par_price),
+          h('td.column-zone-market.market-shares-col', { attrs: { id: "ipo_shares_#{corporation.id}" }, style: { position: 'relative', textAlign: 'center' } }, ipo_cell_children),
+          h('td.padded_number.column-zone-market.money-value.market-price-col', { style: { borderRight: border_style } }, clean_par_price),
         ]
 
         train_buyable_step = step&.current_actions&.include?('buy_train')
@@ -1359,28 +1338,22 @@ module View
         limit = begin; @game.train_limit(corporation); rescue StandardError; corporation.trains.size; end
         limit = corporation.trains.size if limit < corporation.trains.size
         empty_count = [limit - corporation.trains.size, 0].max
-        empty_count.times do
-          train_cards << h(:div, { style: { width: '3.5rem', height: '1.45rem', backgroundColor: 'transparent', border: '1px dashed #999', borderRadius: '4px', margin: '2px', boxSizing: 'border-box', display: 'inline-flex', verticalAlign: 'middle' } })
+        empty_count.times do |slot_index|
+          attrs = { class: 'empty-train-slot' }
+          attrs[:id] = "train_drop_#{corporation.id}" if slot_index.zero?
+          train_cards << h(:div, { attrs: attrs, style: { width: '3.5rem', height: '1.45rem', backgroundColor: 'transparent', border: '1px dashed #999', borderRadius: '15px', margin: '2px', boxSizing: 'border-box', display: 'inline-flex', verticalAlign: 'middle' } })
         end
 
         clean_corp_cash = @game.format_currency(corporation.cash)
         last_rev = corporation.operating_history.values.last&.revenue
         clean_rev = last_rev ? @game.format_currency(last_rev) : ''
 
-        order_props = { style: { paddingLeft: '1.2em' } }
-        order_props[:style][:color] = if operating_order[0] == UNSTARTED
-                                        'transparent'
-                                      elsif corporation.operating_history.keys[-1] == current_round
-                                        convert_hex_to_rgba(color_for(:font2), 0.5)
-                                      end
-
         corporation_row_content = [
           *treasury,
-          h('td.padded_number.column-zone-corporate.money-value', { hook: Lib::MoneyAnimation.hook }, clean_corp_cash),
-          h('td.column-zone-corporate', { attrs: { id: "trains_#{corporation.id}" } }, train_cards),
+          h('td.padded_number.column-zone-corporate.money-value.corporation-cash', { hook: Lib::MoneyAnimation.hook }, clean_corp_cash),
+          h('td.column-zone-corporate.corporation-trains', { attrs: { id: "trains_#{corporation.id}" } }, train_cards),
           h('td.column-zone-corporate', {}, [render_unplaced_tokens(corporation)]),
           *extra,
-          h('td.padded_number.column-zone-corporate', order_props, operating_order[0] == UNFLOATED ? "[#{operating_order[1]}]" : operating_order[1]),
         ]
         corporation_row_content << render_companies(corporation, nil, 'column-zone-corporate') if @show_privates
 
@@ -1519,19 +1492,61 @@ module View
       def render_loan_dots(entity)
         return h(:div, '') if !entity.respond_to?(:loans) || !@game.respond_to?(:maximum_loans)
 
-        loans_taken = entity.loans.size
-        max_loans = @game.maximum_loans(entity)
-        interest_owed = @game.respond_to?(:interest_owed) ? @game.interest_owed(entity) : 0
-
+        taken = entity.loans.size
+        maximum = @game.maximum_loans(entity)
+        actions = status_actions_for(entity)
+        if entity == active_entity && @game.round.active_step&.respond_to?(:current_actions)
+          actions = (actions + (@game.round.active_step.current_actions || [])).uniq
+        end
+        can_take = actions.include?('take_loan') && @game.respond_to?(:loans) && @game.loans&.any?
+        can_repay = actions.include?('payoff_loan') && entity.loans.any?
         dots = []
-        loans_taken.times do
-          dots << h(:span, { style: { display: 'inline-block', width: '8px', height: '8px', backgroundColor: '#dc3545', borderRadius: '50%', margin: '0 2px', verticalAlign: 'middle' } })
+
+        taken.times do |index|
+          dot_props = { attrs: { id: "loan_dot_#{entity.id}_#{index}" }, style: { display: 'inline-block', width: '8px', height: '8px', backgroundColor: '#dc3545', borderRadius: '50%', margin: '0 2px', pointerEvents: 'none' } }
+          dots << h(:span, dot_props)
         end
-        [max_loans - loans_taken, 0].max.times do
-          dots << h(:span, { style: { display: 'inline-block', width: '8px', height: '8px', border: '1px solid #dc3545', borderRadius: '50%', margin: '0 2px', verticalAlign: 'middle', boxSizing: 'border-box' } })
+
+        [maximum - taken, 0].max.times do |index|
+          dot_props = { attrs: { id: "loan_empty_#{entity.id}_#{index}" }, style: { display: 'inline-block', width: '8px', height: '8px', border: '1px solid #dc3545', borderRadius: '50%', margin: '0 2px', boxSizing: 'border-box', pointerEvents: 'none' } }
+          dots << h(:span, dot_props)
         end
-        dots << h(:span, { style: { marginLeft: '4px', fontSize: '0.75rem', fontWeight: 'bold', verticalAlign: 'middle' } }, "(#{interest_owed})")
-        h(:div, { style: { display: 'flex', alignItems: 'center', justifyContent: 'center' } }, dots)
+
+        interest = @game.respond_to?(:interest_owed) ? @game.interest_owed(entity) : 0
+        dots << h(:span, { style: { marginLeft: '4px', fontSize: '0.75rem', fontWeight: 'bold', pointerEvents: 'none' } }, @game.format_currency(interest))
+
+        wrapper_props = {
+          attrs: {
+            id: "loan_wrapper_#{entity.id}",
+            title: can_repay ? "Payoff Loan for #{entity.name}" : '',
+          },
+          style: {
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            cursor: can_repay ? 'pointer' : 'default',
+            padding: '2px 6px',
+            backgroundColor: can_repay ? '#fef2f2' : 'transparent',
+            border: can_repay ? '2px solid #dc2626' : '1px solid transparent',
+            borderRadius: '4px',
+            boxShadow: can_repay ? '0 1px 3px rgba(220,38,38,0.25)' : 'none',
+            boxSizing: 'border-box',
+          },
+        }
+
+        if can_repay
+          wrapper_props[:on] = {
+            click: lambda { |_event|
+              `if (event) { event.stopPropagation(); event.preventDefault(); }`
+              source_id = "#loan_dot_#{entity.id}_#{taken - 1}"
+              Lib::LoanAnimation.fly(source_id, '#bank_loan_active') do
+                process_action(Engine::Action::PayoffLoan.new(entity, loan: entity.loans.last))
+              end
+            },
+          }
+        end
+
+        h(:div, wrapper_props, dots)
       end
 
       def render_companies(entity, bg_color = nil, custom_class = nil, is_last: false)
@@ -1629,7 +1644,9 @@ module View
               default_price = [default_price, min_price].max
 
               show_price_dialog(menu_title, min_price, max_price, default_price, lambda { |price_val|
-                process_action(Engine::Action::BuyCompany.new(active_ent, company: c, price: price_val))
+                source_selector = "#company_wrapper_#{entity.id}_#{c.id} .game-card"
+                target_selector = "#companies_#{active_ent.id}"
+                Lib::CardAnimation.fly(source_selector, target_selector) { process_action(Engine::Action::BuyCompany.new(active_ent, company: c, price: price_val)) }
               })
             }
           end
@@ -1802,7 +1819,11 @@ module View
 
       def exec_buy_corporate_train(source_selector, active_entity, train, price_value)
         escaped_dest_id = `CSS.escape('trains_' + #{active_entity.id})`
-        Lib::CardAnimation.fly(source_selector, "##{escaped_dest_id}") do
+        escaped_slot_id = `CSS.escape('train_drop_' + #{active_entity.id})`
+        slot_selector = "##{escaped_slot_id}"
+        cell_selector = "##{escaped_dest_id}"
+        target_selector = `document.querySelector(#{slot_selector}) ? #{slot_selector} : #{cell_selector}`
+        Lib::CardAnimation.fly(source_selector, target_selector) do
           process_action(Engine::Action::BuyTrain.new(
             active_entity,
             train: train,
@@ -1848,25 +1869,6 @@ module View
       end
 
       private
-
-      def player_time_details(p)
-        base_bank_seconds = p.respond_to?(:thinking_time) && p.thinking_time ? p.thinking_time.to_i : p.instance_variable_get(:@thinking_time).to_i
-        base_bank_seconds = 300 if base_bank_seconds.zero? && !p.instance_variable_defined?(:@thinking_time)
-        time_val = base_bank_seconds
-
-        if p == active_player
-          last_update_epoch = @game_data['updated_at'] || @game_data[:updated_at]
-          turn_start_seconds = last_update_epoch ? last_update_epoch.to_i : Time.now.to_i
-          elapsed_seconds = Time.now.to_i - turn_start_seconds
-          time_val = base_bank_seconds - elapsed_seconds
-        end
-
-        abs_time = time_val.abs
-        mins = (abs_time / 60).to_i
-        secs = (abs_time % 60).to_i
-        formatted_time = "#{'-' if time_val.negative?}#{mins}:#{'0' if secs < 10}#{secs}"
-        [time_val, formatted_time]
-      end
 
       def has_treasury_column?
         storage_key = "dashboard_treasury_column_#{@game.class.name}"

@@ -8,8 +8,8 @@ require 'view/game/actionable'
 require 'view/game/abilities'
 require 'view/game/buy_companies'
 require 'view/game/dashboard/results_overlay'
-require 'view/game/dashboard/dashboard_stock'
 require 'view/game/dashboard/dashboard_card_animation'
+require 'view/game/dashboard/dashboard_loan_animation'
 require 'view/game/history_and_undo'
 require 'view/game/dashboard/railcard_helper'
 require 'view/game/round/operating'
@@ -1041,18 +1041,34 @@ module View
         end
 
         if actions.include?('take_loan')
+          escaped_id = entity.id.to_s
           loan_amount = @game.respond_to?(:loan_value) ? @game.loan_value(entity) : (@game.loans.first&.amount || 0)
           btn_text = loan_amount.positive? ? "Take Loan (#{@game.format_currency(loan_amount)})" : 'Take Loan'
+          click_take = lambda {
+            target_selector = "#loan_empty_#{escaped_id}_0, #loans_#{escaped_id}"
+            Lib::LoanAnimation.fly('#bank_loan_active', target_selector) do
+              process_action(Engine::Action::TakeLoan.new(entity, loan: @game.loans.first))
+            end
+          }
           top_buttons << h(:button, {
                              style: { padding: '0.3rem 0.6rem', fontSize: '0.9rem', fontWeight: 'bold', fontFamily: loan_amount.positive? ? FONT_MONEY : 'inherit', backgroundColor: '#dc2626', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' },
-                             on: { click: -> { process_action(Engine::Action::TakeLoan.new(entity, loan: @game.loans.first)) } },
+                             on: { click: click_take },
                            }, btn_text)
         end
 
         if actions.include?('payoff_loan')
+          escaped_id = entity.id.to_s
+          taken = entity.respond_to?(:loans) && entity.loans ? entity.loans.size : 1
+          source_selector = "#loan_dot_#{escaped_id}_#{[taken - 1, 0].max}, #loans_#{escaped_id}"
+          loan_to_pay = entity.respond_to?(:loans) && entity.loans ? (entity.loans.last || entity.loans.first) : nil
+          click_payoff = lambda {
+            Lib::LoanAnimation.fly(source_selector, '#bank_loan_active') do
+              process_action(Engine::Action::PayoffLoan.new(entity, loan: loan_to_pay))
+            end
+          }
           top_buttons << h(:button, {
                              style: { padding: '0.3rem 0.6rem', fontSize: '0.9rem', fontWeight: 'bold', backgroundColor: '#2563eb', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' },
-                             on: { click: -> { process_action(Engine::Action::PayoffLoan.new(entity, loan: entity.loans.first)) } },
+                             on: { click: click_payoff },
                            }, 'Payoff Loan')
         end
 
@@ -1341,6 +1357,78 @@ module View
         return nil if train_boxes.empty?
 
         render_action_row('Discard:', train_boxes)
+      end
+
+      def render_loan_actions(_step, entity, actions)
+        return nil unless entity && (%w[take_loan payoff_loan] & actions).any?
+
+        buttons = []
+        escaped_id = entity.id.to_s
+
+        if actions.include?('take_loan') && @game.respond_to?(:loans) && @game.loans&.any?
+          loan_amount = @game.respond_to?(:loan_value) ? @game.loan_value(entity) : (@game.loans.first&.amount || 0)
+          btn_text = loan_amount.positive? ? "Take Loan (#{@game.format_currency(loan_amount)})" : 'Take Loan'
+          click_take = lambda {
+            target_selector = "#loan_empty_#{escaped_id}_0, #loans_#{escaped_id}"
+            Lib::LoanAnimation.fly('#bank_loan_active', target_selector) do
+              process_action(Engine::Action::TakeLoan.new(entity, loan: @game.loans.first))
+            end
+          }
+          buttons << h(:button, {
+                         style: {
+                           padding: '0 12px',
+                           height: '1.65rem',
+                           fontSize: '0.85rem',
+                           fontWeight: 'bold',
+                           fontFamily: loan_amount.positive? ? FONT_MONEY : 'inherit',
+                           backgroundColor: '#dc2626',
+                           color: '#fff',
+                           border: 'none',
+                           borderRadius: '4px',
+                           cursor: 'pointer',
+                           boxShadow: '0 1px 2px rgba(0,0,0,0.1)',
+                           display: 'inline-flex',
+                           alignItems: 'center',
+                           justifyContent: 'center',
+                           lineHeight: '1',
+                         },
+                         on: { click: click_take },
+                       }, btn_text)
+        end
+
+        if actions.include?('payoff_loan') && entity.respond_to?(:loans) && entity.loans&.any?
+          taken = entity.loans.size
+          source_selector = "#loan_dot_#{escaped_id}_#{[taken - 1, 0].max}, #loans_#{escaped_id}"
+          loan_to_pay = entity.loans.last || entity.loans.first
+          click_payoff = lambda {
+            Lib::LoanAnimation.fly(source_selector, '#bank_loan_active') do
+              process_action(Engine::Action::PayoffLoan.new(entity, loan: loan_to_pay))
+            end
+          }
+          buttons << h(:button, {
+                         style: {
+                           padding: '0 12px',
+                           height: '1.65rem',
+                           fontSize: '0.85rem',
+                           fontWeight: 'bold',
+                           backgroundColor: '#2563eb',
+                           color: '#fff',
+                           border: 'none',
+                           borderRadius: '4px',
+                           cursor: 'pointer',
+                           boxShadow: '0 1px 2px rgba(0,0,0,0.1)',
+                           display: 'inline-flex',
+                           alignItems: 'center',
+                           justifyContent: 'center',
+                           lineHeight: '1',
+                         },
+                         on: { click: click_payoff },
+                       }, 'Repay Loan')
+        end
+
+        return nil if buttons.empty?
+
+        render_action_row('Loans:', buttons)
       end
 
       def render_surrender_trains(actions, step, entity)
@@ -1967,7 +2055,6 @@ module View
               action_step = active_step_for(action_entity) || step
               stock_components << render_issue_shares(action_step, action_entity)
             end
-            stock_components << h(::View::Game::DashboardStock, game: @game)
             h(:div, { style: { display: 'flex', flexDirection: 'column', gap: '0.15rem', width: '100%' } }, stock_components.compact)
           end
         when Engine::Round::Operating
@@ -1976,8 +2063,6 @@ module View
 
           if is_pure_merger_step
             h(:div, { style: { display: 'flex', flexDirection: 'column', gap: '0.15rem', width: '100%', alignItems: 'flex-start' } }, [render_merger_step(step, step&.current_entity || current_entity, actions)].compact)
-          elsif actions.include?('buy_shares') && step&.current_entity&.player?
-            h(::View::Game::DashboardStock, game: @game)
           elsif is_draft_or_auction
             h(View::Game::Dashboard::DraftOverlay, game: @game)
           else
@@ -2050,7 +2135,7 @@ module View
             if actions.include?('scrap_train') || actions.include?('surrender_train') || actions.include?('surrender')
               components << render_surrender_trains(actions, step, step&.current_entity)
             end
-            components << h(Loans, corporation: step&.current_entity) if !loans_rendered && (%w[take_loan payoff_loan] & actions).any?
+            components << render_loan_actions(step, step&.current_entity || current_entity, actions) if !loans_rendered && (%w[take_loan payoff_loan] & actions).any?
             components << h(ViewMergeOptions, corporation: step&.current_entity) if actions.include?('view_merge_options')
 
             if actions.include?('bankrupt')
@@ -2129,8 +2214,8 @@ module View
           elsif actions.include?('choose')
             choice_item = render_generic_choice(step, step&.current_entity || current_entity)
             h(:div, { style: { display: 'flex', flexDirection: 'column', gap: '0.15rem', width: '100%', alignItems: 'flex-start' } }, [choice_item].compact)
-          elsif @game.round.stock?
-            h(::View::Game::DashboardStock, game: @game)
+          elsif @game.round.unordered?
+            h(Round::Unordered, game: @game, user: nil)
           elsif @game.round.unordered?
             h(Round::Unordered, game: @game, user: nil)
           else
