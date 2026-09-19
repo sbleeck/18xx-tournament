@@ -501,6 +501,20 @@ module View
           .uniq { |bundle| bundle.respond_to?(:percent) ? bundle.percent : bundle.object_id }
       end
 
+      def explicit_redeemable_bundles(step, corporation)
+        bundles = status_step_bundles(step, :redeemable_shares, corporation)
+        bundles = status_step_bundles(step, :redeemable_bundles, corporation) if bundles.empty?
+        if bundles.empty? && @game.respond_to?(:redeemable_shares)
+          begin
+            bundles = Array(@game.redeemable_shares(corporation))
+          rescue StandardError
+            bundles = []
+          end
+        end
+        bundles.compact.map { |item| item.respond_to?(:to_bundle) && !item.respond_to?(:num_shares) ? item.to_bundle : item }
+          .uniq { |bundle| bundle.respond_to?(:percent) ? bundle.percent : bundle.object_id }
+      end
+
       def status_redeemable_bundles(step, corporation)
         bundles = status_step_bundles(step, :redeemable_shares, corporation)
         bundles = status_step_bundles(step, :redeemable_bundles, corporation) if bundles.empty?
@@ -525,6 +539,14 @@ module View
         return bundle.shares.first.owner if bundle.respond_to?(:shares) && bundle.shares&.first&.respond_to?(:owner)
 
         nil
+      end
+
+      def bundle_from_pool?(bundle, corporation)
+        return true if bundle_owner(bundle) == @game.share_pool
+
+        pool_shares = @game.share_pool.shares_by_corporation[corporation] || []
+        bundle_shares = bundle.respond_to?(:shares) ? bundle.shares : [bundle]
+        bundle_shares.any? && bundle_shares.all? { |share| pool_shares.include?(share) }
       end
 
       def visual_operating_entity
@@ -553,12 +575,16 @@ module View
         corporation_controlled = is_active_row || (corporation.respond_to?(:owner) && corporation.owner == active_player)
 
         issuable_bundles = status_issuable_bundles(step, corporation)
-        issue_command = (corp_actions & %w[issue_shares reissue_shares reissue corporate_sell_shares]).any?
+        issue_command = (corp_actions & %w[issue_shares reissue_shares reissue corporate_sell_shares issue sell_shares]).any? ||
+                        (@game.round.operating? && corp_actions.include?('sell_shares')) ||
+                        (step&.respond_to?(:issuable_shares) && issuable_bundles.any?)
         can_issue = corporation_controlled && issue_command && issuable_bundles.any?
 
+        explicit_redeem_bundles = explicit_redeemable_bundles(step, corporation)
         all_redeemable_bundles = status_redeemable_bundles(step, corporation)
         redeem_command = (corp_actions & %w[redeem redeem_shares corporate_buy_shares]).any?
-        can_redeem = corporation_controlled && redeem_command && all_redeemable_bundles.any?
+        redeem_available = redeem_command || explicit_redeem_bundles.any?
+        can_redeem = corporation_controlled && redeem_available && all_redeemable_bundles.any?
 
         is_unfloated = corporation.respond_to?(:floated?) && !corporation.floated?
         is_directed = corporation.respond_to?(:owner) && (corporation.owner == active_player)
@@ -604,16 +630,18 @@ module View
           unless @game.separate_treasury?
             treasury_percent += num_reserved_shares(corporation) * (corporation.respond_to?(:share_percent) ? corporation.share_percent : 10)
           end
+          treasury_issuable_bundles = issuable_bundles.select { |b| bundle_owner(b) == corporation }
+          can_issue_treasury = can_issue && (treasury_issuable_bundles.any? || (!@game.class.name.include?('1846') && !issuable_bundles.any? { |b| bundle_owner(b) != corporation } && !t_shares.empty?))
 
           if treasury_percent.positive?
             classes = ['game-card']
-            classes << 'action-sell' if can_issue
-            classes << 'clickable' if can_issue
+            classes << 'action-sell' if can_issue_treasury
+            classes << 'clickable' if can_issue_treasury
             dropdowns = []
             click_handler = nil
 
-            if can_issue
-              click_handler = if issuable_bundles.size > 1
+            if can_issue_treasury
+              click_handler = if treasury_issuable_bundles.size > 1
                                 lambda {
                                   Lib::Storage['issue_menu_corp'] = corporation.id
                                   update
@@ -621,16 +649,16 @@ module View
                               else
                                 lambda { |_event|
                                   exec_issue_share_bundle(
-                                    corporation, issuable_bundles.first, corp_actions,
+                                    corporation, (treasury_issuable_bundles.first || issuable_bundles.first), corp_actions,
                                     "#treasury_shares_#{corporation.id} .game-card",
-                                    "#ipo_shares_#{corporation.id}"
+                                    "#pool_shares_#{corporation.id}"
                                   )
                                 }
                               end
             end
 
-            if Lib::Storage['issue_menu_corp'] == corporation.id && can_issue
-              options = issuable_bundles.map do |bundle|
+            if Lib::Storage['issue_menu_corp'] == corporation.id && can_issue_treasury
+              options = (treasury_issuable_bundles.any? ? treasury_issuable_bundles : issuable_bundles).map do |bundle|
                 pct = bundle.respond_to?(:percent) ? bundle.percent : bundle.shares.sum(&:percent)
                 {
                   label: "Issue #{pct}%",
@@ -639,7 +667,7 @@ module View
                     exec_issue_share_bundle(
                       corporation, bundle, corp_actions,
                       "#treasury_shares_#{corporation.id} .game-card",
-                      "#ipo_shares_#{corporation.id}"
+                      "#pool_shares_#{corporation.id}"
                     )
                   },
                 }
@@ -912,7 +940,17 @@ module View
 
         n_market_shares = num_shares_of(@game.share_pool, corporation)
         pool_shares = @game.share_pool.shares_by_corporation[corporation] || []
-        pool_redeem_bundles = all_redeemable_bundles.select { |bundle| bundle_owner(bundle) == @game.share_pool }
+        pool_redeem_bundles = (explicit_redeem_bundles + all_redeemable_bundles)
+          .uniq { |bundle| bundle.respond_to?(:percent) ? bundle.percent : bundle.object_id }
+          .select { |bundle| bundle_from_pool?(bundle, corporation) }
+        if pool_redeem_bundles.empty? && explicit_redeem_bundles.any? && step.respond_to?(:can_buy?)
+          pool_redeem_bundles = pool_shares.map(&:to_bundle).select do |bundle|
+            step.can_buy?(corporation, bundle)
+          rescue StandardError
+            false
+          end
+        end
+
         affordable_pool_redeems = pool_redeem_bundles.select do |bundle|
           price = bundle.respond_to?(:price) ? bundle.price : nil
           price ||= bundle.share_price.price * bundle.num_shares if bundle.respond_to?(:share_price) && bundle.share_price && bundle.respond_to?(:num_shares)
@@ -1033,7 +1071,7 @@ module View
                   exec_redeem_share_bundle(
                     corporation, bundle, corp_actions,
                     "#pool_shares_#{corporation.id} .game-card",
-                    "#treasury_shares_#{corporation.id}"
+                    corporation_share_destination
                   )
                 },
               }
@@ -1106,10 +1144,16 @@ module View
             corporation.respond_to?(:ipoed) ? !corporation.ipoed : true
           end
         )
+        ipo_issuable_bundles = issuable_bundles.select do |b|
+          shares = b.respond_to?(:shares) ? b.shares : [b]
+          ipo_shares = corporation.respond_to?(:ipo_shares) ? corporation.ipo_shares : []
+          shares.any? { |s| ipo_shares.include?(s) } || (bundle_owner(b) && bundle_owner(b) != corporation)
+        end
+        ipo_issuable_bundles = issuable_bundles if ipo_issuable_bundles.empty? && (!has_treasury_column? || @game.class.name.include?('1846') || treasury_shares_for(corporation).empty?)
 
-        issue_from_ipo = can_issue && !has_treasury_column? && n_ipo_shares.positive?
+        issue_from_ipo = can_issue && n_ipo_shares.positive? && ipo_issuable_bundles.any?
         if issue_from_ipo
-          ipo_click_handler = if issuable_bundles.size > 1
+          ipo_click_handler = if ipo_issuable_bundles.size > 1
                                 lambda {
                                   Lib::Storage['issue_ipo_menu_corp'] = corporation.id
                                   update
@@ -1118,7 +1162,7 @@ module View
                                 lambda { |_event|
                                   exec_issue_share_bundle(
                                     corporation,
-                                    issuable_bundles.first,
+                                    ipo_issuable_bundles.first,
                                     corp_actions,
                                     "#ipo_shares_#{corporation.id} .game-card",
                                     "#pool_shares_#{corporation.id}"
@@ -1212,7 +1256,7 @@ module View
 
           dropdowns = []
           if Lib::Storage['issue_ipo_menu_corp'] == corporation.id && issue_from_ipo
-            options = issuable_bundles.map do |bundle|
+            options = (ipo_issuable_bundles || issuable_bundles).map do |bundle|
               pct = bundle.respond_to?(:percent) ? bundle.percent : bundle.shares.sum(&:percent)
               {
                 label: "Issue #{pct}%",
@@ -1674,8 +1718,13 @@ module View
 
       def exec_issue_share_bundle(corporation, bundle, corp_actions = nil, source_selector = nil, target_selector = nil)
         actions = corp_actions || status_corporation_actions(corporation)
-        action = if actions.include?('issue_shares')
+        shares = bundle.respond_to?(:shares) ? bundle.shares : [bundle]
+        share_price = (bundle.respond_to?(:share_price) && bundle.share_price) || corporation.share_price
+        percent = bundle.respond_to?(:percent) ? bundle.percent : shares.sum(&:percent)
+        action = if actions.include?('issue_shares') && defined?(Engine::Action::IssueShares)
                    Engine::Action::IssueShares.new(corporation, bundle: bundle)
+                 elsif actions.include?('issue') && defined?(Engine::Action::Issue)
+                   Engine::Action::Issue.new(corporation, bundle: bundle)
                  elsif actions.include?('reissue_shares') && defined?(Engine::Action::ReissueShares)
                    Engine::Action::ReissueShares.new(corporation, bundle: bundle)
                  elsif actions.include?('reissue') && defined?(Engine::Action::Reissue)
@@ -1683,7 +1732,7 @@ module View
                  elsif actions.include?('corporate_sell_shares') && defined?(Engine::Action::CorporateSellShares)
                    Engine::Action::CorporateSellShares.new(corporation, bundle: bundle)
                  else
-                   Engine::Action::SellShares.new(corporation, shares: bundle.shares, share_price: bundle.share_price, percent: bundle.percent)
+                   Engine::Action::SellShares.new(corporation, shares: shares, share_price: share_price, percent: percent)
                  end
         if source_selector && target_selector
           Lib::CardAnimation.fly(source_selector, target_selector) { process_action(action) }
