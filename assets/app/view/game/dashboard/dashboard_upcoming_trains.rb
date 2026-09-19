@@ -222,14 +222,45 @@ module View
         return nil if upcoming_by_type.empty?
 
         phase_rows = upcoming_by_type.group_by { |item| item[:phase] }.map do |_phase, items|
-          if items.size == 1
-            item = items.first
+          entries = []
+          items.each do |item|
             train = item[:train]
-            name = @game.info_train_name(train)
-            price = @game.info_train_price(train)
-            rem_text = train.unlimited ? '(∞)' : "(#{item[:remaining].size})"
+            variants = if train.respond_to?(:names_to_prices) && train.names_to_prices && !train.names_to_prices.empty?
+                         train.names_to_prices
+                       elsif train.respond_to?(:variants) && train.variants && !train.variants.empty?
+                         train.variants.map { |k, v| [k, v[:price] || train.price] }.to_h
+                       else
+                         { (train.name || train.sym) => train.price }
+                       end
+
+            variants.each do |v_name, v_price|
+              entries << {
+                train: train,
+                name: v_name.to_s,
+                price: v_price,
+                remaining: item[:remaining],
+              }
+            end
+          end
+
+          if entries.size == 1
+            entry = entries.first
+            train = entry[:train]
+            name = entry[:name]
+            price = @game.format_currency(entry[:price])
+            rem_text = train.unlimited ? '(∞)' : "(#{entry[:remaining].size})"
             tooltip_node = render_train_phase_tooltip(train)
-            card_node = render_railcard(name, ['game-card'], nil, tooltip_node, nil, nil, nil, entity: train)
+            wrapper_id = "upcoming_train_#{train.id}_#{name.tr('/', '_')}"
+            card_node = render_railcard(
+              name,
+              %w[game-card card-train],
+              nil,
+              tooltip_node,
+              nil,
+              wrapper_id,
+              %w[status-corp-wrapper cmd-corp-wrapper],
+              entity: train
+            )
 
             h(:div, {
                 style: {
@@ -250,13 +281,30 @@ module View
               ]),
             ])
           else
-            train_nodes = items.map do |item|
-              train = item[:train]
-              name = @game.info_train_name(train)
-              price = @game.info_train_price(train)
-              rem_text = train.unlimited ? '(∞)' : "(#{item[:remaining].size})"
+            same_remaining = entries.map { |e| e[:remaining].size }.uniq.size == 1 && entries.none? { |e| e[:train].unlimited }
+            common_rem = entries.first[:train].unlimited ? '(∞)' : "(#{entries.first[:remaining].size})"
+
+            train_nodes = entries.map do |entry|
+              train = entry[:train]
+              name = entry[:name]
+              price = @game.format_currency(entry[:price])
+              rem_text = if same_remaining
+                           nil
+                         else
+                           (train.unlimited ? '(∞)' : "(#{entry[:remaining].size})")
+                         end
               tooltip_node = render_train_phase_tooltip(train)
-              card_node = render_railcard(name, ['game-card'], nil, tooltip_node, nil, nil, nil, entity: train)
+              wrapper_id = "upcoming_train_#{train.id}_#{name.tr('/', '_')}"
+              card_node = render_railcard(
+                name,
+                %w[game-card card-train],
+                nil,
+                tooltip_node,
+                nil,
+                wrapper_id,
+                %w[status-corp-wrapper cmd-corp-wrapper],
+                entity: train
+              )
 
               h(:div, {
                   style: {
@@ -267,9 +315,11 @@ module View
                 }, [
                 card_node,
                 h(:span, { style: { fontFamily: FONT_CASH, color: COLOR_CASH, fontWeight: 'bold', fontSize: '0.82rem' } }, price),
-                h(:span, { style: { fontFamily: FONT_STD, fontSize: '0.82rem', fontWeight: 'bold', color: '#000000' } },
-                  rem_text),
-              ])
+                (if rem_text
+                   h(:span, { style: { fontFamily: FONT_STD, fontSize: '0.82rem', fontWeight: 'bold', color: '#000000' } },
+                     rem_text)
+                 end),
+              ].compact)
             end
 
             h(:div, {
@@ -277,13 +327,34 @@ module View
                   display: 'flex',
                   flexDirection: 'row',
                   alignItems: 'center',
-                  justifyContent: 'flex-start',
-                  flexWrap: 'wrap',
+                  justifyContent: 'space-between',
                   padding: '2px 4px',
                   borderBottom: '1px solid #e0e0e0',
-                  gap: '0.6rem',
+                  gap: '0.5rem',
                 },
-              }, train_nodes)
+              }, [
+              h(:div, {
+                  style: {
+                    display: 'flex',
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: '0.6rem',
+                    flexWrap: 'wrap',
+                  },
+                }, train_nodes),
+              (if same_remaining
+                 h(:span, {
+                     style: {
+                       fontFamily: FONT_STD,
+                       fontSize: '0.85rem',
+                       fontWeight: 'bold',
+                       color: '#000000',
+                       minWidth: '1.8rem',
+                       textAlign: 'right',
+                     },
+                   }, common_rem)
+               end),
+            ].compact)
           end
         end
 

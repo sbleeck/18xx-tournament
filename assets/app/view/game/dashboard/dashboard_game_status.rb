@@ -622,6 +622,12 @@ module View
         is_mauve_corp = is_operating && is_open && sold_more
         corp_zone_bg = is_mauve_corp ? 'var(--bg-corporate-zone)' : COLOR_INACTIVE
 
+        corp_bg_color = corporation.color
+        if !is_operating && corp_bg_color == COLOR_MAUVE
+          corp_bg_color = COLOR_INACTIVE
+        elsif is_mauve_corp
+          corp_bg_color = COLOR_MAUVE
+        end
         name_props = {
           attrs: { class: 'status-corp-wrapper' },
           style: {
@@ -636,127 +642,18 @@ module View
 
         # Map active corporate property cells
         treasury = []
-        bound_issue_to_treasury = false
+        if @game.separate_treasury?
+          num_sh = num_shares_of(corporation, corporation)
+          content = if num_sh.positive?
+                      pct = corporation.respond_to?(:share_percent) && corporation.share_percent ? (num_sh * corporation.share_percent) : (num_sh * 10)
+                      [render_railcard("#{pct}%", ['game-card'])]
+                    else
+                      [h(:span, { style: { opacity: '0.35', fontSize: '0.8rem', fontFamily: 'var(--font-standard)' } }, '0%')]
+                    end
 
-        if has_treasury_column?
-          t_shares = treasury_shares_for(corporation)
-          treasury_cards = []
-
-          if t_shares.any?
-            t_shares.group_by { |s| s.corporation || corporation }.each do |c, c_shares|
-              num_s = c_shares.size
-              label = c == corporation ? num_s.to_s : "#{c.id} #{num_s}"
-
-              bundle = c_shares.first.to_bundle
-              can_sell = is_active_row && (corp_actions.include?('sell_shares') || corp_actions.include?('corporate_sell_shares') || corp_actions.include?('issue_shares')) &&
-                         (!step.respond_to?(:can_sell?) || step.can_sell?(corporation, bundle))
-
-              is_issuable = can_issue && issuable_bundles.any?
-
-              classes = ['game-card']
-              classes << 'action-sell' if can_sell || is_issuable
-              classes << 'clickable' if can_sell || is_issuable
-
-              click_handler = nil
-              dropdowns = []
-
-              if can_sell || is_issuable
-                if issuable_bundles.size > 1 && is_issuable
-                  click_handler = lambda {
-                    Lib::Storage['issue_menu_corp'] = corporation.id
-                    update
-                  }
-                else
-                  target_bundle = is_issuable && issuable_bundles.any? ? issuable_bundles.first : bundle
-                  click_handler = lambda { |_e|
-                    exec_issue_share_bundle(corporation, target_bundle, corp_actions)
-                  }
-                end
-              end
-
-              if Lib::Storage['issue_menu_corp'] == corporation.id && is_issuable && !issuable_bundles.empty?
-                options = issuable_bundles.map do |ib|
-                  num = if ib.respond_to?(:num_shares)
-                          ib.num_shares
-                        else
-                          (ib.respond_to?(:shares) ? ib.shares.size : 1)
-                        end
-                  pct_str = ib.respond_to?(:percent) && ib.percent ? "#{ib.percent}%" : "#{num}S"
-                  {
-                    label: "Issue #{pct_str}",
-                    action: lambda { |_event|
-                      Lib::Storage['issue_menu_corp'] = nil
-                      exec_issue_share_bundle(corporation, ib, corp_actions)
-                    },
-                  }
-                end
-                cancel_handler = lambda {
-                  Lib::Storage['issue_menu_corp'] = nil
-                  update
-                }
-                dropdowns << render_choice_menu('Issue shares:', options, cancel_handler)
-              end
-
-              treasury_cards << render_railcard(label, classes, click_handler, nil, dropdowns)
-            end
-          end
-
-          res_shares = num_reserved_shares(corporation)
-          if res_shares.positive?
-            label = res_shares.to_s
-
-            is_issuable = can_issue && issuable_bundles.any?
-            bound_issue_to_treasury = true if is_issuable
-
-            classes = ['game-card']
-            classes << 'action-sell' if is_issuable
-            classes << 'clickable' if is_issuable
-
-            click_handler = nil
-            dropdowns = []
-
-            if is_issuable
-              if issuable_bundles.size > 1
-                click_handler = lambda {
-                  Lib::Storage['issue_menu_corp'] = corporation.id
-                  update
-                }
-              else
-                target_bundle = issuable_bundles.first
-                click_handler = lambda { |_e|
-                  exec_issue_share_bundle(corporation, target_bundle, corp_actions)
-                }
-              end
-
-              if Lib::Storage['issue_menu_corp'] == corporation.id
-                options = issuable_bundles.map do |ib|
-                  num = if ib.respond_to?(:num_shares)
-                          ib.num_shares
-                        else
-                          (ib.respond_to?(:shares) ? ib.shares.size : 1)
-                        end
-                  pct_str = ib.respond_to?(:percent) && ib.percent ? "#{ib.percent}%" : "#{num}S"
-                  {
-                    label: "Issue #{pct_str}",
-                    action: lambda { |_event|
-                      Lib::Storage['issue_menu_corp'] = nil
-                      exec_issue_share_bundle(corporation, ib, corp_actions)
-                    },
-                  }
-                end
-                cancel_handler = lambda {
-                  Lib::Storage['issue_menu_corp'] = nil
-                  update
-                }
-                dropdowns << render_choice_menu('Issue shares:', options, cancel_handler)
-              end
-            end
-
-            treasury_cards << render_railcard(label, classes, click_handler, nil, dropdowns)
-          end
-
-          content = treasury_cards.any? ? treasury_cards : [h(:span, { style: { opacity: '0.35', fontSize: '0.8rem', fontFamily: 'var(--font-standard)' } }, '')]
-          treasury << h('td.column-zone-corporate', { style: { textAlign: 'center', minWidth: '3.5rem' } }, content)
+          treasury << h('td.column-zone-corporate',
+                        { style: { backgroundColor: corp_zone_bg, textAlign: 'center', minWidth: '3.5rem' } },
+                        content)
         end
 
         extra = []
@@ -764,10 +661,31 @@ module View
           desc_text = @game.capitalization_type_desc(corporation)
           if @is_escrow_game && desc_text&.include?('Escrow')
             clean_digits = desc_text.scan(/\d+/).first || '0'
-            extra << h('td.column-zone-corporate.money-value', {}, clean_digits)
+            extra << h('td.money-value', { style: { backgroundColor: corp_zone_bg } }, clean_digits)
           else
-            extra << h('td.column-zone-corporate', {}, desc_text)
+            extra << h('td', { style: { backgroundColor: corp_zone_bg } }, desc_text)
           end
+        end
+
+        extra << h('td', { style: { backgroundColor: corp_zone_bg } }, [render_loan_dots(corporation)]) if @game.total_loans&.nonzero?
+        if @game.respond_to?(:available_shorts)
+          taken, total = if @game.respond_to?(:available_shorts)
+                           @game.available_shorts(corporation)
+                         else
+                           [0, 0]
+                         end
+          extra << h('td', { style: { backgroundColor: corp_zone_bg } }, "#{taken} / #{total}")
+        end
+
+        if @diff_corp_sizes
+          size_name = if corporation.minor?
+                        'Minor'
+                      elsif @game.respond_to?(:corporation_size_name)
+                        @game.corporation_size_name(corporation)
+                      else
+                        ''
+                      end
+          extra << h('td', { style: { backgroundColor: corp_zone_bg } }, size_name)
         end
 
         extra << h('td.column-zone-corporate', {}, [render_loan_dots(corporation)]) if @game.total_loans&.nonzero?
@@ -1441,6 +1359,7 @@ module View
           train_click_handler = nil
           menu_dropdown = nil
 
+          # Check if the train is authoritatively buyable by active_entity (strictly from same player)
           is_buyable_other_train = if !same_player
                                      false
                                    elsif step_buyable_trains
@@ -1581,7 +1500,7 @@ module View
                        '#d97706'
                      end
 
-        rev_class = "td.padded_number.column-zone-corporate#{font_color ? '' : '.money-value'}"
+        rev_class = "td.padded_number#{font_color ? '' : '.money-value'}"
         rev_props = { hook: Lib::MoneyAnimation.hook }
         rev_props[:style] = { color: font_color, fontFamily: 'var(--font-money)', fontWeight: 'bold', fontVariantNumeric: 'tabular-nums' }.compact
 
