@@ -2220,8 +2220,15 @@ module View
           corporation.treasury_shares
         elsif @game.respond_to?(:redeemed_shares) && @game.redeemed_shares(corporation)&.any?
           @game.redeemed_shares(corporation)
+        elsif corporation.respond_to?(:num_ipo_shares)
+          num_ipo = corporation.num_ipo_shares
+          owned = corporation.respond_to?(:shares_of) ? corporation.shares_of(corporation) : []
+          owned.size > num_ipo ? owned.drop(num_ipo) : []
+        elsif corporation.respond_to?(:ipo_shares) && corporation.ipo_shares
+          diff = (corporation.respond_to?(:shares_of) ? corporation.shares_of(corporation) : []) - corporation.ipo_shares
+          diff.any? ? diff : []
         else
-          corporation.respond_to?(:shares_of) ? corporation.shares_of(corporation) : []
+          []
         end
       end
 
