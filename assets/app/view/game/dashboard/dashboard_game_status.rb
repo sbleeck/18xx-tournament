@@ -185,9 +185,9 @@ module View
         rows << comp_cells
 
         rows[0] << h(:td, {
-          attrs: { rowspan: rows.size, colspan: 30, class: 'no-border' },
-          style: { backgroundColor: '#ffffff', verticalAlign: 'top', paddingLeft: '1.5rem', textAlign: 'left' },
-        }, [render_extra_cards])
+                       attrs: { rowspan: rows.size, colspan: 30, class: 'no-border' },
+                       style: { backgroundColor: '#ffffff', verticalAlign: 'top', paddingLeft: '1.5rem', textAlign: 'left' },
+                     }, [render_extra_cards])
 
         rows.map.with_index do |row_cells, idx|
           r_props = tr_default_props
@@ -312,9 +312,9 @@ module View
 
           if @game.respond_to?(:priority_deal_player) && p == @game.priority_deal_player
             header_content << h(:svg, {
-              attrs: { viewBox: '0 0 16 16', width: '16', height: '16', title: 'Priority Deal' },
-              style: { position: 'absolute', right: '4px', top: '50%', transform: 'translateY(-50%)', fill: COLOR_CASH },
-            }, [
+                                  attrs: { viewBox: '0 0 16 16', width: '16', height: '16', title: 'Priority Deal' },
+                                  style: { position: 'absolute', right: '4px', top: '50%', transform: 'translateY(-50%)', fill: COLOR_CASH },
+                                }, [
               h(:rect, attrs: { x: '0', y: '2', width: '6', height: '1' }),
               h(:rect, attrs: { x: '1', y: '3', width: '4', height: '7' }),
               h(:rect, attrs: { x: '11', y: '1', width: '2', height: '4' }),
@@ -407,10 +407,10 @@ module View
         h('span.small_font', [
           '(',
           h(:a, {
-            attrs: { onclick: 'return false', title: @hide_not_floated ? 'Show all corporations' : 'Hide not floated corporations' },
-            on: { click: toggle },
-            style: { cursor: 'pointer', textDecoration: 'underline' },
-          }, @hide_not_floated ? 'Show unfloated' : 'Hide unfloated'),
+              attrs: { onclick: 'return false', title: @hide_not_floated ? 'Show all corporations' : 'Hide not floated corporations' },
+              on: { click: toggle },
+              style: { cursor: 'pointer', textDecoration: 'underline' },
+            }, @hide_not_floated ? 'Show unfloated' : 'Hide unfloated'),
           ')',
         ])
       end
@@ -504,7 +504,28 @@ module View
             bundles = []
           end
         end
-        bundles.compact.uniq { |bundle| bundle.respond_to?(:percent) ? bundle.percent : bundle.object_id }
+        if bundles.empty? && step&.respond_to?(:bundles_for_corporation)
+          begin
+            bundles = Array(step.bundles_for_corporation(corporation, corporation))
+          rescue ArgumentError
+            bundles = Array(step.bundles_for_corporation(corporation))
+          rescue StandardError
+            bundles = []
+          end
+        end
+        if bundles.empty? && step&.respond_to?(:bundles)
+          begin
+            bundles = Array(step.bundles(corporation))
+          rescue StandardError
+            bundles = []
+          end
+        end
+        if bundles.empty? && step&.respond_to?(:can_sell?)
+          shares = corporation.respond_to?(:shares_of) ? corporation.shares_of(corporation) : []
+          bundles = shares.map(&:to_bundle).select { |bundle| step.can_sell?(corporation, bundle) }
+        end
+        bundles.compact.map { |item| item.respond_to?(:to_bundle) && !item.respond_to?(:num_shares) ? item.to_bundle : item }
+          .uniq { |bundle| bundle.respond_to?(:percent) ? bundle.percent : bundle.object_id }
       end
 
       def status_redeemable_bundles(step, corporation)
@@ -518,7 +539,12 @@ module View
             bundles = []
           end
         end
-        bundles.compact.uniq { |bundle| bundle.respond_to?(:percent) ? bundle.percent : bundle.object_id }
+        if bundles.empty? && step&.respond_to?(:can_buy?)
+          shares = @game.share_pool.shares_by_corporation[corporation] || []
+          bundles = shares.map(&:to_bundle).select { |bundle| step.can_buy?(corporation, bundle) }
+        end
+        bundles.compact.map { |item| item.respond_to?(:to_bundle) && !item.respond_to?(:num_shares) ? item.to_bundle : item }
+          .uniq { |bundle| bundle.respond_to?(:percent) ? bundle.percent : bundle.object_id }
       end
 
       def bundle_owner(bundle)
@@ -534,7 +560,7 @@ module View
         step = @game.round.active_step
         is_active_row = (active_entity == corporation)
         corp_actions = status_corporation_actions(corporation)
-        corporation_controlled = corporation.respond_to?(:owner) && corporation.owner == active_player
+        corporation_controlled = is_active_row || (corporation.respond_to?(:owner) && corporation.owner == active_player)
 
         issuable_bundles = status_issuable_bundles(step, corporation)
         issue_command = (corp_actions & %w[issue_shares reissue_shares reissue corporate_sell_shares sell_shares]).any?
@@ -583,7 +609,7 @@ module View
           t_shares = treasury_shares_for(corporation)
           treasury_cards = []
           treasury_percent = t_shares.sum { |share| share.respond_to?(:percent) ? share.percent : (corporation.share_percent || 10) }
-          if !@game.separate_treasury?
+          unless @game.separate_treasury?
             treasury_percent += num_reserved_shares(corporation) * (corporation.respond_to?(:share_percent) ? corporation.share_percent : 10)
           end
 
@@ -596,7 +622,10 @@ module View
 
             if can_issue
               click_handler = if issuable_bundles.size > 1
-                                lambda { Lib::Storage['issue_menu_corp'] = corporation.id; update }
+                                lambda {
+                                  Lib::Storage['issue_menu_corp'] = corporation.id
+                                  update
+                                }
                               else
                                 lambda { |_event|
                                   exec_issue_share_bundle(
@@ -623,16 +652,19 @@ module View
                   },
                 }
               end
-              dropdowns << render_choice_menu('Issue shares:', options, lambda { Lib::Storage['issue_menu_corp'] = nil; update })
+              dropdowns << render_choice_menu('Issue shares:', options, lambda {
+                                                                          Lib::Storage['issue_menu_corp'] = nil
+                                                                          update
+                                                                        })
             end
 
             treasury_cards << render_railcard("#{treasury_percent}%", classes, click_handler, nil, dropdowns)
           end
 
           treasury << h('td.column-zone-corporate', {
-            attrs: { id: "treasury_shares_#{corporation.id}" },
-            style: { textAlign: 'center', minWidth: '3.5rem', position: 'relative' },
-          }, treasury_cards)
+                          attrs: { id: "treasury_shares_#{corporation.id}" },
+                          style: { textAlign: 'center', minWidth: '3.5rem', position: 'relative' },
+                        }, treasury_cards)
         end
 
         extra = []
@@ -667,7 +699,11 @@ module View
         end
 
         if @diff_corp_sizes
-          size_name = corporation.minor? ? 'Minor' : (@game.respond_to?(:corporation_size_name) ? @game.corporation_size_name(corporation) : '')
+          size_name = if corporation.minor?
+                        'Minor'
+                      else
+                        (@game.respond_to?(:corporation_size_name) ? @game.corporation_size_name(corporation) : '')
+                      end
           extra << h('td.column-zone-corporate', {}, size_name)
         end
 
@@ -762,7 +798,10 @@ module View
                             end
           elsif can_redeem_from_director
             click_handler = if director_redeem_bundles.size > 1
-                              lambda { Lib::Storage['director_redeem_menu_corp'] = corporation.id; update }
+                              lambda {
+                                Lib::Storage['director_redeem_menu_corp'] = corporation.id
+                                update
+                              }
                             else
                               lambda { |_event|
                                 exec_redeem_share_bundle(
@@ -819,9 +858,9 @@ module View
 
               if just_sold
                 dropdowns << h(:span, {
-                  attrs: { class: 'token-bond' },
-                  style: { position: 'absolute', top: '10px', right: '-7px', width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#dc2626', visibility: 'visible' },
-                })
+                                 attrs: { class: 'token-bond' },
+                                 style: { position: 'absolute', top: '10px', right: '-7px', width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#dc2626', visibility: 'visible' },
+                               })
               end
 
               if Lib::Storage['sell_menu_player'] == p.id && Lib::Storage['sell_menu_corp'] == corporation.id && can_sell
@@ -836,7 +875,11 @@ module View
                     },
                   }
                 end
-                cancel_handler = lambda { Lib::Storage['sell_menu_player'] = nil; Lib::Storage['sell_menu_corp'] = nil; update }
+                cancel_handler = lambda {
+                  Lib::Storage['sell_menu_player'] = nil
+                  Lib::Storage['sell_menu_corp'] = nil
+                  update
+                }
                 dropdowns << render_choice_menu('How many shares to sell?', options, cancel_handler)
               end
 
@@ -855,7 +898,10 @@ module View
                     },
                   }
                 end
-                dropdowns << render_choice_menu('Redeem from director:', options, lambda { Lib::Storage['director_redeem_menu_corp'] = nil; update })
+                dropdowns << render_choice_menu('Redeem from director:', options, lambda {
+                                                                                    Lib::Storage['director_redeem_menu_corp'] = nil
+                                                                                    update
+                                                                                  })
               end
 
               if Lib::Storage['buy_player_menu_player'] == p.id && Lib::Storage['buy_player_menu_corp'] == corporation.id && can_buy_from_player
@@ -870,7 +916,11 @@ module View
                     },
                   }
                 end
-                cancel_handler = lambda { Lib::Storage['buy_player_menu_player'] = nil; Lib::Storage['buy_player_menu_corp'] = nil; update }
+                cancel_handler = lambda {
+                  Lib::Storage['buy_player_menu_player'] = nil
+                  Lib::Storage['buy_player_menu_corp'] = nil
+                  update
+                }
                 dropdowns << render_choice_menu('Nationalize share bundle?', options, cancel_handler)
               end
 
@@ -902,6 +952,12 @@ module View
         end
         player_can_buy_pool = valid_pool_shares.any?
 
+        corporation_share_destination = if has_treasury_column?
+                                          "#treasury_shares_#{corporation.id}"
+                                        else
+                                          "#ipo_shares_#{corporation.id}"
+                                        end
+
         pool_share_text = if corporation.minor? || n_market_shares.zero?
                             ''
                           else
@@ -909,24 +965,33 @@ module View
                           end
         pool_click_handler = nil
         if player_can_buy_pool && corporation_can_redeem_pool
-          pool_click_handler = lambda { Lib::Storage['pool_buyer_menu_corp'] = corporation.id; update }
+          pool_click_handler = lambda {
+            Lib::Storage['pool_buyer_menu_corp'] = corporation.id
+            update
+          }
         elsif corporation_can_redeem_pool
           pool_click_handler = if affordable_pool_redeems.size > 1
-                                 lambda { Lib::Storage['redeem_menu_corp'] = corporation.id; update }
+                                 lambda {
+                                   Lib::Storage['redeem_menu_corp'] = corporation.id
+                                   update
+                                 }
                                else
                                  lambda { |_event|
                                    exec_redeem_share_bundle(
                                      corporation, affordable_pool_redeems.first, corp_actions,
                                      "#pool_shares_#{corporation.id} .game-card",
-                                     "#treasury_shares_#{corporation.id}"
+                                     corporation_share_destination
                                    )
                                  }
                                end
         elsif player_can_buy_pool
           pool_click_handler = if valid_pool_shares.uniq { |share| share.to_bundle.percent }.size > 1
-                                 lambda { Lib::Storage['buy_pool_menu_corp'] = corporation.id; update }
+                                 lambda {
+                                   Lib::Storage['buy_pool_menu_corp'] = corporation.id
+                                   update
+                                 }
                                else
-                                 lambda { |_event| exec_buy_shares("#pool_shares_#{corporation.id} .game-card", active_player, valid_pool_shares.first.to_bundle, corporation.id) }
+                                 ->(_event) { exec_buy_shares("#pool_shares_#{corporation.id} .game-card", active_player, valid_pool_shares.first.to_bundle, corporation.id) }
                                end
         end
 
@@ -941,7 +1006,7 @@ module View
             buyer_options = [
               {
                 label: "Player: #{active_player.name}",
-                action: lambda { |event|
+                action: lambda { |_event|
                   `event.stopPropagation()`
                   Lib::Storage['pool_buyer_menu_corp'] = nil
                   if valid_pool_shares.uniq { |share| share.to_bundle.percent }.size > 1
@@ -955,7 +1020,7 @@ module View
               },
               {
                 label: "Corporation: #{corporation.name}",
-                action: lambda { |event|
+                action: lambda { |_event|
                   `event.stopPropagation()`
                   Lib::Storage['pool_buyer_menu_corp'] = nil
                   if affordable_pool_redeems.size > 1
@@ -967,13 +1032,16 @@ module View
                       affordable_pool_redeems.first,
                       corp_actions,
                       "#pool_shares_#{corporation.id} .game-card",
-                      "#treasury_shares_#{corporation.id}"
+                      corporation_share_destination
                     )
                   end
                 },
               },
             ]
-            dropdowns << render_choice_menu('Who is buying?', buyer_options, lambda { Lib::Storage['pool_buyer_menu_corp'] = nil; update })
+            dropdowns << render_choice_menu('Who is buying?', buyer_options, lambda {
+                                                                               Lib::Storage['pool_buyer_menu_corp'] = nil
+                                                                               update
+                                                                             })
           end
 
           if Lib::Storage['redeem_menu_corp'] == corporation.id && corporation_can_redeem_pool
@@ -991,7 +1059,10 @@ module View
                 },
               }
             end
-            dropdowns << render_choice_menu('Redeem from Pool:', options, lambda { Lib::Storage['redeem_menu_corp'] = nil; update })
+            dropdowns << render_choice_menu('Redeem from Pool:', options, lambda {
+                                                                            Lib::Storage['redeem_menu_corp'] = nil
+                                                                            update
+                                                                          })
           end
 
           if Lib::Storage['buy_pool_menu_corp'] == corporation.id && player_can_buy_pool
@@ -1004,7 +1075,10 @@ module View
                 },
               }
             end
-            dropdowns << render_choice_menu('Buy from Pool:', options, lambda { Lib::Storage['buy_pool_menu_corp'] = nil; update })
+            dropdowns << render_choice_menu('Buy from Pool:', options, lambda {
+                                                                         Lib::Storage['buy_pool_menu_corp'] = nil
+                                                                         update
+                                                                       })
           end
 
           pool_cell_children << render_railcard(pool_share_text, classes, pool_click_handler, nil, dropdowns)
@@ -1054,7 +1128,25 @@ module View
           end
         )
 
-        if can_par
+        issue_from_ipo = can_issue && !has_treasury_column? && n_ipo_shares.positive?
+        if issue_from_ipo
+          ipo_click_handler = if issuable_bundles.size > 1
+                                lambda {
+                                  Lib::Storage['issue_ipo_menu_corp'] = corporation.id
+                                  update
+                                }
+                              else
+                                lambda { |_event|
+                                  exec_issue_share_bundle(
+                                    corporation,
+                                    issuable_bundles.first,
+                                    corp_actions,
+                                    "#ipo_shares_#{corporation.id} .game-card",
+                                    "#pool_shares_#{corporation.id}"
+                                  )
+                                }
+                              end
+        elsif can_par
           par_prices = if step.respond_to?(:get_par_prices_with_help)
                          step.get_par_prices_with_help(active_player, corporation).sort_by(&:price)
                        elsif step.respond_to?(:get_par_prices)
@@ -1065,7 +1157,10 @@ module View
                          @game.stock_market.par_prices.sort_by(&:price)
                        end
           if @game.respond_to?(:par_chart)
-            par_prices = par_prices.reject { |sp| slots = @game.par_chart[sp]; slots && slots.none?(&:nil?) }
+            par_prices = par_prices.reject do |sp|
+              slots = @game.par_chart[sp]
+              slots && slots.none?(&:nil?)
+            end
           end
 
           pres_share = corporation.respond_to?(:presidents_share) && corporation.presidents_share ? corporation.presidents_share : (corporation.respond_to?(:shares) && corporation.shares&.first)
@@ -1082,7 +1177,11 @@ module View
           if step.respond_to?(:par_shares)
             bundle = begin; step.par_shares(corporation); rescue ArgumentError; step.par_shares(active_player, corporation); end
             if bundle
-              shares_multiplier = bundle.respond_to?(:num_shares) ? bundle.num_shares : (bundle.respond_to?(:shares) && bundle.shares ? bundle.shares.size : shares_multiplier)
+              shares_multiplier = if bundle.respond_to?(:num_shares)
+                                    bundle.num_shares
+                                  else
+                                    (bundle.respond_to?(:shares) && bundle.shares ? bundle.shares.size : shares_multiplier)
+                                  end
             end
           end
           shares_multiplier = 1 if shares_multiplier.to_i <= 0
@@ -1093,7 +1192,12 @@ module View
             player_cash >= (price_val * shares_multiplier)
           end
 
-          ipo_click_handler = lambda { Lib::Storage['par_menu_corp'] = corporation.id; update } unless par_prices.empty?
+          unless par_prices.empty?
+            ipo_click_handler = lambda {
+              Lib::Storage['par_menu_corp'] = corporation.id
+              update
+            }
+          end
         elsif can_bid
           ipo_click_handler = lambda {
             store(:selected_corporation, corporation)
@@ -1107,7 +1211,10 @@ module View
 
           unless valid_ipo_shares.empty?
             ipo_click_handler = if valid_ipo_shares.uniq { |s| s.to_bundle.percent }.size > 1
-                                  lambda { Lib::Storage['buy_ipo_menu_corp'] = corporation.id; update }
+                                  lambda {
+                                    Lib::Storage['buy_ipo_menu_corp'] = corporation.id
+                                    update
+                                  }
                                 else
                                   lambda { |_event|
                                     source_selector = "#ipo_shares_#{corporation.id} .game-card"
@@ -1120,12 +1227,33 @@ module View
         ipo_cell_children = []
         unless ipo_share_text.empty?
           card_classes = ['game-card']
-          if ipo_click_handler
-            card_classes << 'action-buy'
-            card_classes << 'clickable'
-          end
+          card_classes << 'action-sell' if issue_from_ipo
+          card_classes << 'action-buy' if ipo_click_handler && !issue_from_ipo
+          card_classes << 'clickable' if ipo_click_handler
 
           dropdowns = []
+          if Lib::Storage['issue_ipo_menu_corp'] == corporation.id && issue_from_ipo
+            options = issuable_bundles.map do |bundle|
+              pct = bundle.respond_to?(:percent) ? bundle.percent : bundle.shares.sum(&:percent)
+              {
+                label: "Issue #{pct}%",
+                action: lambda { |_event|
+                  Lib::Storage['issue_ipo_menu_corp'] = nil
+                  exec_issue_share_bundle(
+                    corporation,
+                    bundle,
+                    corp_actions,
+                    "#ipo_shares_#{corporation.id} .game-card",
+                    "#pool_shares_#{corporation.id}"
+                  )
+                },
+              }
+            end
+            dropdowns << render_choice_menu('Issue shares:', options, lambda {
+                                                                        Lib::Storage['issue_ipo_menu_corp'] = nil
+                                                                        update
+                                                                      })
+          end
           if Lib::Storage['buy_ipo_menu_corp'] == corporation.id && !valid_ipo_shares.empty?
             options = valid_ipo_shares.map do |share|
               {
@@ -1137,7 +1265,10 @@ module View
                 },
               }
             end
-            cancel_handler = lambda { Lib::Storage['buy_ipo_menu_corp'] = nil; update }
+            cancel_handler = lambda {
+              Lib::Storage['buy_ipo_menu_corp'] = nil
+              update
+            }
             dropdowns << render_choice_menu('Buy from IPO:', options, cancel_handler)
           end
 
@@ -1167,8 +1298,8 @@ module View
 
         train_buyable_step = step&.current_actions&.include?('buy_train')
         train_discardable_step = step&.current_actions&.include?('discard_train')
-        step_buyable_trains = (train_buyable_step && active_entity && step.respond_to?(:buyable_trains)) ? step.buyable_trains(active_entity) : nil
-        corp_owner = lambda { |corp| step.respond_to?(:corp_owner) ? step.corp_owner(corp) : corp&.owner }
+        step_buyable_trains = train_buyable_step && active_entity && step.respond_to?(:buyable_trains) ? step.buyable_trains(active_entity) : nil
+        corp_owner = ->(corp) { step.respond_to?(:corp_owner) ? step.corp_owner(corp) : corp&.owner }
         same_player = active_entity && corporation != active_entity && corp_owner.call(corporation) && corp_owner.call(corporation) == corp_owner.call(active_entity)
 
         train_cards = corporation.trains.map do |t|
@@ -1190,7 +1321,11 @@ module View
             card_classes << 'action-buy'
             card_classes << 'clickable'
             min_price = 1
-            max_price = step.respond_to?(:max_price) ? step.max_price(active_entity, t) : (active_entity.respond_to?(:cash) ? active_entity.cash : 9999)
+            max_price = if step.respond_to?(:max_price)
+                          step.max_price(active_entity, t)
+                        else
+                          (active_entity.respond_to?(:cash) ? active_entity.cash : 9999)
+                        end
 
             train_click_handler = lambda {
               `var p = document.getElementById('railcard-portal'); if (p) { p.style.display = 'none'; p.innerHTML = ''; }`
@@ -1250,7 +1385,11 @@ module View
         corporation_row_content << render_companies(corporation, nil, 'column-zone-corporate') if @show_privates
 
         last_run = corporation.operating_history.values.last
-        div = last_run.respond_to?(:dividend) ? last_run.dividend : (last_run.is_a?(Hash) ? last_run[:dividend] : nil)
+        div = if last_run.respond_to?(:dividend)
+                last_run.dividend
+              else
+                (last_run.is_a?(Hash) ? last_run[:dividend] : nil)
+              end
         div_kind = (div.respond_to?(:kind) ? div.kind : div).to_s.downcase
 
         held = if last_run.respond_to?(:withheld?)
@@ -1449,7 +1588,11 @@ module View
           is_buyable = false if active_ent.respond_to?(:corporation?) && active_ent.corporation? && (!c.owner || c.owner != active_ent.owner)
 
           matching_special_action = valid_special_actions.find do |_, _action_class|
-            targets = step.respond_to?(:available_targets) ? (step.available_targets(active_ent) || []) : (step.respond_to?(:companies) ? (step.companies || []) : [])
+            targets = if step.respond_to?(:available_targets)
+                        step.available_targets(active_ent) || []
+                      else
+                        (step.respond_to?(:companies) ? (step.companies || []) : [])
+                      end
             targets.include?(c)
           end
 
@@ -1466,11 +1609,17 @@ module View
           elsif company_buyable_step && not_own_company && is_buyable
             card_classes << 'action-buy'
             card_classes << 'clickable'
-            min_price = buy_company_step.respond_to?(:min_price) ? buy_company_step.min_price(c) : (c.respond_to?(:min_price) ? c.min_price : 1)
+            min_price = if buy_company_step.respond_to?(:min_price)
+                          buy_company_step.min_price(c)
+                        else
+                          (c.respond_to?(:min_price) ? c.min_price : 1)
+                        end
             max_price = if buy_company_step.respond_to?(:max_price)
                           buy_company_step.max_price(active_ent, c)
+                        elsif c.respond_to?(:max_price)
+                          c.max_price
                         else
-                          c.respond_to?(:max_price) ? c.max_price : (active_ent.respond_to?(:cash) ? active_ent.cash : 9999)
+                          (active_ent.respond_to?(:cash) ? active_ent.cash : 9999)
                         end
 
             company_click_handler = lambda {
@@ -1673,29 +1822,29 @@ module View
 
         options.each do |opt|
           menu_elements << h(:button, {
-            style: { display: 'block', width: '100%', marginBottom: '0.2rem', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 'bold', padding: '3px 6px', backgroundColor: '#ffffff', border: '1px solid #cc0000', borderRadius: '3px' },
-            on: {
-              click: lambda { |event|
-                `event.stopPropagation()`
-                opt[:action].arity.zero? ? opt[:action].call : opt[:action].call(event)
-              },
-            },
-          }, opt[:label])
+                               style: { display: 'block', width: '100%', marginBottom: '0.2rem', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 'bold', padding: '3px 6px', backgroundColor: '#ffffff', border: '1px solid #cc0000', borderRadius: '3px' },
+                               on: {
+                                 click: lambda { |event|
+                                   `event.stopPropagation()`
+                                   opt[:action].arity.zero? ? opt[:action].call : opt[:action].call(event)
+                                 },
+                               },
+                             }, opt[:label])
         end
 
         menu_elements << h(:button, {
-          style: { display: 'block', width: '100%', cursor: 'pointer', fontSize: '0.75rem', padding: '3px 6px', backgroundColor: '#e0e0e0', border: '1px solid #999', borderRadius: '3px', marginTop: '0.2rem' },
-          on: {
-            click: lambda { |event|
-              `event.stopPropagation()`
-              cancel_handler.arity.zero? ? cancel_handler.call : cancel_handler.call(event)
-            },
-          },
-        }, 'Cancel')
+                             style: { display: 'block', width: '100%', cursor: 'pointer', fontSize: '0.75rem', padding: '3px 6px', backgroundColor: '#e0e0e0', border: '1px solid #999', borderRadius: '3px', marginTop: '0.2rem' },
+                             on: {
+                               click: lambda { |event|
+                                 `event.stopPropagation()`
+                                 cancel_handler.arity.zero? ? cancel_handler.call : cancel_handler.call(event)
+                               },
+                             },
+                           }, 'Cancel')
 
         h(:div, {
-          style: { position: 'absolute', top: '105%', left: '50%', transform: 'translateX(-50%)', backgroundColor: '#ffffff', border: '2px solid #333333', borderRadius: '4px', padding: '0.5rem', zIndex: '9999', boxShadow: '0px 4px 10px rgba(0,0,0,0.3)' },
-        }, menu_elements)
+            style: { position: 'absolute', top: '105%', left: '50%', transform: 'translateX(-50%)', backgroundColor: '#ffffff', border: '2px solid #333333', borderRadius: '4px', padding: '0.5rem', zIndex: '9999', boxShadow: '0px 4px 10px rgba(0,0,0,0.3)' },
+          }, menu_elements)
       end
 
       private
@@ -1728,6 +1877,7 @@ module View
 
       def treasury_shares_for(corporation)
         return corporation.shares_of(corporation) if @game.separate_treasury? && corporation.respond_to?(:shares_of)
+
         []
       end
 
