@@ -433,6 +433,173 @@ module View
           nil
         end
 
+        def major_corporation?(entity)
+          return false unless entity
+
+          is_corporation = (entity.respond_to?(:corporation?) && entity.corporation?) ||
+                           (defined?(Engine::Corporation) && entity.is_a?(Engine::Corporation))
+          is_minor = entity.respond_to?(:minor?) && entity.minor?
+          is_corporation && !is_minor
+        end
+
+        def render_major_railcard(corporation, click_handler = nil, card_classes = ['major-railcard'], wrapper_id = nil)
+          return nil unless major_corporation?(corporation)
+
+          classes = Array(card_classes).compact.map(&:to_s)
+          classes << 'major-railcard' unless classes.include?('major-railcard')
+          classes << 'clickable' if click_handler && !classes.include?('clickable')
+
+          tooltip = render_corp_tooltip(corporation)
+          text = if corporation.respond_to?(:sym) && corporation.sym && !corporation.sym.to_s.empty?
+                   corporation.sym.to_s
+                 else
+                   corporation.id.to_s
+                 end
+          bg_color = corporation.respond_to?(:color) && corporation.color ? corporation.color : '#4169e1'
+          text_color = corporation.respond_to?(:text_color) && corporation.text_color ? corporation.text_color : '#ffffff'
+          is_buy = classes.include?('action-buy')
+          is_sell = classes.include?('action-sell')
+          edge_color = if is_buy
+                         '#16a34a'
+                       else
+                         (is_sell ? '#dc2626' : '#333333')
+                       end
+
+          card_props = {
+            attrs: {
+              class: classes.join(' '),
+              title: corporation.respond_to?(:name) ? corporation.name.to_s : text,
+            },
+            style: {
+              minWidth: '3.2rem',
+              height: '1.45rem',
+              padding: '0 5px',
+              margin: '0',
+              boxSizing: 'border-box',
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              borderRadius: '0',
+              fontSize: '0.85rem',
+              fontFamily: '"Helvetica Neue", Helvetica, Arial, sans-serif',
+              fontWeight: '800',
+              lineHeight: '1',
+              letterSpacing: '0',
+              color: text_color,
+              backgroundColor: bg_color,
+              border: "2px solid #{edge_color}",
+              boxShadow: is_buy || is_sell ? "0 0 0 1px #{edge_color}" : 'none',
+              cursor: click_handler ? 'pointer' : 'help',
+              whiteSpace: 'nowrap',
+            },
+          }
+          card_props[:on] = { click: click_handler } if click_handler
+
+          wrapper_attrs = {
+            class: 'major-railcard-wrapper status-corp-wrapper cmd-corp-wrapper',
+          }
+          wrapper_attrs[:id] = wrapper_id if wrapper_id && !wrapper_id.to_s.empty?
+
+          h(:div, {
+              attrs: wrapper_attrs,
+              style: {
+                display: 'inline-flex',
+                position: 'relative',
+                alignItems: 'center',
+                justifyContent: 'center',
+                verticalAlign: 'middle',
+              },
+            }, [
+              tooltip,
+              h(:div, card_props, text),
+            ].compact)
+        end
+
+        # Canonical short-share card used for both the corporation total and
+        # an individual player's short position. It deliberately has no
+        # corporation tooltip: a short must read like a share, not a company.
+        #
+        # A black edge is informational. A red edge means that the supplied
+        # click handler can legally create another short position.
+        def render_short_railcard(corporation, percent: nil, shorted: nil, maximum: nil, click_handler: nil, dropdown: nil, wrapper_id: nil, **_unused)
+          # Backwards compatibility: the status window originally supplied a
+          # number of short shares via `shorted:`. New callers may supply the
+          # already-calculated percentage via `percent:`.
+          short_percent = if percent.nil?
+                            share_percent = if corporation.respond_to?(:share_percent) && corporation.share_percent
+                                              corporation.share_percent.to_i
+                                            else
+                                              10
+                                            end
+                            shorted.to_i.abs * share_percent
+                          else
+                            percent.to_i.abs
+                          end
+          return nil unless short_percent.positive? || click_handler
+
+          border_color = click_handler ? '#dc2626' : '#333333'
+          classes = %w[game-card short-railcard]
+          classes << 'clickable' if click_handler
+
+          card_props = {
+            attrs: {
+              class: classes.join(' '),
+            },
+            style: {
+              minWidth: '3.5rem',
+              height: '1.45rem',
+              padding: '0 6px',
+              margin: '2px',
+              boxSizing: 'border-box',
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              borderRadius: '4px',
+              fontSize: '0.85rem',
+              fontFamily: FONT_MONEY,
+              fontWeight: 'bold',
+              lineHeight: '1',
+              color: '#111111',
+              backgroundColor: '#f59e0b',
+              border: "2px solid #{border_color}",
+              boxShadow: click_handler ? "0 0 0 1px #{border_color}" : 'none',
+              cursor: click_handler ? 'pointer' : 'default',
+              whiteSpace: 'nowrap',
+            },
+          }
+          card_props[:on] = { click: click_handler } if click_handler
+
+          card = h(:div, card_props, "−#{short_percent}%")
+          dropdown_items = Array(dropdown).compact
+          return card if !wrapper_id && dropdown_items.empty?
+
+          wrapper_attrs = { class: 'short-railcard-wrapper' }
+          wrapper_attrs[:id] = wrapper_id if wrapper_id && !wrapper_id.to_s.empty?
+
+          h(:div, {
+              attrs: wrapper_attrs,
+              style: {
+                display: 'inline-flex',
+                position: 'relative',
+                alignItems: 'center',
+                justifyContent: 'center',
+                verticalAlign: 'middle',
+              },
+            }, [card, *dropdown_items])
+        end
+
+        # Player-cell convenience wrapper. Both aggregate and player cards use
+        # render_short_railcard, guaranteeing identical visual treatment.
+        def render_short_position_railcard(corporation, percent:, click_handler: nil, dropdown: nil, wrapper_id: nil)
+          render_short_railcard(
+            corporation,
+            percent: percent,
+            click_handler: click_handler,
+            dropdown: dropdown,
+            wrapper_id: wrapper_id
+          )
+        end
+
         def render_railcard(text, card_classes = ['game-card'], click_handler = nil, tooltip = nil, dropdown = nil, wrapper_id = nil, wrapper_classes = nil, entity: nil)
           classes = []
           if card_classes

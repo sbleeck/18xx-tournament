@@ -1111,7 +1111,13 @@ module View
                 kwargs = target.respond_to?(:minor?) && target.minor? ? { minor: target } : { corporation: target }
                 process_action(Engine::Action::Merge.new(entity, **kwargs))
               }
-              render_railcard(target.name, %w[game-card action-buy clickable], click_handler)
+
+              render_major_railcard(
+  target,
+  click_handler,
+  %w[major-railcard action-buy clickable],
+  "cmd_merge_target_#{target.id}"
+)
             end
             components << h(:div, { style: { fontSize: '0.85rem', fontWeight: 'bold', color: '#333', marginTop: '0.2rem', marginBottom: '0.2rem' } }, "Corporations that can merge with #{entity.name}:")
             components << h(:div, { style: { display: 'flex', flexDirection: 'row', flexWrap: 'wrap', gap: '0.3rem' } }, merge_boxes)
@@ -1190,32 +1196,12 @@ module View
           end
         end
 
-        corp_hexes = resolve_target_hexes(corporation)
-        corp_badge_node = render_railcard(corporation.name, ['game-card'])
-        corp_badge = if corp_hexes.any?
-                       corp_hex_names = corp_hexes.map do |h|
-                         if h.respond_to?(:name) && h.name
-                           h.name.to_s
-                         else
-                           (h.respond_to?(:id) && h.id ? h.id.to_s : h.to_s)
-                         end
-                       end
-                       h(:div, {
-                           style: { display: 'inline-block' },
-                           on: {
-                             mouseenter: lambda {
-                               `window.highlightMapHexes && window.highlightMapHexes(#{corp_hex_names})`
-                               nil
-                             },
-                             mouseleave: lambda {
-                               `window.clearMapHexHighlights && window.clearMapHexHighlights()`
-                               nil
-                             },
-                           },
-                         }, [corp_badge_node])
-                     else
-                       corp_badge_node
-                     end
+        corp_badge = render_major_railcard(
+    corporation,
+    nil,
+    ['major-railcard'],
+    "cmd_par_corporation_#{corporation.id}"
+  )
 
         buttons = par_nodes.map do |node|
           price = node.is_a?(Array) ? node[0] : node
@@ -2078,7 +2064,14 @@ module View
                      style: button_style.merge(backgroundColor: '#16a34a', color: '#ffffff', border: 'none'),
                      on: { click: place_bid },
                    }, auction_corp ? 'Raise Bid' : 'Place Bid')
-        card = render_railcard(corporation.name, %w[game-card])
+
+        card = render_major_railcard(
+          corporation,
+          nil,
+          ['major-railcard'],
+          "cmd_stock_bid_#{corporation.id}"
+        )
+
         children = [card, minus, price, plus, submit]
         unless auction_corp
           children << h(:button, {
@@ -2099,14 +2092,11 @@ module View
         end
         return nil unless offer && offer.respond_to?(:corporation?) && offer.corporation?
 
-        offer_card = render_railcard(
-          offer.name,
-          %w[game-card action-buy clickable],
+        offer_card = render_major_railcard(
+          offer,
           -> { process_action(Engine::Action::Assign.new(entity, target: offer)) },
-          nil,
-          nil,
-          "cmd_offer_for_sale_#{offer.id}",
-          %w[cmd-corp-wrapper status-corp-wrapper]
+          %w[major-railcard action-buy clickable],
+          "cmd_offer_for_sale_#{offer.id}"
         )
 
         instruction = h(:span, {
@@ -2478,32 +2468,12 @@ module View
                          on: { click: place_bid },
                        }, 'Place Bid')
 
-        target_hexes = resolve_target_hexes(target)
-        target_badge_node = render_railcard(target.name, %w[game-card])
-        target_badge = if target_hexes.any?
-                         target_hex_names = target_hexes.map do |h|
-                           if h.respond_to?(:name) && h.name
-                             h.name.to_s
-                           else
-                             (h.respond_to?(:id) && h.id ? h.id.to_s : h.to_s)
-                           end
-                         end
-                         h(:div, {
-                             style: { display: 'inline-block' },
-                             on: {
-                               mouseenter: lambda {
-                                 `window.highlightMapHexes && window.highlightMapHexes(#{target_hex_names})`
-                                 nil
-                               },
-                               mouseleave: lambda {
-                                 `window.clearMapHexHighlights && window.clearMapHexHighlights()`
-                                 nil
-                               },
-                             },
-                           }, [target_badge_node])
-                       else
-                         target_badge_node
-                       end
+        target_badge = render_major_railcard(
+    target,
+    nil,
+    ['major-railcard'],
+    "cmd_acquisition_target_#{target.id}"
+  )
 
         row1 = render_action_row('Company for sale:', [
           target_badge,
@@ -2515,7 +2485,6 @@ module View
 
         buyer_badges = if potential_buyers.any?
                          potential_buyers.map do |b|
-                           b_hexes = resolve_target_hexes(b)
                            is_selected = (b == selected_buyer)
                            card_classes = %w[game-card]
 
@@ -2533,31 +2502,12 @@ module View
                                         }
                                       end
 
-                           badge_node = render_railcard(b.name, card_classes, click_cb)
-                           badge_wrapper = if b_hexes.any?
-                                             b_hex_names = b_hexes.map do |h|
-                                               if h.respond_to?(:name) && h.name
-                                                 h.name.to_s
-                                               else
-                                                 (h.respond_to?(:id) && h.id ? h.id.to_s : h.to_s)
-                                               end
-                                             end
-                                             h(:div, {
-                                                 style: { display: 'inline-block' },
-                                                 on: {
-                                                   mouseenter: lambda {
-                                                     `window.highlightMapHexes && window.highlightMapHexes(#{b_hex_names})`
-                                                     nil
-                                                   },
-                                                   mouseleave: lambda {
-                                                     `window.clearMapHexHighlights && window.clearMapHexHighlights()`
-                                                     nil
-                                                   },
-                                                 },
-                                               }, [badge_node])
-                                           else
-                                             badge_node
-                                           end
+                           badge_wrapper = render_major_railcard(
+                           b,
+                           click_cb,
+                           card_classes.map { |cls| cls == 'game-card' ? 'major-railcard' : cls },
+                           "cmd_acquisition_buyer_#{b.id}"
+                         )
 
                            b_cash = b.respond_to?(:cash) ? @game.format_currency(b.cash) : ''
                            h(:div, { style: { display: 'inline-flex', alignItems: 'center', gap: '0.25rem', margin: '0 0.2rem' } }, [
@@ -2581,6 +2531,7 @@ module View
             },
           }, [row1, row2].compact)
       end
+      
 
       def render_ground_truth_actions(actions, step)
         return h(:div) if @game.finished

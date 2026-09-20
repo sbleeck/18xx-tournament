@@ -304,9 +304,7 @@ module View
         end
         extra << h(:th, { attrs: { class: 'header-corporate' } }, render_sort_link('Loans', :loans)) if @game.total_loans&.nonzero?
         extra << h(:th, { attrs: { class: 'header-corporate' } }, render_sort_link('Shorts', :shorts)) if @game.respond_to?(:available_shorts)
-        if (@diff_corp_sizes = @game.all_corporations.any? { |c| @game.corporation_size(c) != :small })
-          extra << h(:th, { attrs: { class: 'header-corporate' } }, render_sort_link('Size', :corp_size))
-        end
+
         @extra_size = extra.size
 
         player_headers = display_players.map.with_index do |player, index|
@@ -629,11 +627,16 @@ module View
         tr_props[:attrs][:class] = row_classes.join(' ') unless row_classes.empty?
 
         name_props = {
-          attrs: { class: 'status-corp-wrapper' },
-          style: { backgroundColor: corporation.color, color: corporation.text_color, fontFamily: FONT_STD, fontWeight: 'bold', position: 'relative', cursor: 'help' },
+          attrs: { class: 'major-corporation-cell' },
+          style: {
+            padding: '0 !important',
+            textAlign: 'center',
+            verticalAlign: 'middle',
+            position: 'relative',
+          },
         }
-
         treasury = []
+
         if has_treasury_column?
           t_shares = treasury_shares_for(corporation)
           treasury_cards = []
@@ -704,25 +707,53 @@ module View
           if @is_escrow_game && desc_text&.include?('Escrow')
             clean_digits = desc_text.scan(/\d+/).first || '0'
             extra << h('td.column-zone-corporate.money-value', {}, clean_digits)
+
           else
             extra << h('td.column-zone-corporate', {}, desc_text)
           end
         end
-
         extra << h('td.column-zone-corporate', { attrs: { id: "loans_#{corporation.id}" } }, [render_loan_dots(corporation)]) if @game.total_loans&.nonzero?
 
         if @game.respond_to?(:available_shorts)
-          taken, total = @game.respond_to?(:available_shorts) ? @game.available_shorts(corporation) : [0, 0]
-          extra << h('td.column-zone-corporate', {}, "#{taken} / #{total}")
-        end
+          taken, _total = begin
+            @game.available_shorts(corporation)
+          rescue StandardError
+            [0, 0]
+          end
 
-        if @diff_corp_sizes
-          size_name = if corporation.minor?
-                        'Minor'
-                      else
-                        (@game.respond_to?(:corporation_size_name) ? @game.corporation_size_name(corporation) : '')
-                      end
-          extra << h('td.column-zone-corporate', {}, size_name)
+          share_percent =
+            if corporation.respond_to?(:share_percent) && corporation.share_percent
+              corporation.share_percent.to_i
+            else
+              10
+            end
+
+          total_short_percent = taken.to_i * share_percent
+
+          short_children = []
+          if total_short_percent.positive?
+            short_children << render_short_railcard(
+              corporation,
+              percent: total_short_percent,
+              wrapper_id: "shorts_#{corporation.id}"
+            )
+          end
+
+          extra << h(
+             'td.column-zone-corporate.corporation-shorts',
+             {
+               attrs: {
+                 id: "shorts_cell_#{corporation.id}",
+               },
+               style: {
+                 position: 'relative',
+                 textAlign: 'center',
+                 minWidth: '4.35rem',
+                 whiteSpace: 'nowrap',
+               },
+             },
+             short_children
+           )
         end
 
         n_ipo_shares = corporation.minor? ? 0 : num_ipo_shares(corporation)
@@ -1447,15 +1478,15 @@ module View
         row_content.concat(bank_row_content)
         row_content.concat(corporation_row_content)
 
-        corp_tooltip = if active_entity
-                         begin
-                           render_corp_tooltip(corporation)
-                         rescue StandardError
-                           nil
-                         end
-                       end
+        major_card = render_major_railcard(
+          corporation,
+          nil,
+          ['major-railcard'],
+          "status_major_#{corporation.id}"
+        )
+
         h(:tr, tr_props, [
-          h(:th, name_props, [corp_tooltip, corporation.name].compact),
+          h(:th, name_props, [major_card]),
           *row_content,
         ])
       end
