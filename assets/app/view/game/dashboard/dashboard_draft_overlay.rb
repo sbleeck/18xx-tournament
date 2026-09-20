@@ -9,6 +9,7 @@ require 'lib/settings'
 require 'view/game/history_and_undo'
 require 'view/game/dashboard/railcard_helper'
 require 'view/game/dashboard/par_prompt_overlay'
+require 'view/game/dashboard/bidding_overlay'
 
 class String
   def player?
@@ -161,6 +162,12 @@ module View
           rescue StandardError
             step.current_actions || []
           end || []
+          # A draft may temporarily become a real auction. At that point,
+          # stop rendering the draft table and hand control to the normal
+          # multi-player bidding overlay.
+          if step.respond_to?(:auctioning) && step.auctioning && (actions.include?('bid') || actions.include?('pass'))
+            return h(BiddingOverlay, game: @game)
+          end
 
           pending_corp = resolve_pending_par(step, entity, actions)
 

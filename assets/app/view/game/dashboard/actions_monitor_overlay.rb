@@ -541,7 +541,68 @@ module View
                     }
                   end
                 end
-              else
+              when 'assign'
+                assignable = []
+                if step.respond_to?(:companies)
+                  begin; assignable = step.companies(ent) || []; rescue StandardError; end
+                elsif step.respond_to?(:assignable_companies)
+                  begin; assignable = step.assignable_companies(ent) || []; rescue StandardError; end
+                end
+                if assignable.empty? && ent.respond_to?(:companies)
+                  assignable = ent.companies.reject { |c| c.respond_to?(:closed?) && c.closed? }
+                end
+
+                assignable.each do |comp|
+                  val_str = comp.respond_to?(:value) ? @game.format_currency(comp.value) : ''
+                  rows << {
+                    label: "Assign #{comp.sym || comp.name} (#{val_str})",
+                    color: '#0d9488',
+                    ent: ent,
+                    act: 'assign',
+                    info: "Assign #{comp.name} (Value: #{val_str}) towards company formation",
+                    callback: -> { safe_process_action(Engine::Action::Assign.new(ent, target: comp)) },
+                  }
+                end
+              when 'bid'
+                target = nil
+                %i[target auctioning corporation target_corporation acquired_corp offered_corporation].each do |m|
+                  next unless step.respond_to?(m)
+
+                  val = begin; step.send(m); rescue StandardError; nil; end
+                  if val && (val.is_a?(Engine::Corporation) || (val.respond_to?(:corporation?) && val.corporation?))
+                    target = val
+                    break
+                  end
+                end
+
+                if target
+                  min_b = if step.respond_to?(:min_bid)
+                            begin; step.min_bid(target); rescue ArgumentError; step.min_bid; rescue StandardError; 10; end
+                          else
+                            10
+                          end
+                  price_str = @game.format_currency(min_b)
+
+                  is_corp_ent = ent.respond_to?(:corporation?) && ent.corporation? && ent != target
+
+                  callback = if is_corp_ent
+                               lambda {
+                                 safe_process_action(Engine::Action::Bid.new(active_player || ent.owner, corporation: ent,
+                                                                                                         price: min_b))
+                               }
+                             else
+                               -> { safe_process_action(Engine::Action::Bid.new(ent, corporation: target, price: min_b)) }
+                             end
+
+                  rows << {
+                    label: "Bid #{price_str} for #{target.name}",
+                    color: '#16a34a',
+                    ent: ent,
+                    act: 'bid',
+                    info: "Place minimum bid of #{price_str} to acquire #{target.name}",
+                    callback: callback,
+                  }
+                end
                 has_row = rows.any? { |r| r[:act] == act && r[:ent] == ent }
                 unless has_row
                   class_name = act.split('_').map(&:capitalize).join

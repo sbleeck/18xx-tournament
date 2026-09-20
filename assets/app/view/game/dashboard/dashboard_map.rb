@@ -145,6 +145,19 @@ module View
       # Register highlighter immediately on load so cyan is active before any layout guards
       %x{
         if (typeof window !== 'undefined') {
+          if (!window.__circle_attr_guard_installed) {
+            window.__circle_attr_guard_installed = true;
+            var origSetAttribute = Element.prototype.setAttribute;
+            Element.prototype.setAttribute = function(name, value) {
+              if (this.tagName && this.tagName.toLowerCase() === 'circle') {
+                if ((name === 'cy' || name === 'cx' || name === 'r') &&
+                    (value === '' || value == null || value === 'NaN' || value === 'undefined')) {
+                  value = '0';
+                }
+              }
+              return origSetAttribute.call(this, name, value);
+            };
+          }
           window.highlightMapHexes = function(hexIds, _color) {
             if (!hexIds) return;
             window.clearMapHexHighlights();
@@ -193,18 +206,25 @@ module View
       }
 
       def hex_cost_display(step, entity_or_entities, hex, tile: nil)
-        current_entity = Array(entity_or_entities).first
+        current_entity = Array(entity_or_entities).compact.first
+        return nil unless step && current_entity
+
         base_cost = 0
 
         target_tile = tile || hex.tile
         if @game.respond_to?(:upgrade_cost)
           begin
-            base_cost += (@game.upgrade_cost(target_tile, hex, current_entity) || 0)
-          rescue StandardError
+            # upgrade_cost expects both the acting entity and the spender.
+            # Passing only three arguments leaves spender nil in 1817, where
+            # the cost logic dereferences spender.name.
+            base_cost += (@game.upgrade_cost(target_tile, hex, current_entity, current_entity) || 0)
+          rescue ArgumentError
+            # Compatibility with games whose upgrade_cost still has three arguments.
             begin
-              base_cost += (@game.upgrade_cost(hex.tile, hex, current_entity) || 0)
+              base_cost += (@game.upgrade_cost(target_tile, hex, current_entity) || 0)
             rescue StandardError
             end
+          rescue StandardError
           end
         end
 
@@ -287,6 +307,18 @@ module View
         end
       end
 
+      def dashboard_current_entity(step)
+        entity = @selected_company
+        entity ||= step.current_entity if step&.respond_to?(:current_entity)
+        entity ||= @game.round.current_entity if @game.round.respond_to?(:current_entity)
+        entity ||= @game.current_entity if @game.respond_to?(:current_entity)
+        entity ||= step.active_entities.first if step&.respond_to?(:active_entities)
+        entity ||= @game.round.entities.first if @game.round.respond_to?(:entities) && @game.round.operating?
+        entity
+      rescue NotImplementedError, StandardError
+        nil
+      end
+
       def render
         return h(:div, []) if (@layout = @game.layout) == :none
 
@@ -343,10 +375,13 @@ module View
 
         step = @game.round.active_step(@selected_company)
 
-        current_entity = @selected_company || step&.current_entity
-        combo_entities = (@selected_combos || []).map { |id| @game.company_by_id(id) }
-        entity_or_entities = combo_entities.empty? ? current_entity : [current_entity, *combo_entities]
+        current_entity = dashboard_current_entity(step)
+        combo_entities = (@selected_combos || []).map { |id| @game.company_by_id(id) }.compact
+        entity_or_entities = combo_entities.empty? ? current_entity : [current_entity, *combo_entities].compact
         actions = step && current_entity ? (step.actions(current_entity) || []) : []
+
+        # Initial company bids are processed by the engine before map placement.
+        # This map reacts only to actions subsequently exposed by the engine.
 
         selected_hex = @tile_selector&.hex
         @hexes << @hexes.delete(selected_hex) if @hexes.include?(selected_hex)
@@ -368,7 +403,15 @@ module View
         active_tile = tile_chosen ? @tile_selector.tile : nil
 
         @hexes.map! do |hex|
-          clickable = @show_starting_map ? false : step&.available_hex(entity_or_entities, hex)
+          clickable = if @show_starting_map || !step || !current_entity
+                        false
+                      else
+                        begin
+                          step.available_hex(entity_or_entities, hex)
+                        rescue StandardError
+                          false
+                        end
+                      end
           is_hovered = hovered_target_hexes.map(&:to_s).map(&:upcase).include?(hex.id.to_s.upcase)
 
           base_hex = h(
@@ -377,7 +420,7 @@ module View
              opacity: @show_starting_map ? 1.0 : (@opacity || 1.0),
              entity: current_entity,
              clickable: hex_selected ? (hex == selected_hex && clickable) : clickable,
-             actions: actions,
+             actions: current_entity ? actions : [],
              routes: routes,
              start_pos: @start_pos,
              highlight: false
@@ -421,7 +464,9 @@ module View
                             },
                           })
 
-            cost_str = hex_cost_display(step, entity_or_entities, hex, tile: (hex == selected_hex ? active_tile : nil))
+            cost_str = if current_entity
+                         hex_cost_display(step, entity_or_entities, hex, tile: (hex == selected_hex ? active_tile : nil))
+                       end
             if cost_str
               scale_factor = case cost_str.length
                              when 1..3 then 2.2
@@ -495,15 +540,16 @@ module View
               *overlays,
             ]),
           ]
+          g_props = {
+            key: "dash-g-#{hex.id}",
+            attrs: {
+              id: "hex-#{hex.id}",
+              class: "map-hex-container hex-#{hex.id}",
+              'data-hex': hex.id.to_s,
+            },
+          }
 
-          h(:g, {
-              key: "dash-g-#{hex.id}",
-              attrs: {
-                id: "hex-#{hex.id}",
-                class: "map-hex-container hex-#{hex.id}",
-                'data-hex': hex.id.to_s,
-              },
-            }, hex_children)
+          h(:g, g_props, hex_children)
         end
         @hexes.compact!
 

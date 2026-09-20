@@ -59,7 +59,15 @@ module View
       COLOR_MAUVE = '#dda0dd'
 
       def active_entity
-        @game.round.active_step&.current_entity
+        step_entity = @game.round.active_step&.current_entity
+        return step_entity if step_entity
+
+        round_entity = (@game.round.current_entity if @game.round.respond_to?(:current_entity))
+        return round_entity if round_entity
+
+        @game.current_entity if @game.respond_to?(:current_entity)
+      rescue NotImplementedError, StandardError
+        nil
       end
 
       def active_player
@@ -75,9 +83,12 @@ module View
         @spreadsheet_sort_by = Lib::Storage['spreadsheet_sort_by']
         @spreadsheet_sort_order = Lib::Storage['spreadsheet_sort_order']
         @hide_not_floated = Lib::Storage['spreadsheet_hide_not_floated']
-        @show_privates = @game.respond_to?(:game_phases) && @game.game_phases.any? do |p|
+        has_buy_phase = @game.respond_to?(:game_phases) && @game.game_phases.any? do |p|
           p[:status]&.any? { |s| s.include?('can_buy_companies') }
         end
+        is_1817 = @game.class.name.include?('1817') || (@game.respond_to?(:title) && @game.title.to_s.include?('1817'))
+        has_corp_companies = @game.respond_to?(:all_corporations) && @game.all_corporations.any? { |c| c.companies&.any? }
+        @show_privates = has_buy_phase || is_1817 || has_corp_companies
 
         active_player_index = display_players.index(active_player)
         active_player_nth = active_player_index ? active_player_index + 2 : -1
@@ -1224,8 +1235,9 @@ module View
         elsif can_bid
           ipo_click_handler = lambda {
             store(:selected_corporation, corporation)
-            store(:selected_company, corporation)
+            store(:selected_company, nil)
             Lib::Storage['selected_bid_corp'] = corporation.id
+            Lib::Storage["bid_price_#{corporation.id}"] = nil
             update
           }
         elsif step.respond_to?(:can_buy?) && active_player
@@ -1435,8 +1447,15 @@ module View
         row_content.concat(bank_row_content)
         row_content.concat(corporation_row_content)
 
+        corp_tooltip = if active_entity
+                         begin
+                           render_corp_tooltip(corporation)
+                         rescue StandardError
+                           nil
+                         end
+                       end
         h(:tr, tr_props, [
-          h(:th, name_props, [render_corp_tooltip(corporation), corporation.name].compact),
+          h(:th, name_props, [corp_tooltip, corporation.name].compact),
           *row_content,
         ])
       end
@@ -1690,12 +1709,18 @@ module View
               show_price_dialog(menu_title, min_price, max_price, default_price, lambda { |price_val|
                 source_selector = "#company_wrapper_#{entity.id}_#{c.id} .game-card"
                 target_selector = "#companies_#{active_ent.id}"
+
                 Lib::CardAnimation.fly(source_selector, target_selector) { process_action(Engine::Action::BuyCompany.new(active_ent, company: c, price: price_val)) }
               })
             }
           end
-
-          tooltip_card = build_company_tooltip(c)
+          tooltip_card = if active_ent
+                           begin
+                             build_company_tooltip(c)
+                           rescue StandardError
+                             nil
+                           end
+                         end
           wrapper_id = "company_wrapper_#{entity.id}_#{c.id}"
           wrapper_classes = ['status-company-wrapper']
           render_railcard(c.sym, card_classes, company_click_handler, tooltip_card, menu_dropdown, wrapper_id, wrapper_classes)
