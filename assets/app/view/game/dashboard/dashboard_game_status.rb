@@ -303,7 +303,6 @@ module View
           extra << h(:th, { attrs: { class: 'header-corporate' } }, render_sort_link(header_label, :capitalization_type_desc))
         end
         extra << h(:th, { attrs: { class: 'header-corporate' } }, render_sort_link('Loans', :loans)) if @game.total_loans&.nonzero?
-        extra << h(:th, { attrs: { class: 'header-corporate' } }, render_sort_link('Shorts', :shorts)) if @game.respond_to?(:available_shorts)
 
         @extra_size = extra.size
 
@@ -714,47 +713,17 @@ module View
         end
         extra << h('td.column-zone-corporate', { attrs: { id: "loans_#{corporation.id}" } }, [render_loan_dots(corporation)]) if @game.total_loans&.nonzero?
 
-        if @game.respond_to?(:available_shorts)
-          taken, _total = begin
-            @game.available_shorts(corporation)
+        pool_shares = @game.share_pool.shares_by_corporation[corporation] || []
+        valid_pool_shares = []
+        if active_player && step.respond_to?(:can_buy?)
+          valid_pool_shares = pool_shares.select do |share|
+            (share.respond_to?(:buyable) ? share.buyable : true) && step.can_buy?(active_player, share.to_bundle)
           rescue StandardError
-            [0, 0]
+            false
           end
-
-          share_percent =
-            if corporation.respond_to?(:share_percent) && corporation.share_percent
-              corporation.share_percent.to_i
-            else
-              10
-            end
-
-          total_short_percent = taken.to_i * share_percent
-
-          short_children = []
-          if total_short_percent.positive?
-            short_children << render_short_railcard(
-              corporation,
-              percent: total_short_percent,
-              wrapper_id: "shorts_#{corporation.id}"
-            )
-          end
-
-          extra << h(
-             'td.column-zone-corporate.corporation-shorts',
-             {
-               attrs: {
-                 id: "shorts_cell_#{corporation.id}",
-               },
-               style: {
-                 position: 'relative',
-                 textAlign: 'center',
-                 minWidth: '4.35rem',
-                 whiteSpace: 'nowrap',
-               },
-             },
-             short_children
-           )
         end
+        player_can_buy_pool = valid_pool_shares.any?
+        player_can_short = active_player && step.respond_to?(:can_short?) && step.can_short?(active_player, corporation)
 
         n_ipo_shares = corporation.minor? ? 0 : num_ipo_shares(corporation)
         n_market_shares = num_shares_of(@game.share_pool, corporation)
@@ -889,93 +858,193 @@ module View
                                      h(:td, { style: { backgroundColor: bg_color } }, '')
                                    end
           else
-            n_shares = num_shares_of(p, corporation)
-            just_sold = begin; step&.did_sell?(corporation, p); rescue StandardError; false; end
 
-            if n_shares.zero? && !can_buy_from_player && !can_redeem_from_director && !just_sold
-              players_row_content << h(:td, { attrs: { id: "player_shares_#{p.id}_#{corporation.id}" }, style: { backgroundColor: bg_color } }, '')
-            else
-              percent = p.percent_of(corporation) || (n_shares * 10)
-              is_president = corporation.respond_to?(:president?) && corporation.president?(p)
-              text = n_shares.zero? ? '0%' : "#{percent}%#{'P' if is_president}"
+            raw_percent = p.respond_to?(:percent_of) ? (p.percent_of(corporation) || 0) : 0
+            is_short = raw_percent.negative?
+            if !is_short && corporation.respond_to?(:shorts)
+              player_shorts = corporation.shorts.select { |s| s.owner == p }
+              if player_shorts.any?
+                is_short = true
+                raw_percent = -player_shorts.sum { |s| s.respond_to?(:percent) ? s.percent : 10 }
+              end
+            end
+            can_short_cell = (p == active_player) && !is_short && raw_percent.zero? && player_can_short
 
-              card_classes = ['game-card']
-              card_classes << 'action-sell' if can_sell
-              card_classes << 'action-buy' if can_buy_from_player || can_redeem_from_director
-              card_classes << 'clickable' if click_handler
+            if is_short
+              cover_bundle = valid_pool_shares.first&.to_bundle
+              can_cover = (p == active_player) && active_step_actions.include?('buy_shares') && !cover_bundle.nil?
+              can_short_more = (p == active_player) && player_can_short
+
+              click_handler = nil
               dropdowns = []
+              card_classes = ['short-card']
 
-              if just_sold
-                dropdowns << h(:span, {
-                                 attrs: { class: 'token-bond' },
-                                 style: { position: 'absolute', top: '10px', right: '-7px', width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#dc2626', visibility: 'visible' },
-                               })
-              end
-
-              if Lib::Storage['sell_menu_player'] == p.id && Lib::Storage['sell_menu_corp'] == corporation.id && can_sell
-                options = bundles.map do |bundle|
-                  {
-                    label: "#{bundle[:percent]}%",
-                    action: lambda { |_event|
-                      Lib::Storage['sell_menu_player'] = nil
-                      Lib::Storage['sell_menu_corp'] = nil
-                      source_selector = "#player_shares_#{p.id}_#{corporation.id} .game-card"
-                      exec_sell_shares(source_selector, p, bundle, corporation.id)
-                    },
-                  }
-                end
-                cancel_handler = lambda {
-                  Lib::Storage['sell_menu_player'] = nil
-                  Lib::Storage['sell_menu_corp'] = nil
+              if can_cover && can_short_more
+                card_classes << 'clickable'
+                click_handler = lambda {
+                  Lib::Storage["short_choice_menu_#{corporation.id}"] = p.id
                   update
                 }
-                dropdowns << render_choice_menu('How many shares to sell?', options, cancel_handler)
-              end
-
-              if Lib::Storage['director_redeem_menu_corp'] == corporation.id && can_redeem_from_director
-                options = director_redeem_bundles.map do |bundle|
-                  pct = bundle.respond_to?(:percent) ? bundle.percent : bundle.shares.sum(&:percent)
-                  {
-                    label: "Redeem #{pct}%",
-                    action: lambda { |_event|
-                      Lib::Storage['director_redeem_menu_corp'] = nil
-                      exec_redeem_share_bundle(
-                        corporation, bundle, corp_actions,
-                        "#player_shares_#{p.id}_#{corporation.id} .game-card",
-                        "#treasury_shares_#{corporation.id}"
-                      )
+                if Lib::Storage["short_choice_menu_#{corporation.id}"] == p.id
+                  share_val = corporation.share_price ? @game.format_currency(corporation.share_price.price) : ''
+                  options = [
+                    {
+                      label: "Buy to Cover 10% (-#{share_val})",
+                      action: lambda { |_event|
+                        `event.stopPropagation()`
+                        Lib::Storage["short_choice_menu_#{corporation.id}"] = nil
+                        source_selector = "#player_shares_#{p.id}_#{corporation.id} .game-card"
+                        exec_buy_shares(source_selector, p, cover_bundle, corporation.id)
+                      },
                     },
-                  }
-                end
-                dropdowns << render_choice_menu('Redeem from director:', options, lambda {
-                                                                                    Lib::Storage['director_redeem_menu_corp'] = nil
-                                                                                    update
-                                                                                  })
-              end
-
-              if Lib::Storage['buy_player_menu_player'] == p.id && Lib::Storage['buy_player_menu_corp'] == corporation.id && can_buy_from_player
-                options = valid_player_buys.map do |share|
-                  {
-                    label: "Buy #{share.to_bundle.percent}%",
-                    action: lambda {
-                      Lib::Storage['buy_player_menu_player'] = nil
-                      Lib::Storage['buy_player_menu_corp'] = nil
-                      source_selector = "#player_shares_#{p.id}_#{corporation.id} .game-card"
-                      exec_buy_shares(source_selector, active_player, share.to_bundle, corporation.id)
+                    {
+                      label: "Short Additional 10% (+#{share_val})",
+                      action: lambda { |_event|
+                        `event.stopPropagation()`
+                        Lib::Storage["short_choice_menu_#{corporation.id}"] = nil
+                        source_selector = "#player_shares_#{p.id}_#{corporation.id} .game-card"
+                        exec_short_shares(source_selector, p, corporation)
+                      },
                     },
-                  }
+                  ]
+                  dropdowns << render_choice_menu("Position for #{corporation.name}:", options, lambda {
+                    Lib::Storage["short_choice_menu_#{corporation.id}"] = nil
+                    update
+                  })
                 end
-                cancel_handler = lambda {
-                  Lib::Storage['buy_player_menu_player'] = nil
-                  Lib::Storage['buy_player_menu_corp'] = nil
-                  update
+              elsif can_cover
+                card_classes << 'action-buy'
+                card_classes << 'clickable'
+                click_handler = lambda { |_event|
+                  source_selector = "#player_shares_#{p.id}_#{corporation.id} .game-card"
+                  exec_buy_shares(source_selector, p, cover_bundle, corporation.id)
                 }
-                dropdowns << render_choice_menu('Nationalize share bundle?', options, cancel_handler)
+              elsif can_short_more
+                card_classes << 'action-sell'
+                card_classes << 'clickable'
+                click_handler = lambda { |_event|
+                  source_selector = "#player_shares_#{p.id}_#{corporation.id} .game-card"
+                  exec_short_shares(source_selector, p, corporation)
+                }
               end
 
-              card = render_railcard(text, card_classes, click_handler, nil, dropdowns)
-              card = h(:span, { style: { visibility: 'hidden', display: 'inline-block' } }, [card]) if n_shares.zero?
-              players_row_content << h(:td, { attrs: { id: "player_shares_#{p.id}_#{corporation.id}" }, style: { backgroundColor: bg_color, textAlign: 'center', position: 'relative' } }, [card])
+              card = render_short_position_railcard(
+                corporation,
+                percent: raw_percent.abs,
+                click_handler: click_handler,
+                dropdown: dropdowns,
+                card_classes: card_classes,
+                wrapper_id: "player_short_#{p.id}_#{corporation.id}"
+              )
+              players_row_content << h(:td, {
+                                         attrs: { id: "player_shares_#{p.id}_#{corporation.id}" },
+                                         style: { backgroundColor: bg_color, textAlign: 'center', position: 'relative' },
+                                       }, [card])
+            elsif can_short_cell
+              ghost_click = lambda { |_event|
+                source_selector = "#pool_shares_#{corporation.id} .game-card"
+                exec_short_shares(source_selector, p, corporation)
+              }
+              ghost_card = render_ghost_short_railcard(
+                corporation,
+                percent: corporation.respond_to?(:share_percent) ? corporation.share_percent : 10,
+                click_handler: ghost_click,
+                wrapper_id: "ghost_short_#{p.id}_#{corporation.id}"
+              )
+              players_row_content << h(:td, {
+                                         attrs: { id: "player_shares_#{p.id}_#{corporation.id}" },
+                                         style: { backgroundColor: bg_color, textAlign: 'center', position: 'relative' },
+                                       }, [ghost_card])
+            else
+              n_shares = num_shares_of(p, corporation)
+              just_sold = begin; step&.did_sell?(corporation, p); rescue StandardError; false; end
+
+              if n_shares.zero? && !can_buy_from_player && !can_redeem_from_director && !just_sold
+                players_row_content << h(:td, { attrs: { id: "player_shares_#{p.id}_#{corporation.id}" }, style: { backgroundColor: bg_color } }, '')
+              else
+                percent = raw_percent.positive? ? raw_percent : (n_shares * 10)
+                is_president = corporation.respond_to?(:president?) && corporation.president?(p)
+                text = n_shares.zero? ? '0%' : "#{percent}%#{'P' if is_president}"
+                text = '0%' if text.to_s.empty?
+
+                card_classes = ['game-card']
+                card_classes << 'action-sell' if can_sell
+                card_classes << 'action-buy' if can_buy_from_player || can_redeem_from_director
+                card_classes << 'clickable' if click_handler
+                dropdowns = []
+
+                if just_sold
+                  dropdowns << h(:span, {
+                                   attrs: { class: 'token-bond' },
+                                   style: { position: 'absolute', top: '10px', right: '-7px', width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#dc2626', visibility: 'visible' },
+                                 })
+                end
+
+                if Lib::Storage['sell_menu_player'] == p.id && Lib::Storage['sell_menu_corp'] == corporation.id && can_sell
+                  options = bundles.map do |bundle|
+                    {
+                      label: "#{bundle[:percent]}%",
+                      action: lambda { |_event|
+                        Lib::Storage['sell_menu_player'] = nil
+                        Lib::Storage['sell_menu_corp'] = nil
+                        source_selector = "#player_shares_#{p.id}_#{corporation.id} .game-card"
+                        exec_sell_shares(source_selector, p, bundle, corporation.id)
+                      },
+                    }
+                  end
+                  cancel_handler = lambda {
+                    Lib::Storage['sell_menu_player'] = nil
+                    Lib::Storage['sell_menu_corp'] = nil
+                    update
+                  }
+                  dropdowns << render_choice_menu('How many shares to sell?', options, cancel_handler)
+                end
+
+                if Lib::Storage['director_redeem_menu_corp'] == corporation.id && can_redeem_from_director
+                  options = director_redeem_bundles.map do |bundle|
+                    pct = bundle.respond_to?(:percent) ? bundle.percent : bundle.shares.sum(&:percent)
+                    {
+                      label: "Redeem #{pct}%",
+                      action: lambda { |_event|
+                        Lib::Storage['director_redeem_menu_corp'] = nil
+                        exec_redeem_share_bundle(
+                          corporation, bundle, corp_actions,
+                          "#player_shares_#{p.id}_#{corporation.id} .game-card",
+                          "#treasury_shares_#{corporation.id}"
+                        )
+                      },
+                    }
+                  end
+                  dropdowns << render_choice_menu('Redeem from director:', options, lambda {
+                                                                                      Lib::Storage['director_redeem_menu_corp'] = nil
+                                                                                      update
+                                                                                    })
+                end
+
+                if Lib::Storage['buy_player_menu_player'] == p.id && Lib::Storage['buy_player_menu_corp'] == corporation.id && can_buy_from_player
+                  options = valid_player_buys.map do |share|
+                    {
+                      label: "Buy #{share.to_bundle.percent}%",
+                      action: lambda {
+                        Lib::Storage['buy_player_menu_player'] = nil
+                        Lib::Storage['buy_player_menu_corp'] = nil
+                        source_selector = "#player_shares_#{p.id}_#{corporation.id} .game-card"
+                        exec_buy_shares(source_selector, active_player, share.to_bundle, corporation.id)
+                      },
+                    }
+                  end
+                  cancel_handler = lambda {
+                    Lib::Storage['buy_player_menu_player'] = nil
+                    Lib::Storage['buy_player_menu_corp'] = nil
+                    update
+                  }
+                  dropdowns << render_choice_menu('Nationalize share bundle?', options, cancel_handler)
+                end
+
+                card = render_railcard(text, card_classes, click_handler, nil, dropdowns)
+                card = h(:span, { style: { visibility: 'hidden', display: 'inline-block' } }, [card]) if n_shares.zero?
+                players_row_content << h(:td, { attrs: { id: "player_shares_#{p.id}_#{corporation.id}" }, style: { backgroundColor: bg_color, textAlign: 'center', position: 'relative' } }, [card])
+              end
             end
           end
         end
@@ -1028,6 +1097,11 @@ module View
             Lib::Storage['pool_buyer_menu_corp'] = corporation.id
             update
           }
+        elsif player_can_buy_pool && player_can_short
+          pool_click_handler = lambda {
+            Lib::Storage['pool_action_menu_corp'] = corporation.id
+            update
+          }
         elsif corporation_can_redeem_pool
           pool_click_handler = if affordable_pool_redeems.size > 1
                                  lambda {
@@ -1068,7 +1142,12 @@ module View
                 action: lambda { |_event|
                   `event.stopPropagation()`
                   Lib::Storage['pool_buyer_menu_corp'] = nil
-                  if valid_pool_shares.uniq { |share| share.to_bundle.percent }.size > 1
+
+                  if player_can_short
+                    Lib::Storage['pool_action_menu_corp'] = corporation.id
+                    update
+                  elsif valid_pool_shares.uniq { |share| share.to_bundle.percent }.size > 1
+
                     Lib::Storage['buy_pool_menu_corp'] = corporation.id
                     update
                   else
@@ -1103,41 +1182,32 @@ module View
                                                                              })
           end
 
-          if Lib::Storage['redeem_menu_corp'] == corporation.id && corporation_can_redeem_pool
-            options = affordable_pool_redeems.map do |bundle|
-              pct = bundle.respond_to?(:percent) ? bundle.percent : bundle.shares.sum(&:percent)
+          if Lib::Storage['pool_action_menu_corp'] == corporation.id && player_can_buy_pool && player_can_short
+            share_val = corporation.share_price ? @game.format_currency(corporation.share_price.price) : ''
+            options = [
               {
-                label: "Redeem #{pct}%",
+                label: "Buy #{valid_pool_shares.first.to_bundle.percent}% from Pool (-#{share_val})",
                 action: lambda { |_event|
-                  Lib::Storage['redeem_menu_corp'] = nil
-                  exec_redeem_share_bundle(
-                    corporation, bundle, corp_actions,
-                    "#pool_shares_#{corporation.id} .game-card",
-                    corporation_share_destination
-                  )
+                  `event.stopPropagation()`
+                  Lib::Storage['pool_action_menu_corp'] = nil
+                  source_selector = "#pool_shares_#{corporation.id} .game-card"
+                  exec_buy_shares(source_selector, active_player, valid_pool_shares.first.to_bundle, corporation.id)
                 },
-              }
-            end
-            dropdowns << render_choice_menu('Redeem from Pool:', options, lambda {
-                                                                            Lib::Storage['redeem_menu_corp'] = nil
-                                                                            update
-                                                                          })
-          end
-
-          if Lib::Storage['buy_pool_menu_corp'] == corporation.id && player_can_buy_pool
-            options = valid_pool_shares.map do |share|
+              },
               {
-                label: "Buy #{share.to_bundle.percent}%",
+                label: "Sell Short 10% (+#{share_val})",
                 action: lambda { |_event|
-                  Lib::Storage['buy_pool_menu_corp'] = nil
-                  exec_buy_shares("#pool_shares_#{corporation.id} .game-card", active_player, share.to_bundle, corporation.id)
+                  `event.stopPropagation()`
+                  Lib::Storage['pool_action_menu_corp'] = nil
+                  source_selector = "#pool_shares_#{corporation.id} .game-card"
+                  exec_short_shares(source_selector, active_player, corporation)
                 },
-              }
-            end
-            dropdowns << render_choice_menu('Buy from Pool:', options, lambda {
-                                                                         Lib::Storage['buy_pool_menu_corp'] = nil
-                                                                         update
-                                                                       })
+              },
+            ]
+            dropdowns << render_choice_menu("Pool action for #{corporation.name}:", options, lambda {
+                                                                                               Lib::Storage['pool_action_menu_corp'] = nil
+                                                                                               update
+                                                                                             })
           end
 
           pool_cell_children << render_railcard(pool_share_text, classes, pool_click_handler, nil, dropdowns)
@@ -1552,6 +1622,22 @@ module View
         end
 
         h(:div, { style: { display: 'flex', flexDirection: 'row', justifyContent: 'center', flexWrap: 'wrap' } }, [h(:style, tooltip_style), *token_icons])
+      end
+
+      def exec_short_shares(source_selector, player, corporation)
+        escaped_player_id = `CSS.escape(#{player.id})`
+        escaped_corp_id = `CSS.escape(#{corporation.id})`
+        target_selector = "#player_shares_#{escaped_player_id}_#{escaped_corp_id}"
+        action = if defined?(Engine::Action::Short)
+                   Engine::Action::Short.new(player, corporation: corporation)
+                 else
+                   Engine::Action::BuyShares.new(player, shares: corporation.shares.first, share_price: corporation.share_price)
+                 end
+        if source_selector
+          Lib::CardAnimation.fly(source_selector, target_selector) { process_action(action) }
+        else
+          process_action(action)
+        end
       end
 
       def render_corp_tokens(corporation)

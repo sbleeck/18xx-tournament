@@ -12,9 +12,19 @@ module View
       def self.capture_pre_render
         %x{
           window._stockMarketTokens = window._stockMarketTokens || {};
+
+          // Remove any in-flight animation clones before measuring resting tokens
+          var oldClones = window.document.querySelectorAll('.stock-market-anim-clone');
+          for (var k = 0; k < oldClones.length; k++) {
+            if (oldClones[k].parentNode) {
+              oldClones[k].parentNode.removeChild(oldClones[k]);
+            }
+          }
+
           var tokens = window.document.querySelectorAll('.stock-market-token');
           for (var i = 0; i < tokens.length; i++) {
             var token = tokens[i];
+            token.style.opacity = '1';
             var id = token.getAttribute('data-corp') || token.id;
             if (id) {
               var r = token.getBoundingClientRect();
@@ -64,6 +74,13 @@ module View
                       clone.style.borderRadius = '50%';
                     }
 
+                    // Use a dedicated animation class and strip ID/data-corp so rapid turns
+                    // never measure or chain-scale an active clone
+                    clone.className = 'stock-market-anim-clone';
+                    clone.removeAttribute('id');
+                    clone.removeAttribute('data-corp');
+
+                    // Base dimensions remain the standard resting size
                     clone.style.position = 'fixed';
                     clone.style.left = prev.left + 'px';
                     clone.style.top = prev.top + 'px';
@@ -83,7 +100,7 @@ module View
                     var deltaX = curr.left - prev.left;
                     var deltaY = curr.top - prev.top;
 
-                    // Trajectory: Lift off -> Scale up 1.9x -> Hover glide -> Settle down
+                    // Standard size at start (1.0x), max 2.0x during flight, settling to 1.0x
                     var keyframes = [
                       {
                         transform: 'translate(0px, 0px) scale(1)',
@@ -91,12 +108,12 @@ module View
                         offset: 0
                       },
                       {
-                        transform: 'translate(0px, -26px) scale(1.9)',
+                        transform: 'translate(0px, -26px) scale(2.0)',
                         filter: 'drop-shadow(0 28px 24px rgba(0,0,0,0.65))',
                         offset: 0.22
                       },
                       {
-                        transform: 'translate(' + deltaX + 'px, ' + (deltaY - 26) + 'px) scale(1.9)',
+                        transform: 'translate(' + deltaX + 'px, ' + (deltaY - 26) + 'px) scale(2.0)',
                         filter: 'drop-shadow(0 28px 24px rgba(0,0,0,0.65))',
                         offset: 0.76
                       },
@@ -113,17 +130,20 @@ module View
                     ];
 
                     var anim = clone.animate(keyframes, {
-                      duration: 900,
+                      duration: 600,
                       easing: 'cubic-bezier(0.25, 1, 0.35, 1)',
                       fill: 'forwards'
                     });
 
-                    anim.onfinish = function() {
+                    var finishHandler = function() {
                       token.style.opacity = '1';
                       if (clone.parentNode) {
                         clone.parentNode.removeChild(clone);
                       }
                     };
+
+                    anim.onfinish = finishHandler;
+                    anim.oncancel = finishHandler;
                   }
                 })(newTokens[i]);
               }
@@ -642,7 +662,7 @@ module View
         grid = if @game.stock_market.hex_market?
                  grid_hex
                elsif @game.stock_market.one_d?
-                 if !!(zigzag = @game.stock_market.zigzag)
+                 if !(zigzag = @game.stock_market.zigzag).nil?
                    grid_zigzag(zigzag)
                  else
                    grid_1d

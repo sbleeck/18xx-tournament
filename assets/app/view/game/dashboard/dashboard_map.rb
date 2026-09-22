@@ -11,6 +11,11 @@ require 'view/game/part/track'
 require 'view/game/part/revenue'
 require 'view/game/part/city_slot'
 
+begin
+  require 'view/game/part/future_revenue'
+rescue LoadError
+end
+
 module View
   module Game
     module Part
@@ -103,16 +108,22 @@ module View
         end
       end
 
-      class Revenue < Base
-        needs :game, default: nil, store: true
-
-        unless method_defined?(:orig_render)
-          alias orig_render render
-          def render
-            orig_render
-          end
+      class FutureRevenue < Base
+        def render
+          h(:g)
         end
       end
+
+      # class Revenue < Base
+      #   needs :game, default: nil, store: true
+
+      #   unless method_defined?(:orig_render)
+      #     alias orig_render render
+      #     def render
+      #       orig_render
+      #     end
+      #   end
+      # end
     end
   end
 end

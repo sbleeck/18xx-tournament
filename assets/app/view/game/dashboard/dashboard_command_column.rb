@@ -16,6 +16,7 @@ require 'view/game/round/operating'
 require 'view/game/dashboard/actions_monitor_overlay'
 require 'view/game/dashboard/manual_route_overlay'
 require 'view/game/dashboard/draft_overlay'
+require 'view/game/dashboard/history_overlay'
 
 class String
   def player?
@@ -63,6 +64,7 @@ module View
       needs :cmd_router_running, store: true, default: false
       needs :show_manual_routes, store: true, default: false
       needs :show_actions_monitor, store: true, default: false
+      needs :show_history_overlay, store: true, default: false
 
       def current_entity
         @game.round.active_step&.current_entity ||
@@ -806,6 +808,7 @@ module View
         end
 
         is_monitor_open = @show_actions_monitor == true || Lib::Storage['cmd_actions_monitor'] == true || Lib::Storage['cmd_actions_monitor'] == 'true'
+        is_history_open = @show_history_overlay == true || Lib::Storage['cmd_history_overlay'] == true || Lib::Storage['cmd_history_overlay'] == 'true'
 
         zone_3 = h(:div, { style: { flex: '0 0 22%', display: 'flex', flexDirection: 'column', padding: '0.4rem', boxSizing: 'border-box', overflowY: 'auto', position: 'relative' } }, [
           h(:style, {}, '
@@ -952,6 +955,37 @@ module View
                     },
                   },
                 }, '⚡ Act'),
+              h(:button, {
+                  attrs: { id: 'cmd_history_nav_btn', title: 'Open Visual History Navigation' },
+                  style: {
+                    flex: '0 0 auto',
+                    height: '1.45rem',
+                    minHeight: '1.45rem',
+                    maxHeight: '1.45rem',
+                    padding: '0 7px',
+                    fontSize: '0.8rem',
+                    fontWeight: 'bold',
+                    backgroundColor: is_history_open ? '#0f172a' : '#f8f9fa',
+                    color: is_history_open ? '#ffffff' : '#212529',
+                    border: is_history_open ? '1px solid #0f172a' : '1px solid #ced4da',
+                    borderRadius: '4px',
+                    cursor: 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    lineHeight: '1',
+                    boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+                    margin: '0',
+                  },
+                  on: {
+                    click: lambda {
+                      new_val = !is_history_open
+                      Lib::Storage['cmd_history_overlay'] = new_val ? true : nil
+                      store(:show_history_overlay, new_val)
+                      update
+                    },
+                  },
+                }, '⏱ Hist'),
             ]),
           ]),
         ])
@@ -1022,6 +1056,15 @@ module View
         overlays = []
         overlays << h(View::Game::Dashboard::ManualRouteOverlay, game: @game, entity: entity, routes: @routes, selected_route: @selected_route) if show_manual_routes
         overlays << h(View::Game::Dashboard::ActionsMonitorOverlay, game: @game) if is_monitor_open
+
+        if is_history_open
+          close_hist = lambda {
+            Lib::Storage['cmd_history_overlay'] = nil
+            store(:show_history_overlay, false)
+            update
+          }
+          overlays << h(View::Game::Dashboard::HistoryOverlay, game: @game, game_data: @game_data, on_close: close_hist)
+        end
 
         if overlays.any?
           h(:div, { style: { width: '100%', height: '100%', position: 'relative', pointerEvents: 'none' } }, [
@@ -2531,7 +2574,6 @@ module View
             },
           }, [row1, row2].compact)
       end
-      
 
       def render_ground_truth_actions(actions, step)
         return h(:div) if @game.finished

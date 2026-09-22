@@ -112,6 +112,23 @@ module View
         ])
       end
 
+      def render_history_overlay
+        val = Lib::Storage['cmd_history_overlay']
+        is_open = [true, 'true'].include?(val) || @show_history_overlay == true
+        return nil unless is_open
+
+        close_handler = lambda {
+          Lib::Storage['cmd_history_overlay'] = nil
+          store(:show_history_overlay, false)
+          update
+        }
+
+        h(::View::Game::Dashboard::HistoryOverlay,
+          game: @game,
+          game_data: @game_data,
+          on_close: close_handler)
+      end
+
       def render
         if @game.respond_to?(:finished?) && @game.finished?
           return h(:div, {
