@@ -46,7 +46,11 @@ module View
                 attrs: { attributeName: 'stroke-opacity', values: '0.35;1.0;0.35', dur: '1.4s', repeatCount: 'indefinite' }),
             ])
 
-            h(:g, [rendered, highlight])
+            # CitySlot#render may return an array of VNodes. Never insert that array as
+            # a single child: Snabbdom will treat the Ruby/Opal array as a VNode and
+            # createElm will try to attach `elm` to a non-extensible object.
+            rendered_children = `Array.isArray(#{rendered})` ? rendered : [rendered]
+            h(:g, {}, [*rendered_children, highlight].compact)
           end
 
           def flash_token_slot?

@@ -75,15 +75,15 @@ module Lib
   end
 end
 
-# Ensure GamePage does not cache stale @cursor values across slider drags
-module View
-  class GamePage < Snabberb::Component
-    def cursor
-      param = Lib::Params['action']
-      param && !param.to_s.empty? ? param.to_i : nil
-    end
-  end
-end
+# # Ensure GamePage does not cache stale @cursor values across slider drags
+# module View
+#   class GamePage < Snabberb::Component
+#     def cursor
+#       param = Lib::Params['action']
+#       param && !param.to_s.empty? ? param.to_i : nil
+#     end
+#   end
+# end
 
 module View
   module Game
